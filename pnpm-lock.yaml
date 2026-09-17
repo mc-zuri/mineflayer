@@ -9,35 +9,35 @@ importers:
   .:
     dependencies:
       '@nxg-org/mineflayer-physics-util':
-        specifier: ^1.9.7
-        version: 1.9.7(vec3@0.1.10)
+        specifier: ^1.9.8
+        version: 1.9.10(vec3@0.2.0)
       minecraft-data:
         specifier: ^3.108.0
         version: 3.111.0
       minecraft-protocol:
         specifier: ^1.66.0
-        version: 1.66.2
+        version: 1.66.2(supports-color@8.1.1)
       mojangson:
         specifier: ^2.0.4
         version: 2.0.4
       prismarine-biome:
         specifier: ^1.1.1
-        version: 1.4.0(prismarine-registry@1.12.0)
+        version: 1.4.0(prismarine-registry@1.12.0(supports-color@8.1.1))
       prismarine-block:
         specifier: ^1.22.0
-        version: 1.23.0
+        version: 1.23.0(supports-color@8.1.1)
       prismarine-chat:
         specifier: ^1.7.1
-        version: 1.13.0
+        version: 1.13.0(supports-color@8.1.1)
       prismarine-chunk:
         specifier: ^1.39.0
-        version: 1.40.0
+        version: 1.40.0(supports-color@8.1.1)
       prismarine-entity:
         specifier: ^2.5.0
-        version: 2.6.0
+        version: 2.6.0(supports-color@8.1.1)
       prismarine-item:
         specifier: ^1.17.0
-        version: 1.18.0
+        version: 1.18.0(supports-color@8.1.1)
       prismarine-nbt:
         specifier: ^2.0.0
         version: 2.8.0
@@ -46,13 +46,13 @@ importers:
         version: 1.11.0
       prismarine-recipe:
         specifier: ^1.5.0
-        version: 1.5.0(prismarine-registry@1.12.0)
+        version: 1.5.0(prismarine-registry@1.12.0(supports-color@8.1.1))
       prismarine-registry:
         specifier: ^1.10.0
-        version: 1.12.0
+        version: 1.12.0(supports-color@8.1.1)
       prismarine-windows:
         specifier: ^2.9.0
-        version: 2.10.0
+        version: 2.10.0(supports-color@8.1.1)
       prismarine-world:
         specifier: ^3.6.0
         version: 3.7.0
@@ -66,18 +66,18 @@ importers:
         specifier: ^1.0.2
         version: 1.0.2
       vec3:
-        specifier: ^0.1.7
-        version: 0.1.10
+        specifier: ^0.2.0
+        version: 0.2.0
     devDependencies:
       '@types/node':
         specifier: ^25.2.1
         version: 25.9.5
       doctoc:
         specifier: ^2.0.1
-        version: 2.5.0
+        version: 2.5.0(supports-color@8.1.1)
       minecraft-wrap:
         specifier: ^1.3.0
-        version: 1.7.0
+        version: 1.7.0(supports-color@8.1.1)
       mocha:
         specifier: ^11.0.1
         version: 11.7.6
@@ -86,10 +86,10 @@ importers:
         version: 1.5.7
       standard:
         specifier: ^17.0.0
-        version: 17.1.2
+        version: 17.1.2(supports-color@8.1.1)
       standard-markdown:
         specifier: ^7.1.0
-        version: 7.1.0
+        version: 7.1.0(supports-color@8.1.1)
       typescript:
         specifier: ^5.4.5
         version: 5.9.3
@@ -163,8 +163,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@nxg-org/mineflayer-physics-util@1.9.7':
-    resolution: {integrity: sha512-Z00hWgls7Nto44KAsQksxx7GCF1jOFd6rJvCTBKUB6dXTCzZ8q4z6m9M7eG6K34s4bqtGxexLP/qZxZAmwF5WQ==}
+  '@nxg-org/mineflayer-physics-util@1.9.10':
+    resolution: {integrity: sha512-C/e+x+TLfqX2CnlUUIYEuHNK8qf0ZHPD0J18FvuVr/IPv8KFBucF8DrLHTzmk5dhZ7FBBhIRwnbZdNLq1wkOrw==}
 
   '@nxg-org/mineflayer-util-plugin@1.9.4':
     resolution: {integrity: sha512-keJBi+LznM3AngHXOmMfT5ldqcpwv0RC79GOrX1TZ0bRS4bK8qxyxV2NVUadfdkWqNxwVmUK8b++i+0Ogcksfg==}
@@ -2258,6 +2258,9 @@ packages:
   vec3@0.1.10:
     resolution: {integrity: sha512-Sr1U3mYtMqCOonGd3LAN9iqy0qF6C+Gjil92awyK/i2OwiUo9bm7PnLgFpafymun50mOjnDcg4ToTgRssrlTcw==}
 
+  vec3@0.2.0:
+    resolution: {integrity: sha512-jOjU4zbCNWOKOGLHop1I0J2Ar4h5Zz76455LJhJKhiOJwI21QP6d5TnKklNZDKG+c5h71zWtPAbd9wh+Va57OQ==}
+
   version-guard@1.1.3:
     resolution: {integrity: sha512-JwPr6erhX53EWH/HCSzfy1tTFrtPXUe927wdM1jqBBeYp1OM+qPHjWbsvv6pIBduqdgxxS+ScfG7S28pzyr2DQ==}
     engines: {node: '>=0.10.48'}
@@ -2386,14 +2389,14 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.29.7': {}
 
-  '@eslint-community/eslint-utils@4.9.1(eslint@8.57.1)':
+  '@eslint-community/eslint-utils@4.9.1(eslint@8.57.1(supports-color@8.1.1))':
     dependencies:
-      eslint: 8.57.1
+      eslint: 8.57.1(supports-color@8.1.1)
       eslint-visitor-keys: 3.4.3
 
   '@eslint-community/regexpp@4.12.2': {}
 
-  '@eslint/eslintrc@0.3.0':
+  '@eslint/eslintrc@0.3.0(supports-color@8.1.1)':
     dependencies:
       ajv: 6.15.0
       debug: 4.4.3(supports-color@8.1.1)
@@ -2408,7 +2411,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@eslint/eslintrc@2.1.4':
+  '@eslint/eslintrc@2.1.4(supports-color@8.1.1)':
     dependencies:
       ajv: 6.15.0
       debug: 4.4.3(supports-color@8.1.1)
@@ -2424,7 +2427,7 @@ snapshots:
 
   '@eslint/js@8.57.1': {}
 
-  '@humanwhocodes/config-array@0.13.0':
+  '@humanwhocodes/config-array@0.13.0(supports-color@8.1.1)':
     dependencies:
       '@humanwhocodes/object-schema': 2.0.3
       debug: 4.4.3(supports-color@8.1.1)
@@ -2457,15 +2460,15 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@nxg-org/mineflayer-physics-util@1.9.7(vec3@0.1.10)':
+  '@nxg-org/mineflayer-physics-util@1.9.10(vec3@0.2.0)':
     dependencies:
-      '@nxg-org/mineflayer-util-plugin': 1.9.4(vec3@0.1.10)
+      '@nxg-org/mineflayer-util-plugin': 1.9.4(vec3@0.2.0)
     transitivePeerDependencies:
       - vec3
 
-  '@nxg-org/mineflayer-util-plugin@1.9.4(vec3@0.1.10)':
+  '@nxg-org/mineflayer-util-plugin@1.9.4(vec3@0.2.0)':
     dependencies:
-      node-aabb: 0.1.0(vec3@0.1.10)
+      node-aabb: 0.1.0(vec3@0.2.0)
     transitivePeerDependencies:
       - vec3
 
@@ -2476,16 +2479,16 @@ snapshots:
 
   '@textlint/ast-node-types@15.7.1': {}
 
-  '@textlint/markdown-to-ast@15.7.1':
+  '@textlint/markdown-to-ast@15.7.1(supports-color@8.1.1)':
     dependencies:
       '@textlint/ast-node-types': 15.7.1
       debug: 4.4.3(supports-color@8.1.1)
-      mdast-util-gfm-autolink-literal: 0.1.3
+      mdast-util-gfm-autolink-literal: 0.1.3(supports-color@8.1.1)
       neotraverse: 0.6.18
-      remark-footnotes: 3.0.0
+      remark-footnotes: 3.0.0(supports-color@8.1.1)
       remark-frontmatter: 3.0.0
-      remark-gfm: 1.0.0
-      remark-parse: 9.0.0
+      remark-gfm: 1.0.0(supports-color@8.1.1)
+      remark-parse: 9.0.0(supports-color@8.1.1)
       structured-source: 4.0.0
       unified: 9.2.2
     transitivePeerDependencies:
@@ -2815,13 +2818,17 @@ snapshots:
       es-errors: 1.3.0
       is-data-view: 1.0.2
 
-  debug@2.6.9:
+  debug@2.6.9(supports-color@8.1.1):
     dependencies:
       ms: 2.0.0
+    optionalDependencies:
+      supports-color: 8.1.1
 
-  debug@3.2.7:
+  debug@3.2.7(supports-color@8.1.1):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 8.1.1
 
   debug@4.4.3(supports-color@8.1.1):
     dependencies:
@@ -2859,9 +2866,9 @@ snapshots:
 
   discontinuous-range@1.0.0: {}
 
-  doctoc@2.5.0:
+  doctoc@2.5.0(supports-color@8.1.1):
     dependencies:
-      '@textlint/markdown-to-ast': 15.7.1
+      '@textlint/markdown-to-ast': 15.7.1(supports-color@8.1.1)
       anchor-markdown-header: 0.8.4
       htmlparser2: 7.2.0
       loglevel: 1.9.2
@@ -3057,77 +3064,77 @@ snapshots:
 
   escape-string-regexp@4.0.0: {}
 
-  eslint-config-standard-jsx@10.0.0(eslint-plugin-react@7.25.3(eslint@7.18.0))(eslint@7.18.0):
+  eslint-config-standard-jsx@10.0.0(eslint-plugin-react@7.25.3(eslint@7.18.0(supports-color@8.1.1)))(eslint@7.18.0(supports-color@8.1.1)):
     dependencies:
-      eslint: 7.18.0
-      eslint-plugin-react: 7.25.3(eslint@7.18.0)
+      eslint: 7.18.0(supports-color@8.1.1)
+      eslint-plugin-react: 7.25.3(eslint@7.18.0(supports-color@8.1.1))
 
-  eslint-config-standard-jsx@11.0.0(eslint-plugin-react@7.37.5(eslint@8.57.1))(eslint@8.57.1):
+  eslint-config-standard-jsx@11.0.0(eslint-plugin-react@7.37.5(eslint@8.57.1(supports-color@8.1.1)))(eslint@8.57.1(supports-color@8.1.1)):
     dependencies:
-      eslint: 8.57.1
-      eslint-plugin-react: 7.37.5(eslint@8.57.1)
+      eslint: 8.57.1(supports-color@8.1.1)
+      eslint-plugin-react: 7.37.5(eslint@8.57.1(supports-color@8.1.1))
 
-  eslint-config-standard@16.0.3(eslint-plugin-import@2.24.2(eslint@7.18.0))(eslint-plugin-node@11.1.0(eslint@7.18.0))(eslint-plugin-promise@5.1.1(eslint@7.18.0))(eslint@7.18.0):
+  eslint-config-standard@16.0.3(eslint-plugin-import@2.24.2(eslint@7.18.0(supports-color@8.1.1))(supports-color@8.1.1))(eslint-plugin-node@11.1.0(eslint@7.18.0(supports-color@8.1.1)))(eslint-plugin-promise@5.1.1(eslint@7.18.0(supports-color@8.1.1)))(eslint@7.18.0(supports-color@8.1.1)):
     dependencies:
-      eslint: 7.18.0
-      eslint-plugin-import: 2.24.2(eslint@7.18.0)
-      eslint-plugin-node: 11.1.0(eslint@7.18.0)
-      eslint-plugin-promise: 5.1.1(eslint@7.18.0)
+      eslint: 7.18.0(supports-color@8.1.1)
+      eslint-plugin-import: 2.24.2(eslint@7.18.0(supports-color@8.1.1))(supports-color@8.1.1)
+      eslint-plugin-node: 11.1.0(eslint@7.18.0(supports-color@8.1.1))
+      eslint-plugin-promise: 5.1.1(eslint@7.18.0(supports-color@8.1.1))
 
-  eslint-config-standard@17.1.0(eslint-plugin-import@2.32.0(eslint@8.57.1))(eslint-plugin-n@15.7.0(eslint@8.57.1))(eslint-plugin-promise@6.6.0(eslint@8.57.1))(eslint@8.57.1):
+  eslint-config-standard@17.1.0(eslint-plugin-import@2.32.0(eslint@8.57.1(supports-color@8.1.1))(supports-color@8.1.1))(eslint-plugin-n@15.7.0(eslint@8.57.1(supports-color@8.1.1)))(eslint-plugin-promise@6.6.0(eslint@8.57.1(supports-color@8.1.1)))(eslint@8.57.1(supports-color@8.1.1)):
     dependencies:
-      eslint: 8.57.1
-      eslint-plugin-import: 2.32.0(eslint@8.57.1)
-      eslint-plugin-n: 15.7.0(eslint@8.57.1)
-      eslint-plugin-promise: 6.6.0(eslint@8.57.1)
+      eslint: 8.57.1(supports-color@8.1.1)
+      eslint-plugin-import: 2.32.0(eslint@8.57.1(supports-color@8.1.1))(supports-color@8.1.1)
+      eslint-plugin-n: 15.7.0(eslint@8.57.1(supports-color@8.1.1))
+      eslint-plugin-promise: 6.6.0(eslint@8.57.1(supports-color@8.1.1))
 
-  eslint-import-resolver-node@0.3.10:
+  eslint-import-resolver-node@0.3.10(supports-color@8.1.1):
     dependencies:
-      debug: 3.2.7
+      debug: 3.2.7(supports-color@8.1.1)
       is-core-module: 2.16.2
       resolve: 2.0.0-next.7
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.14.0(eslint-import-resolver-node@0.3.10)(eslint@7.18.0):
+  eslint-module-utils@2.14.0(eslint-import-resolver-node@0.3.10(supports-color@8.1.1))(eslint@7.18.0(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
-      debug: 3.2.7
+      debug: 3.2.7(supports-color@8.1.1)
     optionalDependencies:
-      eslint: 7.18.0
-      eslint-import-resolver-node: 0.3.10
+      eslint: 7.18.0(supports-color@8.1.1)
+      eslint-import-resolver-node: 0.3.10(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.14.0(eslint-import-resolver-node@0.3.10)(eslint@8.57.1):
+  eslint-module-utils@2.14.0(eslint-import-resolver-node@0.3.10(supports-color@8.1.1))(eslint@8.57.1(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
-      debug: 3.2.7
+      debug: 3.2.7(supports-color@8.1.1)
     optionalDependencies:
-      eslint: 8.57.1
-      eslint-import-resolver-node: 0.3.10
+      eslint: 8.57.1(supports-color@8.1.1)
+      eslint-import-resolver-node: 0.3.10(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-es@3.0.1(eslint@7.18.0):
+  eslint-plugin-es@3.0.1(eslint@7.18.0(supports-color@8.1.1)):
     dependencies:
-      eslint: 7.18.0
+      eslint: 7.18.0(supports-color@8.1.1)
       eslint-utils: 2.1.0
       regexpp: 3.2.0
 
-  eslint-plugin-es@4.1.0(eslint@8.57.1):
+  eslint-plugin-es@4.1.0(eslint@8.57.1(supports-color@8.1.1)):
     dependencies:
-      eslint: 8.57.1
+      eslint: 8.57.1(supports-color@8.1.1)
       eslint-utils: 2.1.0
       regexpp: 3.2.0
 
-  eslint-plugin-import@2.24.2(eslint@7.18.0):
+  eslint-plugin-import@2.24.2(eslint@7.18.0(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
       array-includes: 3.1.9
       array.prototype.flat: 1.3.3
-      debug: 2.6.9
+      debug: 2.6.9(supports-color@8.1.1)
       doctrine: 2.1.0
-      eslint: 7.18.0
-      eslint-import-resolver-node: 0.3.10
-      eslint-module-utils: 2.14.0(eslint-import-resolver-node@0.3.10)(eslint@7.18.0)
+      eslint: 7.18.0(supports-color@8.1.1)
+      eslint-import-resolver-node: 0.3.10(supports-color@8.1.1)
+      eslint-module-utils: 2.14.0(eslint-import-resolver-node@0.3.10(supports-color@8.1.1))(eslint@7.18.0(supports-color@8.1.1))(supports-color@8.1.1)
       find-up: 2.1.0
       has: 1.0.4
       is-core-module: 2.16.2
@@ -3142,18 +3149,18 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
-  eslint-plugin-import@2.32.0(eslint@8.57.1):
+  eslint-plugin-import@2.32.0(eslint@8.57.1(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
       array.prototype.findlastindex: 1.2.6
       array.prototype.flat: 1.3.3
       array.prototype.flatmap: 1.3.3
-      debug: 3.2.7
+      debug: 3.2.7(supports-color@8.1.1)
       doctrine: 2.1.0
-      eslint: 8.57.1
-      eslint-import-resolver-node: 0.3.10
-      eslint-module-utils: 2.14.0(eslint-import-resolver-node@0.3.10)(eslint@8.57.1)
+      eslint: 8.57.1(supports-color@8.1.1)
+      eslint-import-resolver-node: 0.3.10(supports-color@8.1.1)
+      eslint-module-utils: 2.14.0(eslint-import-resolver-node@0.3.10(supports-color@8.1.1))(eslint@8.57.1(supports-color@8.1.1))(supports-color@8.1.1)
       hasown: 2.0.4
       is-core-module: 2.16.2
       is-glob: 4.0.3
@@ -3169,42 +3176,42 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
-  eslint-plugin-n@15.7.0(eslint@8.57.1):
+  eslint-plugin-n@15.7.0(eslint@8.57.1(supports-color@8.1.1)):
     dependencies:
       builtins: 5.1.0
-      eslint: 8.57.1
-      eslint-plugin-es: 4.1.0(eslint@8.57.1)
-      eslint-utils: 3.0.0(eslint@8.57.1)
+      eslint: 8.57.1(supports-color@8.1.1)
+      eslint-plugin-es: 4.1.0(eslint@8.57.1(supports-color@8.1.1))
+      eslint-utils: 3.0.0(eslint@8.57.1(supports-color@8.1.1))
       ignore: 5.3.2
       is-core-module: 2.16.2
       minimatch: 3.1.5
       resolve: 1.22.12
       semver: 7.8.5
 
-  eslint-plugin-node@11.1.0(eslint@7.18.0):
+  eslint-plugin-node@11.1.0(eslint@7.18.0(supports-color@8.1.1)):
     dependencies:
-      eslint: 7.18.0
-      eslint-plugin-es: 3.0.1(eslint@7.18.0)
+      eslint: 7.18.0(supports-color@8.1.1)
+      eslint-plugin-es: 3.0.1(eslint@7.18.0(supports-color@8.1.1))
       eslint-utils: 2.1.0
       ignore: 5.3.2
       minimatch: 3.1.5
       resolve: 1.22.12
       semver: 6.3.1
 
-  eslint-plugin-promise@5.1.1(eslint@7.18.0):
+  eslint-plugin-promise@5.1.1(eslint@7.18.0(supports-color@8.1.1)):
     dependencies:
-      eslint: 7.18.0
+      eslint: 7.18.0(supports-color@8.1.1)
 
-  eslint-plugin-promise@6.6.0(eslint@8.57.1):
+  eslint-plugin-promise@6.6.0(eslint@8.57.1(supports-color@8.1.1)):
     dependencies:
-      eslint: 8.57.1
+      eslint: 8.57.1(supports-color@8.1.1)
 
-  eslint-plugin-react@7.25.3(eslint@7.18.0):
+  eslint-plugin-react@7.25.3(eslint@7.18.0(supports-color@8.1.1)):
     dependencies:
       array-includes: 3.1.9
       array.prototype.flatmap: 1.3.3
       doctrine: 2.1.0
-      eslint: 7.18.0
+      eslint: 7.18.0(supports-color@8.1.1)
       estraverse: 5.3.0
       jsx-ast-utils: 3.3.5
       minimatch: 3.1.5
@@ -3216,7 +3223,7 @@ snapshots:
       resolve: 2.0.0-next.7
       string.prototype.matchall: 4.0.12
 
-  eslint-plugin-react@7.37.5(eslint@8.57.1):
+  eslint-plugin-react@7.37.5(eslint@8.57.1(supports-color@8.1.1)):
     dependencies:
       array-includes: 3.1.9
       array.prototype.findlast: 1.2.5
@@ -3224,7 +3231,7 @@ snapshots:
       array.prototype.tosorted: 1.1.4
       doctrine: 2.1.0
       es-iterator-helpers: 1.4.0
-      eslint: 8.57.1
+      eslint: 8.57.1(supports-color@8.1.1)
       estraverse: 5.3.0
       hasown: 2.0.4
       jsx-ast-utils: 3.3.5
@@ -3252,9 +3259,9 @@ snapshots:
     dependencies:
       eslint-visitor-keys: 1.3.0
 
-  eslint-utils@3.0.0(eslint@8.57.1):
+  eslint-utils@3.0.0(eslint@8.57.1(supports-color@8.1.1)):
     dependencies:
-      eslint: 8.57.1
+      eslint: 8.57.1(supports-color@8.1.1)
       eslint-visitor-keys: 2.1.0
 
   eslint-visitor-keys@1.3.0: {}
@@ -3263,10 +3270,10 @@ snapshots:
 
   eslint-visitor-keys@3.4.3: {}
 
-  eslint@7.18.0:
+  eslint@7.18.0(supports-color@8.1.1):
     dependencies:
       '@babel/code-frame': 7.29.7
-      '@eslint/eslintrc': 0.3.0
+      '@eslint/eslintrc': 0.3.0(supports-color@8.1.1)
       ajv: 6.15.0
       chalk: 4.1.2
       cross-spawn: 7.0.6
@@ -3305,13 +3312,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint@8.57.1:
+  eslint@8.57.1(supports-color@8.1.1):
     dependencies:
-      '@eslint-community/eslint-utils': 4.9.1(eslint@8.57.1)
+      '@eslint-community/eslint-utils': 4.9.1(eslint@8.57.1(supports-color@8.1.1))
       '@eslint-community/regexpp': 4.12.2
-      '@eslint/eslintrc': 2.1.4
+      '@eslint/eslintrc': 2.1.4(supports-color@8.1.1)
       '@eslint/js': 8.57.1
-      '@humanwhocodes/config-array': 0.13.0
+      '@humanwhocodes/config-array': 0.13.0(supports-color@8.1.1)
       '@humanwhocodes/module-importer': 1.0.1
       '@nodelib/fs.walk': 1.2.8
       '@ungap/structured-clone': 1.3.3
@@ -3382,7 +3389,7 @@ snapshots:
 
   extend@3.0.2: {}
 
-  extract-zip@2.0.1:
+  extract-zip@2.0.1(supports-color@8.1.1):
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
       get-stream: 5.2.0
@@ -3944,18 +3951,18 @@ snapshots:
       unist-util-is: 4.1.0
       unist-util-visit-parents: 3.1.1
 
-  mdast-util-footnote@0.1.7:
+  mdast-util-footnote@0.1.7(supports-color@8.1.1):
     dependencies:
       mdast-util-to-markdown: 0.6.5
-      micromark: 2.11.4
+      micromark: 2.11.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  mdast-util-from-markdown@0.8.5:
+  mdast-util-from-markdown@0.8.5(supports-color@8.1.1):
     dependencies:
       '@types/mdast': 3.0.15
       mdast-util-to-string: 2.0.0
-      micromark: 2.11.4
+      micromark: 2.11.4(supports-color@8.1.1)
       parse-entities: 2.0.0
       unist-util-stringify-position: 2.0.3
     transitivePeerDependencies:
@@ -3965,11 +3972,11 @@ snapshots:
     dependencies:
       micromark-extension-frontmatter: 0.2.2
 
-  mdast-util-gfm-autolink-literal@0.1.3:
+  mdast-util-gfm-autolink-literal@0.1.3(supports-color@8.1.1):
     dependencies:
       ccount: 1.1.0
       mdast-util-find-and-replace: 1.1.1
-      micromark: 2.11.4
+      micromark: 2.11.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -3986,9 +3993,9 @@ snapshots:
     dependencies:
       mdast-util-to-markdown: 0.6.5
 
-  mdast-util-gfm@0.1.2:
+  mdast-util-gfm@0.1.2(supports-color@8.1.1):
     dependencies:
-      mdast-util-gfm-autolink-literal: 0.1.3
+      mdast-util-gfm-autolink-literal: 0.1.3(supports-color@8.1.1)
       mdast-util-gfm-strikethrough: 0.2.3
       mdast-util-gfm-table: 0.1.6
       mdast-util-gfm-task-list-item: 0.1.6
@@ -4009,9 +4016,9 @@ snapshots:
 
   merge2@1.4.1: {}
 
-  micromark-extension-footnote@0.3.2:
+  micromark-extension-footnote@0.3.2(supports-color@8.1.1):
     dependencies:
-      micromark: 2.11.4
+      micromark: 2.11.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -4019,44 +4026,44 @@ snapshots:
     dependencies:
       fault: 1.0.4
 
-  micromark-extension-gfm-autolink-literal@0.5.7:
+  micromark-extension-gfm-autolink-literal@0.5.7(supports-color@8.1.1):
     dependencies:
-      micromark: 2.11.4
+      micromark: 2.11.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  micromark-extension-gfm-strikethrough@0.6.5:
+  micromark-extension-gfm-strikethrough@0.6.5(supports-color@8.1.1):
     dependencies:
-      micromark: 2.11.4
+      micromark: 2.11.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  micromark-extension-gfm-table@0.4.3:
+  micromark-extension-gfm-table@0.4.3(supports-color@8.1.1):
     dependencies:
-      micromark: 2.11.4
+      micromark: 2.11.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
   micromark-extension-gfm-tagfilter@0.3.0: {}
 
-  micromark-extension-gfm-task-list-item@0.3.3:
+  micromark-extension-gfm-task-list-item@0.3.3(supports-color@8.1.1):
     dependencies:
-      micromark: 2.11.4
+      micromark: 2.11.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  micromark-extension-gfm@0.3.3:
+  micromark-extension-gfm@0.3.3(supports-color@8.1.1):
     dependencies:
-      micromark: 2.11.4
-      micromark-extension-gfm-autolink-literal: 0.5.7
-      micromark-extension-gfm-strikethrough: 0.6.5
-      micromark-extension-gfm-table: 0.4.3
+      micromark: 2.11.4(supports-color@8.1.1)
+      micromark-extension-gfm-autolink-literal: 0.5.7(supports-color@8.1.1)
+      micromark-extension-gfm-strikethrough: 0.6.5(supports-color@8.1.1)
+      micromark-extension-gfm-table: 0.4.3(supports-color@8.1.1)
       micromark-extension-gfm-tagfilter: 0.3.0
-      micromark-extension-gfm-task-list-item: 0.3.3
+      micromark-extension-gfm-task-list-item: 0.3.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  micromark@2.11.4:
+  micromark@2.11.4(supports-color@8.1.1):
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
       parse-entities: 2.0.0
@@ -4074,7 +4081,7 @@ snapshots:
 
   minecraft-folder-path@1.2.0: {}
 
-  minecraft-protocol@1.66.2:
+  minecraft-protocol@1.66.2(supports-color@8.1.1):
     dependencies:
       '@types/node-rsa': 1.1.4
       '@types/readable-stream': 4.0.24
@@ -4087,10 +4094,10 @@ snapshots:
       minecraft-folder-path: 1.2.0
       node-fetch: 2.7.0
       node-rsa: 0.4.2
-      prismarine-auth: 3.1.1
-      prismarine-chat: 1.13.0
+      prismarine-auth: 3.1.1(supports-color@8.1.1)
+      prismarine-chat: 1.13.0(supports-color@8.1.1)
       prismarine-nbt: 2.8.0
-      prismarine-realms: 1.6.0
+      prismarine-realms: 1.6.0(supports-color@8.1.1)
       protodef: 1.19.0
       readable-stream: 4.7.0
       uuid-1345: 1.0.2
@@ -4099,12 +4106,12 @@ snapshots:
       - encoding
       - supports-color
 
-  minecraft-wrap@1.7.0:
+  minecraft-wrap@1.7.0(supports-color@8.1.1):
     dependencies:
       adm-zip: 0.5.18
       debug: 4.4.3(supports-color@8.1.1)
       es6-promisify: 5.0.0
-      extract-zip: 2.0.1
+      extract-zip: 2.0.1(supports-color@8.1.1)
       flatmap: 0.0.3
       md5-file: 4.0.0
       minecraft-folder-path: 1.2.0
@@ -4187,9 +4194,9 @@ snapshots:
 
   neotraverse@0.6.18: {}
 
-  node-aabb@0.1.0(vec3@0.1.10):
+  node-aabb@0.1.0(vec3@0.2.0):
     dependencies:
-      vec3: 0.1.10
+      vec3: 0.2.0
 
   node-exports-info@1.6.2:
     dependencies:
@@ -4387,7 +4394,7 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  prismarine-auth@3.1.1:
+  prismarine-auth@3.1.1(supports-color@8.1.1):
     dependencies:
       '@azure/msal-node': 2.16.3
       '@xboxreplay/xboxlive-auth': 5.1.0
@@ -4397,36 +4404,36 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  prismarine-biome@1.4.0(prismarine-registry@1.12.0):
+  prismarine-biome@1.4.0(prismarine-registry@1.12.0(supports-color@8.1.1)):
     dependencies:
-      prismarine-registry: 1.12.0
+      prismarine-registry: 1.12.0(supports-color@8.1.1)
 
-  prismarine-block@1.23.0:
+  prismarine-block@1.23.0(supports-color@8.1.1):
     dependencies:
       minecraft-data: 3.111.0
-      prismarine-biome: 1.4.0(prismarine-registry@1.12.0)
-      prismarine-chat: 1.13.0
-      prismarine-item: 1.18.0
+      prismarine-biome: 1.4.0(prismarine-registry@1.12.0(supports-color@8.1.1))
+      prismarine-chat: 1.13.0(supports-color@8.1.1)
+      prismarine-item: 1.18.0(supports-color@8.1.1)
       prismarine-nbt: 2.8.0
-      prismarine-registry: 1.12.0
+      prismarine-registry: 1.12.0(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  prismarine-chat@1.13.0:
+  prismarine-chat@1.13.0(supports-color@8.1.1):
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
       mojangson: 2.0.4
       prismarine-nbt: 2.8.0
-      prismarine-registry: 1.12.0
+      prismarine-registry: 1.12.0(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  prismarine-chunk@1.40.0:
+  prismarine-chunk@1.40.0(supports-color@8.1.1):
     dependencies:
-      prismarine-biome: 1.4.0(prismarine-registry@1.12.0)
-      prismarine-block: 1.23.0
+      prismarine-biome: 1.4.0(prismarine-registry@1.12.0(supports-color@8.1.1))
+      prismarine-block: 1.23.0(supports-color@8.1.1)
       prismarine-nbt: 2.8.0
-      prismarine-registry: 1.12.0
+      prismarine-registry: 1.12.0(supports-color@8.1.1)
       smart-buffer: 4.2.0
       uint4: 0.1.2
       vec3: 0.1.10
@@ -4434,19 +4441,19 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  prismarine-entity@2.6.0:
+  prismarine-entity@2.6.0(supports-color@8.1.1):
     dependencies:
-      prismarine-chat: 1.13.0
-      prismarine-item: 1.18.0
-      prismarine-registry: 1.12.0
+      prismarine-chat: 1.13.0(supports-color@8.1.1)
+      prismarine-item: 1.18.0(supports-color@8.1.1)
+      prismarine-registry: 1.12.0(supports-color@8.1.1)
       vec3: 0.1.10
     transitivePeerDependencies:
       - supports-color
 
-  prismarine-item@1.18.0:
+  prismarine-item@1.18.0(supports-color@8.1.1):
     dependencies:
       prismarine-nbt: 2.8.0
-      prismarine-registry: 1.12.0
+      prismarine-registry: 1.12.0(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -4460,7 +4467,7 @@ snapshots:
       prismarine-nbt: 2.8.0
       vec3: 0.1.10
 
-  prismarine-realms@1.6.0:
+  prismarine-realms@1.6.0(supports-color@8.1.1):
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
       node-fetch: 2.7.0
@@ -4468,22 +4475,22 @@ snapshots:
       - encoding
       - supports-color
 
-  prismarine-recipe@1.5.0(prismarine-registry@1.12.0):
+  prismarine-recipe@1.5.0(prismarine-registry@1.12.0(supports-color@8.1.1)):
     dependencies:
-      prismarine-registry: 1.12.0
+      prismarine-registry: 1.12.0(supports-color@8.1.1)
 
-  prismarine-registry@1.12.0:
+  prismarine-registry@1.12.0(supports-color@8.1.1):
     dependencies:
       minecraft-data: 3.111.0
-      prismarine-block: 1.23.0
+      prismarine-block: 1.23.0(supports-color@8.1.1)
       prismarine-nbt: 2.8.0
     transitivePeerDependencies:
       - supports-color
 
-  prismarine-windows@2.10.0:
+  prismarine-windows@2.10.0(supports-color@8.1.1):
     dependencies:
-      prismarine-item: 1.18.0
-      prismarine-registry: 1.12.0
+      prismarine-item: 1.18.0(supports-color@8.1.1)
+      prismarine-registry: 1.12.0(supports-color@8.1.1)
       typed-emitter: 2.1.0
     transitivePeerDependencies:
       - supports-color
@@ -4584,10 +4591,10 @@ snapshots:
 
   regexpp@3.2.0: {}
 
-  remark-footnotes@3.0.0:
+  remark-footnotes@3.0.0(supports-color@8.1.1):
     dependencies:
-      mdast-util-footnote: 0.1.7
-      micromark-extension-footnote: 0.3.2
+      mdast-util-footnote: 0.1.7(supports-color@8.1.1)
+      micromark-extension-footnote: 0.3.2(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -4596,16 +4603,16 @@ snapshots:
       mdast-util-frontmatter: 0.2.0
       micromark-extension-frontmatter: 0.2.2
 
-  remark-gfm@1.0.0:
+  remark-gfm@1.0.0(supports-color@8.1.1):
     dependencies:
-      mdast-util-gfm: 0.1.2
-      micromark-extension-gfm: 0.3.3
+      mdast-util-gfm: 0.1.2(supports-color@8.1.1)
+      micromark-extension-gfm: 0.3.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  remark-parse@9.0.0:
+  remark-parse@9.0.0(supports-color@8.1.1):
     dependencies:
-      mdast-util-from-markdown: 0.8.5
+      mdast-util-from-markdown: 0.8.5(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -4796,27 +4803,27 @@ snapshots:
       pkg-conf: 3.1.0
       xdg-basedir: 4.0.0
 
-  standard-markdown@7.1.0:
+  standard-markdown@7.1.0(supports-color@8.1.1):
     dependencies:
       commander: 4.1.1
       globby: 11.1.0
       ora: 4.1.1
-      standard: 16.0.4
+      standard: 16.0.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - '@typescript-eslint/parser'
       - eslint-import-resolver-typescript
       - eslint-import-resolver-webpack
       - supports-color
 
-  standard@16.0.4:
+  standard@16.0.4(supports-color@8.1.1):
     dependencies:
-      eslint: 7.18.0
-      eslint-config-standard: 16.0.3(eslint-plugin-import@2.24.2(eslint@7.18.0))(eslint-plugin-node@11.1.0(eslint@7.18.0))(eslint-plugin-promise@5.1.1(eslint@7.18.0))(eslint@7.18.0)
-      eslint-config-standard-jsx: 10.0.0(eslint-plugin-react@7.25.3(eslint@7.18.0))(eslint@7.18.0)
-      eslint-plugin-import: 2.24.2(eslint@7.18.0)
-      eslint-plugin-node: 11.1.0(eslint@7.18.0)
-      eslint-plugin-promise: 5.1.1(eslint@7.18.0)
-      eslint-plugin-react: 7.25.3(eslint@7.18.0)
+      eslint: 7.18.0(supports-color@8.1.1)
+      eslint-config-standard: 16.0.3(eslint-plugin-import@2.24.2(eslint@7.18.0(supports-color@8.1.1))(supports-color@8.1.1))(eslint-plugin-node@11.1.0(eslint@7.18.0(supports-color@8.1.1)))(eslint-plugin-promise@5.1.1(eslint@7.18.0(supports-color@8.1.1)))(eslint@7.18.0(supports-color@8.1.1))
+      eslint-config-standard-jsx: 10.0.0(eslint-plugin-react@7.25.3(eslint@7.18.0(supports-color@8.1.1)))(eslint@7.18.0(supports-color@8.1.1))
+      eslint-plugin-import: 2.24.2(eslint@7.18.0(supports-color@8.1.1))(supports-color@8.1.1)
+      eslint-plugin-node: 11.1.0(eslint@7.18.0(supports-color@8.1.1))
+      eslint-plugin-promise: 5.1.1(eslint@7.18.0(supports-color@8.1.1))
+      eslint-plugin-react: 7.25.3(eslint@7.18.0(supports-color@8.1.1))
       standard-engine: 14.0.1
     transitivePeerDependencies:
       - '@typescript-eslint/parser'
@@ -4824,15 +4831,15 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
-  standard@17.1.2:
+  standard@17.1.2(supports-color@8.1.1):
     dependencies:
-      eslint: 8.57.1
-      eslint-config-standard: 17.1.0(eslint-plugin-import@2.32.0(eslint@8.57.1))(eslint-plugin-n@15.7.0(eslint@8.57.1))(eslint-plugin-promise@6.6.0(eslint@8.57.1))(eslint@8.57.1)
-      eslint-config-standard-jsx: 11.0.0(eslint-plugin-react@7.37.5(eslint@8.57.1))(eslint@8.57.1)
-      eslint-plugin-import: 2.32.0(eslint@8.57.1)
-      eslint-plugin-n: 15.7.0(eslint@8.57.1)
-      eslint-plugin-promise: 6.6.0(eslint@8.57.1)
-      eslint-plugin-react: 7.37.5(eslint@8.57.1)
+      eslint: 8.57.1(supports-color@8.1.1)
+      eslint-config-standard: 17.1.0(eslint-plugin-import@2.32.0(eslint@8.57.1(supports-color@8.1.1))(supports-color@8.1.1))(eslint-plugin-n@15.7.0(eslint@8.57.1(supports-color@8.1.1)))(eslint-plugin-promise@6.6.0(eslint@8.57.1(supports-color@8.1.1)))(eslint@8.57.1(supports-color@8.1.1))
+      eslint-config-standard-jsx: 11.0.0(eslint-plugin-react@7.37.5(eslint@8.57.1(supports-color@8.1.1)))(eslint@8.57.1(supports-color@8.1.1))
+      eslint-plugin-import: 2.32.0(eslint@8.57.1(supports-color@8.1.1))(supports-color@8.1.1)
+      eslint-plugin-n: 15.7.0(eslint@8.57.1(supports-color@8.1.1))
+      eslint-plugin-promise: 6.6.0(eslint@8.57.1(supports-color@8.1.1))
+      eslint-plugin-react: 7.37.5(eslint@8.57.1(supports-color@8.1.1))
       standard-engine: 15.1.0
       version-guard: 1.1.3
     transitivePeerDependencies:
@@ -5086,6 +5093,8 @@ snapshots:
       spdx-expression-parse: 3.0.1
 
   vec3@0.1.10: {}
+
+  vec3@0.2.0: {}
 
   version-guard@1.1.3: {}
 

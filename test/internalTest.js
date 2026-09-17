@@ -238,6 +238,14 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
       server.close()
     })
+    it('entity physics is opt-in', (done) => {
+      bot.once('inject_allowed', () => {
+        assert.strictEqual(bot.entityPhysicsEnabled, false)
+        bot.entityPhysicsEnabled = true
+        assert.strictEqual(bot.entityPhysicsEnabled, true)
+        done()
+      })
+    })
     it('chat', (done) => {
       bot.once('chat', (username, message) => {
         assert.strictEqual(username, 'gary')
