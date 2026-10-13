@@ -854,6 +854,40 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a press of jump while falling with an elytra asks to glide before the move (LocalPlayer.aiStep)', async function () {
+        const Item = require('prismarine-item')(supportedVersion)
+        const itemRegistry = require('minecraft-data')(supportedVersion)
+        if (!itemRegistry.itemsByName.elytra) return this.skip() // 1.9+
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          const equipped = once(manual.inventory, 'updateSlot:6')
+          client.write('set_slot', { windowId: 0, stateId: 0, slot: 6, item: Item.toNotch(new Item(itemRegistry.itemsByName.elytra.id, 1)) })
+          await equipped
+          const reply = once(client, 'position_look')
+          client.write('position', {
+            x: 1.5,
+            y: pos.y + 20,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 2
+          })
+          await reply
+          runTicks(3) // falling
+          const command = once(client, 'entity_action')
+          manual.setControlState('jump', true)
+          const before = written.length
+          runTicks(1)
+          const sent = written.slice(before).map(p => p.name)
+          assert.strictEqual(sent[0], 'entity_action', sent.join())
+          const [packet] = await command
+          assert.strictEqual(packet.actionId, 'start_fall_flying')
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a move is sent past 0.03 blocks, from 1.19 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
