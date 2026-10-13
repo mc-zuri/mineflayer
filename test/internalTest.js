@@ -812,6 +812,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the bot flies when the abilities packet says so (ClientPacketListener.handlePlayerAbilities)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          const abilities = once(manual, 'abilities')
+          client.write('abilities', { flags: 2 | 4, flyingSpeed: 0.05, walkingSpeed: 0.1 })
+          await abilities
+          // a flying player has no gravity: standing still in the air it keeps its height
+          manual.entity.position.y += 2
+          manual.entity.velocity.set(0, 0, 0)
+          runTicks(3)
+          assert.strictEqual(manual.entity.flying, true)
+          assert.strictEqual(manual.entity.position.y, pos.y + 3)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the sprint goes before the shift key, from 1.21.2 after it (LocalPlayer.sendPosition, LocalPlayer.tick)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
