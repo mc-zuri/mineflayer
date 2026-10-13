@@ -812,6 +812,30 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the sprint goes before the shift key, from 1.21.2 after it (LocalPlayer.sendPosition, LocalPlayer.tick)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          manual.setControlState('forward', true)
+          manual.setControlState('sprint', true)
+          runTicks(3)
+          await sleep(100)
+          // one tick stops the sprint and presses the shift key
+          const actions = []
+          client.on('entity_action', packet => actions.push(packet.actionId))
+          manual.clearControlStates()
+          manual.setControlState('sneak', true)
+          runTicks(1)
+          await sleep(100)
+          const expected = manual.registry.isNewerOrEqualTo('1.21.6')
+            ? ['stop_sprinting']
+            : manual.registry.isNewerOrEqualTo('1.21.2') ? ['start_sneaking', 'stop_sprinting'] : ['stop_sprinting', 'start_sneaking']
+          assert.deepStrictEqual(actions, expected)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a move is sent past 0.03 blocks, from 1.19 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
