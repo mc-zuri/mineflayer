@@ -750,6 +750,26 @@ for (const supportedVersion of mineflayer.testedVersions) {
           manual.end()
         }
       })
+
+      it('a move is sent past 0.03 blocks, from 1.19 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
+        const { manual, written, runTicks } = await standingManualBot()
+        try {
+          runTicks(1)
+          // the moves come from here, not the physics: the packets still go every tick
+          manual.physicsEnabled = false
+          const sentPositions = () => written.filter(p => p.name === 'position').length
+
+          manual.entity.position.x += 0.01
+          runTicks(1)
+          assert.strictEqual(sentPositions(), manual.registry.isNewerOrEqualTo('1.19') ? 1 : 0)
+
+          manual.entity.position.x += 0.04
+          runTicks(1)
+          assert.strictEqual(sentPositions(), manual.registry.isNewerOrEqualTo('1.19') ? 2 : 1)
+        } finally {
+          manual.end()
+        }
+      })
     })
 
     describe('world', () => {
