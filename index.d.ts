@@ -27,6 +27,7 @@ export interface BotOptions extends ClientOptions {
   difficulty?: number
   chatLengthLimit?: number
   physicsEnabled?: boolean
+  entityPhysicsEnabled?: boolean
   /** @default 4 */
   maxCatchupTicks?: number
   client?: Client
@@ -218,6 +219,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
   physics: PhysicsOptions
   entityPhysics: EntityPhysicsOptions
   physicsEnabled: boolean
+  entityPhysicsEnabled: boolean
   time: Time
   quickBarSlot: number
   inventory: Window<StorageEvents>

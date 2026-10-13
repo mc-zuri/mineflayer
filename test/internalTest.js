@@ -10,6 +10,137 @@ const { once } = require('../lib/promise_utils')
 const { getPort } = require('./common/util')
 const conv = require('../lib/conversions')
 
+describe('inventory simulator', () => {
+  const registry = require('prismarine-registry')(mineflayer.latestSupportedVersion)
+  const Item = require('prismarine-item')(registry)
+  const windows = require('prismarine-windows')(registry)
+  const simulateClick = require('../lib/inventory_simulator')(Item)
+  const stone = registry.itemsByName.stone.id
+
+  function windowWith (...items) {
+    const window = windows.createWindow(1, 'minecraft:generic_9x3', 'Chest', 27)
+    for (const [slot, count, type = stone] of items) {
+      window.updateSlot(slot, new Item(type, count))
+    }
+    return window
+  }
+
+  function click (window, mode, mouseButton, slot = -999, gamemode = 0, offhandWindow) {
+    return simulateClick(window, {
+      mode,
+      mouseButton,
+      slot,
+      item: slot === -999 ? null : window.slots[slot]
+    }, gamemode, offhandWindow)
+  }
+
+  it('distributes left and right drag clicks', () => {
+    const window = windowWith()
+    window.selectedItem = new Item(stone, 10)
+
+    click(window, 5, 0)
+    click(window, 5, 1, 0)
+    click(window, 5, 1, 1)
+    click(window, 5, 1, 2)
+    assert.deepStrictEqual(click(window, 5, 2), [0, 1, 2])
+    assert.deepStrictEqual(window.slots.slice(0, 3).map(item => item.count), [3, 3, 3])
+    assert.strictEqual(window.selectedItem.count, 1)
+
+    click(window, 5, 4)
+    click(window, 5, 5, 3)
+    assert.deepStrictEqual(click(window, 5, 6), [3])
+    assert.strictEqual(window.slots[3].count, 1)
+    assert.strictEqual(window.selectedItem, null)
+  })
+
+  it('duplicates full stacks and clears the cursor with creative middle drag', () => {
+    const window = windowWith()
+    window.selectedItem = new Item(stone, 64)
+
+    click(window, 5, 8, -999, 1)
+    click(window, 5, 9, 0, 1)
+    click(window, 5, 9, 1, 1)
+    assert.deepStrictEqual(click(window, 5, 10, -999, 1), [0, 1])
+    assert.deepStrictEqual(window.slots.slice(0, 2).map(item => item.count), [64, 64])
+    assert.strictEqual(window.selectedItem, null)
+  })
+
+  it('collects matching stacks to the cursor without overflowing it', () => {
+    const dirt = registry.itemsByName.dirt.id
+    const window = windowWith([0, 64], [1, 2], [2, 10, dirt])
+    window.selectedItem = new Item(stone, 60)
+
+    assert.deepStrictEqual(click(window, 6, 0, 3), [0, 1])
+    assert.strictEqual(window.selectedItem.count, 64)
+    assert.strictEqual(window.slots[0].count, 62)
+    assert.strictEqual(window.slots[1], null)
+    assert.strictEqual(window.slots[2].count, 10)
+  })
+
+  it('swaps with the offhand and passes creative mode to middle click', () => {
+    const dirt = registry.itemsByName.dirt.id
+    const window = windowWith([0, 1])
+    const inventory = windows.createWindow(0, 'minecraft:inventory', 'Inventory')
+    inventory.updateSlot(45, new Item(dirt, 1))
+
+    assert.deepStrictEqual(click(window, 2, 40, 0, 0, inventory), [0])
+    assert.strictEqual(window.slots[0].type, dirt)
+    assert.strictEqual(inventory.slots[45].type, stone)
+
+    window.selectedItem = null
+    click(window, 3, 2, 0, 1)
+    assert.strictEqual(window.selectedItem.count, window.slots[0].stackSize)
+  })
+
+  it('quick-moves stacks across both sides of a container', () => {
+    const window = windowWith([0, 64], [26, 32], [27, 32], [62, 64])
+
+    assert.deepStrictEqual(click(window, 1, 0, 26), [26, 27])
+    assert.strictEqual(window.slots[26], null)
+    assert.strictEqual(window.slots[27].count, 64)
+
+    assert.deepStrictEqual(click(window, 1, 0, 62), [1, 62])
+    assert.strictEqual(window.slots[0].count, 64)
+    assert.strictEqual(window.slots[1].count, 64)
+    assert.strictEqual(window.slots[62], null)
+
+    const fullWindow = windowWith()
+    const dirt = registry.itemsByName.dirt.id
+    for (let slot = 0; slot < 27; slot++) fullWindow.updateSlot(slot, new Item(dirt, 64))
+    fullWindow.updateSlot(27, new Item(stone, 10))
+    assert.deepStrictEqual(click(fullWindow, 1, 0, 27), [27, 54])
+    assert.strictEqual(fullWindow.slots[27], null)
+    assert.strictEqual(fullWindow.slots[54].count, 10)
+  })
+
+  it('quick-moves between the main inventory and hotbar boundary slots', () => {
+    const window = windows.createWindow(0, 'minecraft:inventory', 'Inventory')
+    window.updateSlot(35, new Item(stone, 10))
+
+    assert.deepStrictEqual(click(window, 1, 0, 35), [35, 36])
+    assert.strictEqual(window.slots[35], null)
+    assert.strictEqual(window.slots[36].count, 10)
+
+    assert.deepStrictEqual(click(window, 1, 0, 36), [9, 36])
+    assert.strictEqual(window.slots[9].count, 10)
+    assert.strictEqual(window.slots[36], null)
+  })
+
+  it('quick-moves every matching stack for a shift double click', () => {
+    const dirt = registry.itemsByName.dirt.id
+    const window = windowWith([0, 10], [1, 20], [2, 30, dirt])
+    window.selectedItem = new Item(dirt, 1)
+
+    for (const slot of [0, 1]) click(window, 1, 0, slot)
+
+    assert.strictEqual(window.slots[0], null)
+    assert.strictEqual(window.slots[1], null)
+    assert.strictEqual(window.slots[2].count, 30)
+    assert.strictEqual(window.slots[62].count, 30)
+    assert.strictEqual(window.selectedItem.count, 1)
+  })
+})
+
 for (const supportedVersion of mineflayer.testedVersions) {
   const registry = require('prismarine-registry')(supportedVersion)
   const version = registry.version
@@ -107,6 +238,14 @@ for (const supportedVersion of mineflayer.testedVersions) {
         done()
       })
       server.close()
+    })
+    it('entity physics is opt-in', (done) => {
+      bot.once('inject_allowed', () => {
+        assert.strictEqual(bot.entityPhysicsEnabled, false)
+        bot.entityPhysicsEnabled = true
+        assert.strictEqual(bot.entityPhysicsEnabled, true)
+        done()
+      })
     })
     it('chat', (done) => {
       bot.once('chat', (username, message) => {
@@ -362,14 +501,21 @@ for (const supportedVersion of mineflayer.testedVersions) {
           }
 
           bot.entity.velocity.y = -1.0 // Give bot some velocity
+          bot.entity.isCollidedHorizontally = true
 
           const p1 = once(bot, 'forcedMove')
+          const response = once(client, 'position_look')
           client.write('position', absolutePositionPacket)
           await p1
+          const [responsePacket] = await response
 
           // Assertions for absolute teleport
           assert.strictEqual(bot.entity.velocity.y, 0, 'Velocity should be reset to 0 after an absolute teleport')
           assert.deepStrictEqual(bot.entity.position, vec3(1.5, 80, 1.5), 'Position should be set absolutely')
+          if (bot.registry.isNewerOrEqualTo('1.21.3')) {
+            assert.strictEqual(responsePacket.flags.hasHorizontalCollision, true,
+              'Teleport response should preserve the current horizontal collision flag')
+          }
 
           // --- Test 2: Relative Position ---
           const relativePositionPacket = {
@@ -521,6 +667,21 @@ for (const supportedVersion of mineflayer.testedVersions) {
           })
           await bot.waitForTicks(1)
           await client.write('respawn', respawnPacket)
+        })
+      })
+    })
+
+    describe('health', () => {
+      it('notifies 1.21.4+ servers when the player has loaded', function (done) {
+        if (version['<']('1.21.4')) this.skip()
+        server.on('playerJoin', async (client) => {
+          client.once('player_loaded', () => done())
+          await client.write('login', bot.test.generateLoginPacket())
+          await client.write('update_health', {
+            health: 20,
+            food: 20,
+            foodSaturation: 0
+          })
         })
       })
     })
