@@ -831,6 +831,32 @@ for (const supportedVersion of mineflayer.testedVersions) {
           manual.end()
         }
       })
+
+      it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          // the server turns the player to 270 degrees, not wrapped to -90
+          const reply = once(client, 'position_look')
+          client.write('position', {
+            x: 0,
+            y: 0,
+            z: 0,
+            yaw: 270,
+            pitch: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: true, y: true, z: true, yaw: false, pitch: false } : 7,
+            teleportId: 2
+          })
+          await reply
+          const look = once(client, 'look')
+          runTicks(1)
+          const [packet] = await look
+          assert.strictEqual(packet.yaw, 270)
+          assert.ok(Object.is(packet.pitch, 0), `pitch ${Object.is(packet.pitch, -0) ? '-0' : packet.pitch}`)
+        } finally {
+          manual.end()
+        }
+      })
     })
 
     describe('world', () => {
