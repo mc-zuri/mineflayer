@@ -1751,6 +1751,30 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('item use', () => {
+      // LivingEntity.updatingUsingItem goes on using an item the server only resends (q_crossbow_load_walk: the
+      // charged crossbow's set_slot): only a change of the held item's type or count stops it
+      it('keeps using the held item when the server resends it unchanged', (done) => {
+        const Item = require('prismarine-item')(supportedVersion)
+        const notchItem = Item.toNotch(new Item(registry.itemsByName.stone.id, 1))
+        server.on('playerJoin', (client) => {
+          client.write('login', bot.test.generateLoginPacket())
+          client.write('held_item_slot', { slot: 0 })
+          setTimeout(() => {
+            bot.once('heldItemChanged', () => {
+              bot.activateItem()
+              bot.once('heldItemChanged', () => {
+                assert.strictEqual(bot.usingHeldItem, true)
+                done()
+              })
+              client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: notchItem })
+            })
+            client.write('set_slot', { windowId: 0, stateId: 0, slot: 36, item: notchItem })
+          }, 100)
+        })
+      })
+    })
+
     describe('tablist', () => {
       it('handles newlines in header and footer', (done) => {
         const HEADER = 'asd\ndsa'
