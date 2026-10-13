@@ -730,6 +730,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
         return {
           manual,
+          client,
           written,
           runTicks (count) {
             for (let i = 0; i < count; i++) {
@@ -746,6 +747,22 @@ for (const supportedVersion of mineflayer.testedVersions) {
           runTicks(41)
           assert.deepStrictEqual(written.filter(p => p.name === 'position').map(p => p.tick), [20, 40])
           assert.strictEqual(manual.entity.position.y, pos.y + 1)
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          // the teleport left the bot off the ground and still: its second tick lands it on the block without moving it
+          // (1.8 - 1.11 send one every tick; the landing tick's is the last)
+          const statuses = []
+          client.on('flying', packet => statuses.push(packet))
+          runTicks(2)
+          await sleep(100)
+          const packet = statuses.at(-1)
+          assert.strictEqual(manual.registry.isNewerOrEqualTo('1.21.3') ? packet.flags.onGround : packet.onGround, true)
         } finally {
           manual.end()
         }
