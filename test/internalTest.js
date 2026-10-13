@@ -769,6 +769,19 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot standing still sends a status-only move every tick on 1.8 only', async () => {
+        const { manual, written, runTicks } = await standingManualBot()
+        try {
+          runTicks(2) // lands on the block
+          const before = written.length
+          runTicks(10)
+          const idle = written.slice(before).filter(p => p.name === 'flying').length
+          assert.strictEqual(idle, manual.registry.isNewerOrEqualTo('1.9') ? 0 : 10)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a move is sent past 0.03 blocks, from 1.19 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
