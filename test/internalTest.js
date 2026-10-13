@@ -655,6 +655,50 @@ for (const supportedVersion of mineflayer.testedVersions) {
           })
         })
       })
+      it('physicsManual runs a tick only on bot.physicsTick()', async () => {
+        const manual = mineflayer.createBot({ username: 'manual', version: supportedVersion, port: PORT, physicsManual: true })
+        try {
+          let client
+          do [client] = await once(server, 'playerJoin'); while (client.username !== 'manual')
+          client.write('login', bot.test.generateLoginPacket())
+          const chunk = bot.test.buildChunk()
+          chunk.setBlockType(pos, goldId)
+          client.write('map_chunk', generateChunkPacket(chunk))
+          await once(manual, 'chunkColumnLoad')
+          const reply = once(client, 'position_look')
+          client.write('position', {
+            x: 1.5,
+            y: 80,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 1
+          })
+          await reply
+
+          let ticks = 0
+          manual.on('physicsTick', () => ticks++)
+          const moves = []
+          client.on('packet', (data, { name }) => {
+            if (['position', 'position_look', 'look', 'flying'].includes(name)) moves.push(name)
+          })
+          await sleep(300)
+          assert.strictEqual(ticks, 0, 'no tick runs on its own')
+          assert.deepStrictEqual(moves, [])
+
+          manual.physicsTick()
+          manual.physicsTick()
+          manual.physicsTick()
+          assert.strictEqual(ticks, 3)
+          // falling toward the gold block, the bot moved and told the server
+          assert.ok(manual.entity.position.y < 80)
+          await sleep(100)
+          assert.ok(moves.includes('position'), moves.join())
+        } finally {
+          manual.end()
+        }
+      })
     })
 
     describe('world', () => {

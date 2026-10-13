@@ -30,6 +30,8 @@ export interface BotOptions extends ClientOptions {
   entityPhysicsEnabled?: boolean
   /** @default 4 */
   maxCatchupTicks?: number
+  /** No timer runs the physics: each tick runs when bot.physicsTick() is called. @default false */
+  physicsManual?: boolean
   client?: Client
   brand?: string
   defaultChatPatterns?: boolean
@@ -467,6 +469,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
   nearestEntity: (filter?: (entity: Entity) => boolean) => Entity | null
 
   waitForTicks: (ticks: number, tickBegin?: boolean) => Promise<void>
+  physicsTick: () => void
 
   addChatPattern: (name: string, pattern: RegExp, options?: chatPatternOptions) => number
 

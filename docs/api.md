@@ -336,6 +336,7 @@
       - [bot.setCommandBlock(pos, command, [options])](#botsetcommandblockpos-command-options)
       - [bot.supportFeature(name)](#botsupportfeaturename)
       - [bot.waitForTicks(ticks)](#botwaitforticksticks)
+      - [bot.physicsTick()](#botphysicstick)
       - [bot.respawn()](#botrespawn)
     - [Lower level inventory methods](#lower-level-inventory-methods)
       - [bot.clickWindow(slot, mouseButton, mode)](#botclickwindowslot-mousebutton-mode)
@@ -826,6 +827,7 @@ Create and return an instance of the class bot.
   - pluginName : true : load internal plugin with given name ie. `pluginName` even though loadInternalplugins is set to false
   - pluginName : external plugin inject function : loads external plugin, overrides internal plugin with given name ie. `pluginName`
 - physicsEnabled : true by default, should the bot be affected by physics? can later be modified via bot.physicsEnabled
+- physicsManual : false by default. When true no timer runs the physics: each tick runs when [bot.physicsTick()](#botphysicstick) is called, for replays and tests that step the client tick by tick.
 - [chat](#bot.settings.chat)
 - [colorsEnabled](#bot.settings.colorsEnabled)
 - [viewDistance](#bot.settings.viewDistance)
@@ -2201,6 +2203,10 @@ The list of available features can be found inside the [./lib/features.json](htt
 #### bot.waitForTicks(ticks)
 
 This is a promise-based function that waits for a given number of in-game ticks to pass before continuing. This is useful for quick timers that need to function with specific timing, regardless of the given physics tick speed of the bot. This is similar to the standard Javascript setTimeout function, but runs on the physics timer of the bot specifically.
+
+#### bot.physicsTick()
+
+Runs one client tick: the physics step and the packets it sends. Ticks run on a timer unless the `physicsManual` option is set; with it, this is the only way they run.
 
 #### bot.respawn()
 
