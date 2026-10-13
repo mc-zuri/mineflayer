@@ -782,6 +782,20 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('sneaking is told by the player command before 1.21.6, by player_input only since', async () => {
+        const { manual, written, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          manual.setControlState('sneak', true)
+          const before = written.length
+          runTicks(1)
+          const sent = written.slice(before).map(p => p.name)
+          assert.strictEqual(sent.includes('entity_action'), !manual.registry.isNewerOrEqualTo('1.21.6'), sent.join())
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a move is sent past 0.03 blocks, from 1.19 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
