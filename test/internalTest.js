@@ -741,11 +741,12 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       }
 
-      it('a bot standing still sends its position every 20 ticks (LocalPlayer.positionReminder)', async () => {
+      it('a bot standing still sends its position every 20 ticks, 1.8 every 21 (LocalPlayer.positionReminder)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
-          runTicks(41)
-          assert.deepStrictEqual(written.filter(p => p.name === 'position').map(p => p.tick), [20, 40])
+          runTicks(43)
+          const reminders = manual.registry.isNewerOrEqualTo('1.9') ? [20, 40] : [21, 42]
+          assert.deepStrictEqual(written.filter(p => p.name === 'position').map(p => p.tick), reminders)
           assert.strictEqual(manual.entity.position.y, pos.y + 1)
         } finally {
           manual.end()
