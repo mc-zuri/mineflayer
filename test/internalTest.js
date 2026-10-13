@@ -699,6 +699,57 @@ for (const supportedVersion of mineflayer.testedVersions) {
           manual.end()
         }
       })
+
+      // A bot stepped tick by tick (physicsManual), standing on the gold block, and the tick of each packet it writes.
+      async function standingManualBot () {
+        const manual = mineflayer.createBot({ username: 'manual', version: supportedVersion, port: PORT, physicsManual: true })
+        let client
+        do [client] = await once(server, 'playerJoin'); while (client.username !== 'manual')
+        client.write('login', bot.test.generateLoginPacket())
+        const chunk = bot.test.buildChunk()
+        chunk.setBlockType(pos, goldId)
+        client.write('map_chunk', generateChunkPacket(chunk))
+        await once(manual, 'chunkColumnLoad')
+        const reply = once(client, 'position_look')
+        client.write('position', {
+          x: 1.5,
+          y: pos.y + 1,
+          z: 1.5,
+          pitch: 0,
+          yaw: 0,
+          flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+          teleportId: 1
+        })
+        await reply
+        const written = []
+        let tick = 0
+        const write = manual._client.write.bind(manual._client)
+        manual._client.write = (name, params) => {
+          written.push({ tick, name })
+          write(name, params)
+        }
+        return {
+          manual,
+          written,
+          runTicks (count) {
+            for (let i = 0; i < count; i++) {
+              tick++
+              manual.physicsTick()
+            }
+          }
+        }
+      }
+
+      it('a bot standing still sends its position every 20 ticks (LocalPlayer.positionReminder)', async () => {
+        const { manual, written, runTicks } = await standingManualBot()
+        try {
+          runTicks(41)
+          assert.deepStrictEqual(written.filter(p => p.name === 'position').map(p => p.tick), [20, 40])
+          assert.strictEqual(manual.entity.position.y, pos.y + 1)
+        } finally {
+          manual.end()
+        }
+      })
     })
 
     describe('world', () => {
