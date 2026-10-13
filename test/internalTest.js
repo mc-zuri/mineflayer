@@ -706,6 +706,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         let client
         do [client] = await once(server, 'playerJoin'); while (client.username !== 'manual')
         client.write('login', bot.test.generateLoginPacket())
+        client.write('update_health', { health: 20, food: 20, foodSaturation: 5 })
         const chunk = bot.test.buildChunk()
         chunk.setBlockType(pos, goldId)
         client.write('map_chunk', generateChunkPacket(chunk))
@@ -791,6 +792,21 @@ for (const supportedVersion of mineflayer.testedVersions) {
           runTicks(1)
           const sent = written.slice(before).map(p => p.name)
           assert.strictEqual(sent.includes('entity_action'), !manual.registry.isNewerOrEqualTo('1.21.6'), sent.join())
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('the server reads the sprint start as START_SPRINTING (the player command renumbered in 1.21.6)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          const command = once(client, 'entity_action')
+          manual.setControlState('forward', true)
+          manual.setControlState('sprint', true)
+          runTicks(1)
+          const [packet] = await command
+          assert.strictEqual(packet.actionId, 'start_sprinting')
         } finally {
           manual.end()
         }
