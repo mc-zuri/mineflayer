@@ -1641,6 +1641,28 @@ for (const supportedVersion of mineflayer.testedVersions) {
     })
 
     describe('entities', () => {
+      // The vanilla client's view of an entity it does not control: the recorder's v_minecart_push_forward, a minecart
+      // spawned at x 2.5 and moved by the server's relative moves (1/4096 block), as the client showed it each tick
+      it('interpolates a minecart toward the server moves as the vanilla client (Entity.lerpTo, InterpolationHandler)', function () {
+        const { createEntityInterpolation } = require('../lib/entityInterpolation')
+        const version = bot.registry.version
+        if (version['<']('1.9')) return this.skip() // fixed point 1/32 moves, no recording
+        // [tick, relative move dX or null, the x the client showed after the tick]
+        const recorded = version['<']('1.20.2')
+          ? [[1, 920, 2.544921875], [2, null, 2.58984375], [3, null, 2.634765625], [4, null, 2.6796875], [5, 1830, 2.77802734375], [6, null, 2.8763671874999996], [7, null, 2.97470703125], [8, 1813, 3.1025683593749998]] // 1.12.2
+          : version['<']('1.21.5')
+            ? [[1, 32, 2.5015625], [2, null, 2.503125], [3, null, 2.5046874999999997], [4, 80, 2.5092187499999996], [5, null, 2.51375], [6, null, 2.51828125], [7, 127, 2.526294921875], [8, null, 2.53430859375], [9, 174, 2.547612890625]] // 1.20.4
+            : [[1, 46, 2.5037434895833335], [2, null, 2.507486979166667], [3, null, 2.51123046875], [4, null, 2.51123046875], [5, 64, 2.5164388020833335], [6, null, 2.521647135416667], [7, 91, 2.530788845486111], [8, null, 2.5399305555555554], [9, null, 2.549072265625]] // 1.21.11
+        const interpolation = createEntityInterpolation(bot.registry)
+        const minecart = { name: 'minecart', type: version['<']('1.14') ? 'object' : 'mob', position: vec3(2.5, 101.0625, 2077.5) }
+        interpolation.spawn(minecart)
+        for (const [tick, dX, x] of recorded) {
+          if (dX != null) minecart.position.set(...Object.values(interpolation.move(minecart, dX, 0, 0)))
+          interpolation.tick(minecart)
+          assert.strictEqual(minecart.interpolatedPosition.x, x, `tick ${tick}`)
+        }
+        assert.strictEqual(minecart.interpolatedPosition.y, 101.0625)
+      })
       it('entity id changes on login', (done) => {
         const loginPacket = bot.test.generateLoginPacket()
         server.on('playerJoin', (client) => {
