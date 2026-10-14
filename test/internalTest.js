@@ -1791,6 +1791,31 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // v_horse_walk: a saddled horse (MOVEMENT_SPEED 0.225) walks on its rider's forward input of the tick before
+      // (the vehicle ticks first), moved by the client itself (AbstractHorse.travel, tickRidden); its motion after its
+      // first moving tick as recorded (1.12.2, 1.13.2, and the same on 1.19.2 - 1.21.11). The recording rides east, the
+      // bot here south (yaw 0): the same speed along z.
+      it('a saddled horse walks on the input its rider gave the tick before (v_horse_walk)', async function () {
+        const version = registry.version
+        const recorded = version['<']('1.13') ? 0.12039298541021015 : version['<']('1.14') ? 0.12039299354624511 : version['>=']('1.17') ? 0.12039301313781722 : null
+        if (!version['>=']('1.9') || recorded == null) return this.skip() // no recording
+        if (!version['>=']('1.17') || version['>=']('1.21.5')) return this.skip() // the saddle as these versions keep it
+        const { manual, vehicle, runTicks } = await ridingManualBot('horse')
+        try {
+          vehicle.metadata = []
+          vehicle.metadata[17] = 0x02 | 0x04 // tame, saddled
+          vehicle.attributes = { 'minecraft:generic.movement_speed': { value: 0.225, modifiers: [] } }
+          vehicle.velocity.set(0, -0.0784000015258789, 0)
+          manual.setControlState('forward', true)
+          runTicks(1)
+          assert.strictEqual(vehicle.velocity.z, 0)
+          runTicks(1)
+          assert.strictEqual(vehicle.velocity.z, recorded)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a passenger keeps its own velocity, gravity after Entity.rideTick zeroes it (m_horse)', async () => {
         const { manual, vehicle, runTicks } = await ridingManualBot()
         try {
