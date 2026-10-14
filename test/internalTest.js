@@ -1276,6 +1276,22 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a teleport leaves a bot standing on the ground (ClientPacketListener.handleMovePlayer)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          assert.ok(manual.entity.onGround)
+          await teleport(manual, client)
+          assert.ok(manual.entity.onGround)
+          // so it can jump on its next tick (LivingEntity.aiStep)
+          manual.setControlState('jump', true)
+          runTicks(1)
+          assert.ok(manual.entity.velocity.y > 0, `${manual.entity.velocity.y}`)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a respawned bot moves off the ground until it lands (Entity.onGround)', async function () {
         const respawn = respawnPacket()
         if (!respawn) return this.skip()
