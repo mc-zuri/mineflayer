@@ -2024,6 +2024,32 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a boat turns and clamps its rider after the look it sent (Boat.positionRider, v_boat_forward_left t20)', async function () {
+        if (!require('minecraft-data')(supportedVersion).version['>=']('1.9')) return this.skip()
+        const { manual, client, vehicle, runTicks } = await ridingManualBot('boat')
+        try {
+          vehicle.height = 0.5625
+          vehicle.yawDegrees = -202.15765
+          vehicle.yaw = conv.fromNotchianYaw(-202.15765)
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          runTicks(1)
+          await sleep(100)
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          const look = once(client, 'look')
+          runTicks(1)
+          const [packet] = await look
+          // the look goes as held, 112 degrees off the boat; then the boat keeps its rider within 105 degrees
+          assert.strictEqual(packet.yaw, 270)
+          const boatYaw = Number(vehicle.yawDegrees)
+          const relative = ((Number(manual.entity.yawDegrees) - boatYaw) % 360 + 540) % 360 - 180
+          assert.ok(Math.abs(relative) <= 105.0001, `rider ${Number(manual.entity.yawDegrees)} boat ${boatYaw}`)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
