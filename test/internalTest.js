@@ -829,6 +829,32 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the jump auto-jump presses goes in player_input (KeyboardInput.tick, 1.21.2+)', async function () {
+        if (!require('minecraft-data')(supportedVersion).isNewerOrEqualTo('1.21.2')) return this.skip()
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          // a floor east of the gold block and a one-block step on it
+          const gold = manual.registry.blocksByName.gold_block.defaultState
+          const placed = once(manual, 'blockUpdate:' + vec3(3, pos.y + 1, pos.z))
+          for (const [x, y] of [[2, pos.y], [3, pos.y], [4, pos.y], [3, pos.y + 1], [4, pos.y + 1]]) {
+            client.write('block_change', { location: { x, y, z: pos.z }, type: gold })
+          }
+          await placed
+          runTicks(2)
+          manual.physics.autoJump = true
+          manual.look(conv.fromNotchianYaw(270), 0, true)
+          const inputs = []
+          client.on('player_input', packet => inputs.push(packet.inputs.jump))
+          manual.setControlState('forward', true)
+          runTicks(20)
+          await sleep(100)
+          assert.ok(inputs.includes(true), `jump in player_input: ${inputs.join()}`)
+          assert.strictEqual(manual.getControlState('jump'), false)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('an explosion breaks its blocks only when it destroys them (Explosion.finalizeExplosion, 1.20.3 - 1.21.1)', async function () {
         // (the explode packet carries its block interaction from 1.20.3, and no blocks from 1.21.2)
         const data = require('minecraft-data')(supportedVersion)
