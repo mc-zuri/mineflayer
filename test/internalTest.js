@@ -1596,6 +1596,35 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a saddled horse its rider controls still takes a teleport from 1.21.2 (handleTeleportEntity, m_horse)', async function () {
+        const { manual, client, vehicle, runTicks } = await ridingManualBot()
+        try {
+          if (!manual.registry.version['>=']('1.21.2')) return this.skip()
+          vehicle.metadata = []
+          vehicle.metadata[17] = 6 // tame and saddled: the rider controls it
+          vehicle.position.set(8.5, pos.y + 1, 8.5)
+          runTicks(1)
+          const teleported = once(manual, 'entityMoved')
+          client.write('entity_teleport', {
+            entityId: 100,
+            x: 1,
+            y: 0,
+            z: 0,
+            dx: 0,
+            dy: 0,
+            dz: 0,
+            yaw: 0,
+            pitch: 0,
+            flags: { x: true, y: true, z: true, yaw: true, pitch: true },
+            onGround: true
+          })
+          await teleported
+          assert.strictEqual(vehicle.position.x, 9.5)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
