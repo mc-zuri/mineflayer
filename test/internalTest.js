@@ -829,6 +829,40 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('an explosion breaks its blocks only when it destroys them (Explosion.finalizeExplosion, 1.20.3 - 1.21.1)', async function () {
+        // (the explode packet carries its block interaction from 1.20.3, and no blocks from 1.21.2)
+        const data = require('minecraft-data')(supportedVersion)
+        if (!JSON.stringify(data.protocol.play.toClient.types.packet_explosion).includes('block_interaction_type')) return this.skip()
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          const explode = interaction => {
+            const done = once(manual._client, 'explosion')
+            client.write('explosion', {
+              x: pos.x + 0.5,
+              y: pos.y + 0.5,
+              z: pos.z + 0.5,
+              radius: 1.2,
+              affectedBlockOffsets: [{ x: 0, y: 0, z: 0 }],
+              playerMotionX: 0,
+              playerMotionY: 0,
+              playerMotionZ: 0,
+              block_interaction_type: interaction,
+              small_explosion_particle: { type: 'explosion' },
+              large_explosion_particle: { type: 'explosion' },
+              sound: { soundId: 1 }
+            })
+            return done
+          }
+          await explode(3) // TRIGGER_BLOCK, a wind charge's
+          assert.strictEqual(manual.blockAt(pos).type, goldId)
+          await explode(1) // DESTROY
+          assert.strictEqual(manual.blockAt(pos).type, 0)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a teleport after a death is answered at once (ClientPacketListener.handleMovePlayer)', async () => {
         const { manual, client } = await standingManualBot()
         try {
