@@ -9,6 +9,7 @@ const nbt = require('prismarine-nbt')
 const { once } = require('../lib/promise_utils')
 const { getPort } = require('./common/util')
 const conv = require('../lib/conversions')
+const { JavaFloat } = require('../lib/javamath')
 
 describe('inventory simulator', () => {
   const registry = require('prismarine-registry')(mineflayer.latestSupportedVersion)
@@ -1362,6 +1363,25 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const input = manual.supportFeature('newPlayerInputPacket') ? [] : ['steer_vehicle']
           const move = manual.registry.isNewerOrEqualTo('1.9') ? ['vehicle_move'] : []
           assert.deepStrictEqual(sent, ['look', ...input, ...move])
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a ridden horse moves turned as its rider, half its pitch (AbstractHorse.travel, m_horse)', async function () {
+        const { manual, client, runTicks } = await ridingManualBot()
+        try {
+          if (!manual.registry.isNewerOrEqualTo('1.9')) return this.skip()
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.pitchDegrees = new JavaFloat(15)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          manual.entity.pitch = conv.fromNotchianPitch(15)
+          runTicks(1)
+          const move = once(client, 'vehicle_move')
+          runTicks(1)
+          const [packet] = await move
+          assert.strictEqual(packet.yaw, 270)
+          assert.strictEqual(packet.pitch, 7.5)
         } finally {
           manual.end()
         }
