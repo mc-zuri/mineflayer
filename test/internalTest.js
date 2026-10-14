@@ -963,6 +963,31 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a dead bot is removed in its 20th tick before it moves (LocalPlayer.tickDeath)', async () => {
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          const died = once(manual, 'death')
+          client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+          await died
+          runTicks(19)
+          manual.entity.velocity.x = 0.1
+          written.length = 0
+          runTicks(1)
+          const { position, velocity } = manual.entity
+          if (version['>=']('1.19.1')) {
+            // it does not move (LivingEntity.tick skips aiStep), yet sends its position
+            assert.deepStrictEqual([position.x, velocity.x, velocity.y], [1.5, 0.1, -0.0784000015258789])
+          } else {
+            // it moves; 1.17 - 1.19's move stops after the collision (Entity.move), so landing keeps its fall
+            assert.ok(position.x > 1.5)
+            assert.strictEqual(velocity.y, version['>=']('1.17') ? -0.1552320045166016 : -0.0784000015258789)
+          }
+          assert.ok(written.some(p => p.name === 'position' || p.name === 'flying'), written.map(p => p.name).join())
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the jump auto-jump presses goes in player_input (KeyboardInput.tick, 1.21.2+)', async function () {
         if (!require('minecraft-data')(supportedVersion).isNewerOrEqualTo('1.21.2')) return this.skip()
         const { manual, client, runTicks } = await standingManualBot()
