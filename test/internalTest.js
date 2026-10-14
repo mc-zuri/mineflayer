@@ -1799,11 +1799,12 @@ for (const supportedVersion of mineflayer.testedVersions) {
         const version = registry.version
         const recorded = version['<']('1.13') ? 0.12039298541021015 : version['<']('1.14') ? 0.12039299354624511 : version['>=']('1.17') ? 0.12039301313781722 : null
         if (!version['>=']('1.9') || recorded == null) return this.skip() // no recording
-        if (!version['>=']('1.17') || version['>=']('1.21.5')) return this.skip() // the saddle as these versions keep it
         const { manual, vehicle, runTicks } = await ridingManualBot('horse')
         try {
+          // saddled: its flags' bit 4 at the version's index (12 on 1.9, 13 to 1.13, 17 from 1.17), from 1.21.5 a saddle worn
           vehicle.metadata = []
-          vehicle.metadata[17] = 0x02 | 0x04 // tame, saddled
+          if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+          else vehicle.metadata[version['<']('1.10') ? 12 : version['<']('1.14') ? 13 : 17] = 0x02 | 0x04 // tame, saddled
           vehicle.attributes = { 'minecraft:generic.movement_speed': { value: 0.225, modifiers: [] } }
           vehicle.velocity.set(0, -0.0784000015258789, 0)
           manual.setControlState('forward', true)
@@ -1823,7 +1824,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         const { manual, client, vehicle, runTicks } = await ridingManualBot('EntityHorse')
         try {
           vehicle.metadata = []
-          vehicle.metadata[17] = 0x02 | 0x04 // tame, saddled (where this mineflayer looks for it)
+          vehicle.metadata[16] = 0x02 | 0x04 // tame, saddled (1.8: an int at 16)
           vehicle.position.set(0.5, pos.y + 1, 1.5)
           vehicle.velocity.set(0, -0.0784000015258789, 0)
           runTicks(1)
