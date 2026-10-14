@@ -2702,6 +2702,29 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a boat sets its rider\'s yaw by the float sums of its clamp, from 1.17 left to right (Boat.clampRotation, v_boat_turn_right t45)', async function () {
+        if (!registry.version['>=']('1.9')) return this.skip()
+        const { manual, vehicle, runTicks } = await ridingManualBot('boat')
+        try {
+          // the recorder's 26.3 v_boat_turn_right t45: the rider holds 276.46402 (float), 24.64 degrees off the boat
+          const held = Math.fround(276.4640197753906)
+          vehicle.height = 0.5625
+          vehicle.yawDegrees = 251.82375
+          vehicle.yaw = conv.fromNotchianYaw(251.82375)
+          for (let i = 0; i < 2; i++) {
+            manual.entity.yawDegrees = new JavaFloat(held)
+            manual.entity.yaw = conv.fromNotchianYaw(held)
+            runTicks(1)
+            await sleep(50)
+          }
+          // unclamped, the yaw still goes through yRot + 24.64 - 24.64: one float rounding up from 1.17 (setYRot(getYRot()
+          // + clamped - relative), 0x438a3b66 sent), none before (yRot += clamped - relative)
+          assert.strictEqual(Number(manual.entity.yawDegrees), registry.version['>=']('1.17') ? 276.46405029296875 : held)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a passenger in a block is pushed toward the open side, as LocalPlayer.moveTowardsClosestSpace (v_minecart_slope_down)', async () => {
         const { manual, runTicks } = await ridingManualBot('minecart')
         try {
