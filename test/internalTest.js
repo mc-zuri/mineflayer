@@ -843,6 +843,28 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot outside the loaded chunks still ends its client tick (ServerboundClientTickEndPacket)', async () => {
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          const answer = once(client, 'position_look')
+          client.write('position', {
+            x: 1000.5,
+            y: pos.y + 1,
+            z: 1000.5,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 2
+          })
+          await answer
+          written.length = 0
+          runTicks(3)
+          assert.deepStrictEqual(written.map(p => p.name), manual.registry.isNewerOrEqualTo('1.21.3') ? ['tick_end', 'tick_end', 'tick_end'] : [])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
