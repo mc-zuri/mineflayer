@@ -2733,9 +2733,10 @@ for (const supportedVersion of mineflayer.testedVersions) {
           // where it sat at its tick's start: its east corners inside the gold block, the open side west
           manual.entity.position.set(pos.x - 0.1, pos.y, pos.z + 0.5)
           runTicks(1)
-          // the 0.1 toward the west (0.1F before 1.14), kept by the air drag 0.91F
+          // the 0.1 toward the west (0.1F before 1.14), kept by the air drag 0.91F; from 26.3 a passenger is not pushed
+          // (LocalPlayer.aiStep: !isPassenger(), the recorder's 26.3 v_minecart_slope_down)
           const push = manual.registry.isNewerOrEqualTo('1.14') ? 0.1 : Math.fround(0.1)
-          assert.strictEqual(manual.entity.velocity.x, -push * Math.fround(0.91))
+          assert.strictEqual(manual.entity.velocity.x, registry.version['>=']('26.3') ? 0 : -push * Math.fround(0.91))
         } finally {
           manual.end()
         }
