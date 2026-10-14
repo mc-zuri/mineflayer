@@ -2088,6 +2088,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // v_raft_forward t1 before 1.21.2: the boat of the bamboo type and the seat it gave its rider
+      const BAMBOO_BOAT_SEATS = { '1.20.4': [100.52334181621595, 100.42334179237409], '1.20.6': [100.52334181630349, 100.42334181630349], '1.21.1': [100.52334181630349, 100.42334181630349] }
+      it('a boat of the bamboo type seats its rider as a raft (Boat.Type.BAMBOO, v_raft_forward t1)', async function () {
+        const seat = BAMBOO_BOAT_SEATS[supportedVersion]
+        if (!seat) return this.skip() // the recordings' versions
+        const { manual, vehicle, runTicks } = await ridingManualBot('boat')
+        try {
+          vehicle.height = 0.5625
+          vehicle.metadata = []
+          vehicle.metadata[manual.registry.entitiesByName.boat.metadataKeys.indexOf('type')] = 8 // bamboo
+          vehicle.position.set(0.5, seat[0], 0.5)
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.y, seat[1])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
