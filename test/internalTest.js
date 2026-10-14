@@ -1285,7 +1285,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
-      it('a move is sent past 0.03 blocks, from 1.19 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
+      it('a move is sent past 0.03 blocks, from 1.18.2 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
           runTicks(1)
@@ -1295,11 +1295,11 @@ for (const supportedVersion of mineflayer.testedVersions) {
 
           manual.entity.position.x += 0.01
           runTicks(1)
-          assert.strictEqual(sentPositions(), manual.registry.isNewerOrEqualTo('1.19') ? 1 : 0)
+          assert.strictEqual(sentPositions(), manual.registry.isNewerOrEqualTo('1.18.2') ? 1 : 0)
 
           manual.entity.position.x += 0.04
           runTicks(1)
-          assert.strictEqual(sentPositions(), manual.registry.isNewerOrEqualTo('1.19') ? 2 : 1)
+          assert.strictEqual(sentPositions(), manual.registry.isNewerOrEqualTo('1.18.2') ? 2 : 1)
         } finally {
           manual.end()
         }
