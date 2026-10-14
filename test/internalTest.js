@@ -788,6 +788,21 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a rotation from the server is answered with the rotation set (ClientPacketListener.handleRotatePlayer)', async function () {
+        const { manual, client } = await standingManualBot()
+        try {
+          if (!manual.registry.version['>=']('1.21.2')) return this.skip()
+          const answer = once(client, 'look')
+          client.write('player_rotation', { yaw: 90, relativeYaw: false, pitch: 10, relativePitch: false })
+          const [packet] = await answer
+          assert.strictEqual(packet.yaw, 90)
+          assert.strictEqual(packet.pitch, 10)
+          assert.strictEqual(packet.flags.onGround, false)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
