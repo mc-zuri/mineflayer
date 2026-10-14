@@ -1036,6 +1036,33 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('an attack is a packet of its own from 26.1, where an entity use says where on the entity it is (ServerboundAttackPacket, ServerboundInteractPacket)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          const sent = []
+          client.on('attack', packet => sent.push(['attack', packet.entityId]))
+          client.on('use_entity', packet => sent.push(['use_entity', packet.target, packet.mouse ?? packet.location]))
+          const target = { id: 97, position: vec3(1.5, 66, 3.5) }
+          manual.attack(target, false)
+          manual.useOn(target)
+          // the bot turns to the point over its ticks, then uses the entity there
+          const use = { done: false }
+          const used = manual.activateEntityAt(target, vec3(1.5, 67, 3.5)).then(() => { use.done = true })
+          for (let i = 0; i < 20 && !use.done; i++) {
+            runTicks(1)
+            await sleep(0)
+          }
+          await used
+          await sleep(100)
+          const expected = registry.supportFeature('attackUsesOwnPacket')
+            ? [['attack', 97], ['use_entity', 97, { x: 0, y: 0, z: 0 }], ['use_entity', 97, { x: 0, y: 1, z: 0 }]]
+            : [['use_entity', 97, 1], ['use_entity', 97, 0], ['use_entity', 97, 2]]
+          assert.deepStrictEqual(sent, expected)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a particle is told with the speed the server gave it (ClientboundLevelParticlesPacket)', async function () {
         if (!registry.supportFeature('updatedParticlesPacket')) return this.skip() // a Particle type from 1.20.5
         const { manual, client } = await standingManualBot()
