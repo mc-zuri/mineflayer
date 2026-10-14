@@ -2139,14 +2139,20 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // AbstractHorse's flags, tame (2) and saddled (4), at the version's index; from 1.21.5 the saddle is worn in
+      // EquipmentSlot.SADDLE (7) and the flags only say tame
+      function tameHorse (manual, vehicle, saddled) {
+        const v = manual.registry.version
+        vehicle.metadata = []
+        vehicle.metadata[v['<']('1.14') ? 13 : v['<']('1.15') ? 15 : v['<']('1.17') ? 16 : 17] = saddled && v['<']('1.21.5') ? 6 : 2
+        if (saddled && v['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+      }
+
       // The server moves the horse the bot rides (vehicle_move) and the client answers where it put it
       async function serverMovesHorse (saddled) {
         const { manual, client, vehicle, runTicks } = await ridingManualBot()
         try {
-          // AbstractHorse's flags, tame (2) and saddled (4), at the version's index
-          const v = manual.registry.version
-          vehicle.metadata = []
-          vehicle.metadata[v['<']('1.14') ? 13 : v['<']('1.15') ? 15 : v['<']('1.17') ? 16 : 17] = saddled ? 6 : 2
+          tameHorse(manual, vehicle, saddled)
           vehicle.position.set(8.5, pos.y + 1, 8.5)
           runTicks(1)
           await sleep(100)
@@ -2181,8 +2187,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         const { manual, client, vehicle, runTicks } = await ridingManualBot()
         try {
           if (!manual.registry.version['>=']('1.21.2')) return this.skip()
-          vehicle.metadata = []
-          vehicle.metadata[17] = 6 // tame and saddled: the rider controls it
+          tameHorse(manual, vehicle, true) // the rider controls it
           vehicle.position.set(8.5, pos.y + 1, 8.5)
           runTicks(1)
           const teleported = once(manual, 'entityMoved')
