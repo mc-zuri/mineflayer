@@ -1130,6 +1130,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot lies on the bed its entity data puts it in, from 1.14 (LivingEntity.SLEEPING_POS_ID)', async function () {
+        if (version['<']('1.14')) return this.skip()
+        const { manual, client } = await standingManualBot()
+        try {
+          // the index follows the living entity's other data: 1.15 adds the bee stingers, 1.17 the frozen ticks
+          const key = version['<']('1.15') ? 12 : version['<']('1.17') ? 13 : 14
+          // the serializer: by name from 1.19.4, by its number in the protocol's list before
+          const types = manual.registry.protocol.types.entityMetadataItem?.[1].fields
+          const type = version['>=']('1.19.4') ? 'optional_block_pos' : Number(Object.keys(types).find(id => JSON.stringify(types[id]) === '["option","position"]'))
+          const updated = once(manual._client, 'entity_metadata')
+          client.write('entity_metadata', { entityId: manual.entity.id, metadata: [{ key, type, value: { x: 3, y: pos.y + 1, z: 1 } }] })
+          await updated
+          assert.deepStrictEqual(manual.entity.position, vec3(3.5, pos.y + 1.6875, 1.5))
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot the player list turns into a spectator stops falling (LocalPlayer.onGameModeChanged)', async function () {
         if (version['<']('1.20')) return this.skip()
         const { manual, client } = await standingManualBot()
