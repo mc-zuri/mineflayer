@@ -1513,6 +1513,19 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a rider sits where the client shows its vehicle, easing toward the moves of the server (m_horse)', async () => {
+        const { manual, vehicle, runTicks } = await ridingManualBot()
+        try {
+          // the server moved the horse to x 1.5; a third of the way there is where the client shows it
+          vehicle.position.set(1.5, 101, 0.5)
+          vehicle.interpolatedPosition = vehicle.position.clone().set(0.8333333333333333, 101, 0.5)
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.x, 0.8333333333333333)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
