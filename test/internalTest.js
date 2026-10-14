@@ -2759,6 +2759,23 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
         assert.strictEqual(minecart.interpolatedPosition.y, 101.0625)
       })
+      // An entity pushes the player from where its own tick leaves it (Boat.tick after Boat.tickLerp): the recorder's
+      // v_boat_dismount on 1.15.2, the boat the player left shown at x 5.653907637539506 and sent back to x
+      // 5.337675300844518, a tenth of the way there after its tick (the same steps 1.9 - 1.20.1)
+      it('tells where its next tick shows an entity, without stepping it (Boat.tickLerp)', function () {
+        const { createEntityInterpolation } = require('../lib/entityInterpolation')
+        const version = bot.registry.version
+        if (version['<']('1.9') || version['>=']('1.20.2')) return this.skip()
+        const interpolation = createEntityInterpolation(bot.registry)
+        const boat = { name: 'boat', type: 'object', position: vec3(5.653907637539506, 100.52326529830843, 2125.5) }
+        interpolation.spawn(boat)
+        assert.strictEqual(interpolation.next(boat).x, 5.653907637539506)
+        interpolation.teleport(boat, 5.337675300844518, 100.52326592687379, 2125.5)
+        assert.strictEqual(interpolation.next(boat).x, 5.622284403870007)
+        assert.strictEqual(boat.interpolatedPosition.x, 5.653907637539506)
+        interpolation.tick(boat)
+        assert.strictEqual(boat.interpolatedPosition.x, 5.622284403870007)
+      })
       it('entity id changes on login', (done) => {
         const loginPacket = bot.test.generateLoginPacket()
         server.on('playerJoin', (client) => {
