@@ -1985,6 +1985,26 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a look turned past a whole turn still goes as the degrees the player holds (v_minecart_look_around t55)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          for (const yaw of [535, 540]) {
+            manual.entity.yawDegrees = new JavaFloat(yaw)
+            manual.entity.yaw = conv.fromNotchianYaw(yaw)
+            runTicks(1)
+          }
+          await sleep(100)
+          manual.entity.yawDegrees = new JavaFloat(545)
+          manual.entity.yaw = conv.fromNotchianYaw(545)
+          const look = once(client, 'look')
+          runTicks(1)
+          const [packet] = await look
+          assert.strictEqual(packet.yaw, 545)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
