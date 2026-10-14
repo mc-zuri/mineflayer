@@ -1354,6 +1354,19 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a passenger sends its look and input each tick, and the vehicle move only from 1.9 (LocalPlayer.tick)', async () => {
+        const { manual, written, runTicks } = await ridingManualBot()
+        try {
+          runTicks(1)
+          const sent = written.map(p => p.name).filter(name => name !== 'tick_end')
+          const input = manual.supportFeature('newPlayerInputPacket') ? [] : ['steer_vehicle']
+          const move = manual.registry.isNewerOrEqualTo('1.9') ? ['vehicle_move'] : []
+          assert.deepStrictEqual(sent, ['look', ...input, ...move])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
