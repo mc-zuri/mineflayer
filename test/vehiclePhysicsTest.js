@@ -731,13 +731,14 @@ describe('mineflayer_vehicle_physics legacy boat behavior', function () {
     teardownBotAndServer(bot, server, done)
   })
 
-  it('receives physicsTick and sends legacy boat packets on 1.18.2', (done) => {
+  it('simulates the boat it steers and sends its packets on 1.18.2', (done) => {
     server.on('playerJoin', (client) => {
       withLogin(bot, client, done, async () => {
         bot.blockAt = createBlockWorldStub(bot.version)
         const boat = setupBoat(bot, 100, vec3(0, 63, 0))
         boat.yaw = Math.PI / 4
         boat.pitch = -Math.PI / 6
+        bot._boatPhysics.getCtx()?.state.rebaseFromEntity(boat)
 
         const writes = captureWrites(bot)
         let physicsTicks = 0
@@ -745,7 +746,7 @@ describe('mineflayer_vehicle_physics legacy boat behavior', function () {
         await once(bot, 'physicsTick')
 
         assert.ok(physicsTicks >= 1, 'legacy boat controller should receive physicsTick')
-        assertNoBoatCtx(bot, 'legacy versions must not create boatCtx')
+        assert(bot._boatPhysics.getCtx(), 'the client steers the boat it rides from 1.9 (Boat.isControlledByLocalInstance)')
         assert.ok(writes.some(w => w.name === 'vehicle_move'))
         assert.ok(writes.some(w => w.name === 'steer_boat'))
         assert.strictEqual(writes.filter(w => w.name === 'position').length, 0)
