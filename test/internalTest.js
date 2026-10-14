@@ -1526,6 +1526,30 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a passenger keeps its place on a teleport from 1.21.2, only answering it (ClientPacketListener.handleMovePlayer, m_horse)', async () => {
+        const { manual, client, runTicks } = await ridingManualBot()
+        try {
+          runTicks(1)
+          const seat = manual.entity.position.clone()
+          const answer = once(client, 'position_look')
+          client.write('position', {
+            x: 1,
+            y: 0,
+            z: 0,
+            yaw: 0,
+            pitch: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: true, y: true, z: true, yaw: true, pitch: true } : 31,
+            teleportId: 3
+          })
+          const [packet] = await answer
+          const keeps = manual.registry.version['>=']('1.21.2')
+          assert.strictEqual(packet.x, keeps ? seat.x : seat.x + 1)
+          assert.strictEqual(manual.entity.position.x, keeps ? seat.x : seat.x + 1)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
