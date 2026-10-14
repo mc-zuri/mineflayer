@@ -2006,8 +2006,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
 
       it('a passenger in a boat sprints before 1.19.4, at the air speed of the next tick (v_boat_sprint_key_ignored)', async () => {
-        const { manual, runTicks } = await ridingManualBot('boat')
+        const { manual, vehicle, runTicks } = await ridingManualBot('boat')
         try {
+          vehicle.position.set(5.5, pos.y + 3, 5.5) // in the open: no block to push its rider out of
           manual.entity.yawDegrees = new JavaFloat(270)
           manual.entity.yaw = conv.fromNotchianYaw(270)
           manual.setControlState('forward', true)
@@ -2045,6 +2046,22 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const boatYaw = Number(vehicle.yawDegrees)
           const relative = ((Number(manual.entity.yawDegrees) - boatYaw) % 360 + 540) % 360 - 180
           assert.ok(Math.abs(relative) <= 105.0001, `rider ${Number(manual.entity.yawDegrees)} boat ${boatYaw}`)
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a passenger in a block is pushed toward the open side, as LocalPlayer.moveTowardsClosestSpace (v_minecart_slope_down)', async () => {
+        const { manual, runTicks } = await ridingManualBot('minecart')
+        try {
+          runTicks(1)
+          await sleep(100)
+          // where it sat at its tick's start: its east corners inside the gold block, the open side west
+          manual.entity.position.set(pos.x - 0.1, pos.y, pos.z + 0.5)
+          runTicks(1)
+          // the 0.1 toward the west (0.1F before 1.14), kept by the air drag 0.91F
+          const push = manual.registry.isNewerOrEqualTo('1.14') ? 0.1 : Math.fround(0.1)
+          assert.strictEqual(manual.entity.velocity.x, -push * Math.fround(0.91))
         } finally {
           manual.end()
         }
