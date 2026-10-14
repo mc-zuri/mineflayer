@@ -2175,6 +2175,39 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // Item.use: only items used over time keep the player using them (and slowed): food when the player can eat
+      // it, drinks, a bow with arrows, a shield (q_eat_walk, q_shield_walk, q_bow_draw_walk); not a snowball, nor food
+      // on a full stomach, nor a bow without arrows
+      it('uses only items that take time to use', (done) => {
+        const Item = require('prismarine-item')(supportedVersion)
+        const give = (client, slot, name) => client.write('set_slot', {
+          windowId: 0, stateId: 0, slot, item: Item.toNotch(name ? new Item(registry.itemsByName[name].id, 1) : null)
+        })
+        const usesWith = (client, name, food) => new Promise(resolve => {
+          client.write('update_health', { health: 20, food, foodSaturation: 5 })
+          bot.once('heldItemChanged', () => setImmediate(() => {
+            bot.activateItem()
+            resolve(bot.usingHeldItem)
+          }))
+          give(client, 36, name)
+        })
+        server.on('playerJoin', async (client) => {
+          client.write('login', bot.test.generateLoginPacket())
+          client.write('held_item_slot', { slot: 0 })
+          await sleep(100)
+          bot.game.gameMode = 'survival' // (some versions' default login packet is creative's)
+          assert.strictEqual(await usesWith(client, 'snowball', 10), false)
+          assert.strictEqual(await usesWith(client, 'bread', 20), false)
+          assert.strictEqual(await usesWith(client, 'cooked_beef', 10), true)
+          assert.strictEqual(await usesWith(client, 'bow', 10), false)
+          give(client, 9, 'arrow')
+          await sleep(50)
+          assert.strictEqual(await usesWith(client, 'golden_apple', 20), true)
+          assert.strictEqual(await usesWith(client, 'bow', 20), true)
+          done()
+        })
+      })
+
       // MultiPlayerGameMode.releaseUsingItem (PlayerControllerMP before 1.13): RELEASE_USE_ITEM, BlockPos.ORIGIN,
       // Direction.DOWN on every version
       it('releases an item facing down', (done) => {
@@ -2198,7 +2231,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
       // charged crossbow's set_slot): only a change of the held item's type or count stops it
       it('keeps using the held item when the server resends it unchanged', (done) => {
         const Item = require('prismarine-item')(supportedVersion)
-        const notchItem = Item.toNotch(new Item(registry.itemsByName.stone.id, 1))
+        const notchItem = Item.toNotch(new Item(registry.itemsByName.potion.id, 1))
         server.on('playerJoin', (client) => {
           client.write('login', bot.test.generateLoginPacket())
           client.write('held_item_slot', { slot: 0 })
