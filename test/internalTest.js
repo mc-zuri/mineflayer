@@ -2580,6 +2580,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // From 26.2 Entity.restituteMovementAfterCollisions makes the blocked motion -v * 0, -0 walking east
+      // (v_minecart_push_forward t26)
       it('a passenger blocked by a block in its own move loses that motion (Entity.move, v_boat_ice t60)', async () => {
         const { manual, client, runTicks } = await ridingManualBot('minecart')
         try {
@@ -2593,7 +2595,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const look = once(client, 'look')
           runTicks(1)
           const [packet] = await look
-          assert.strictEqual(manual.entity.velocity.x, 0)
+          assert.strictEqual(manual.entity.velocity.x, manual.registry.version['>=']('26.2') ? -0 : 0)
           if (manual.registry.isNewerOrEqualTo('1.21.3')) assert.strictEqual(packet.flags.hasHorizontalCollision, true)
         } finally {
           manual.end()
