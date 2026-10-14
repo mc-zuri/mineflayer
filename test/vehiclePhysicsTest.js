@@ -88,6 +88,18 @@ function setupBoat (bot, vehicleId, position) {
   return boat
 }
 
+// (counted in the tick: the timer may run two ticks in one go)
+function physicsTicks (bot, n) {
+  return new Promise((resolve) => {
+    let ticks = 0
+    bot.on('physicsTick', function count () {
+      if (++ticks < n) return
+      bot.removeListener('physicsTick', count)
+      resolve()
+    })
+  })
+}
+
 function assertNoBoatCtx (bot, message = 'boatCtx must be destroyed') {
   assert.ok(bot._boatPhysics.getCtx() == null, message)
 }
@@ -194,7 +206,7 @@ describe('mineflayer_vehicle_physics 1.17.1v', function () {
 
         const beforeZ = boat.position.z
         bot.setControlState('forward', true)
-        await once(bot, 'physicsTick')
+        await physicsTicks(bot, 2) // (the keys reach the boat in the next tick)
         bot.setControlState('forward', false)
 
         assert(bot._boatPhysics.getCtx(), 'expected boat physics context for matching passenger id')
@@ -232,7 +244,7 @@ describe('mineflayer_vehicle_physics 1.17.1v', function () {
         const boat = setupBoat(bot, 100, vec3(0, 63, 0))
         const writes = captureWrites(bot)
         bot.setControlState('forward', true)
-        await once(bot, 'physicsTick')
+        await physicsTicks(bot, 2) // (the keys reach the boat in the next tick)
         bot.setControlState('forward', false)
 
         const packet = writes.find(w => w.name === 'vehicle_move')
@@ -264,27 +276,34 @@ describe('mineflayer_vehicle_physics 1.17.1v', function () {
     })
   })
 
-  it('maps paddle states from controls', (done) => {
+  it('maps paddle states from controls, a tick after the keys (Boat.tick before LocalPlayer.rideTick)', (done) => {
     server.on('playerJoin', (client) => {
       withLogin(bot, client, done, async () => {
         stubLoadedWorld(bot)
         setupBoat(bot, 100, vec3(0, 63, 0))
+        await once(bot, 'physicsTick')
 
+        // the paddles the boat sends in the two ticks after the keys change: the boat ticks before its rider, so the
+        // first still has the keys of the tick before
         async function paddlesFor (controls) {
           bot.clearControlStates()
           for (const [control, state] of Object.entries(controls)) {
             bot.setControlState(control, state)
           }
           const writes = captureWrites(bot)
-          await once(bot, 'physicsTick')
+          await physicsTicks(bot, 2)
           bot.clearControlStates()
-          return writes.find(w => w.name === 'steer_boat')?.data
+          return writes.filter(w => w.name === 'steer_boat').slice(0, 2).map(w => w.data)
         }
 
-        assert.deepStrictEqual(await paddlesFor({ forward: true }), { leftPaddle: true, rightPaddle: true })
-        assert.deepStrictEqual(await paddlesFor({ back: true }), { leftPaddle: false, rightPaddle: false })
-        assert.deepStrictEqual(await paddlesFor({ left: true }), { leftPaddle: false, rightPaddle: true })
-        assert.deepStrictEqual(await paddlesFor({ right: true }), { leftPaddle: true, rightPaddle: false })
+        const none = { leftPaddle: false, rightPaddle: false }
+        const both = { leftPaddle: true, rightPaddle: true }
+        const right = { leftPaddle: false, rightPaddle: true }
+        const left = { leftPaddle: true, rightPaddle: false }
+        assert.deepStrictEqual(await paddlesFor({ forward: true }), [none, both])
+        assert.deepStrictEqual(await paddlesFor({ back: true }), [both, none])
+        assert.deepStrictEqual(await paddlesFor({ left: true }), [none, right])
+        assert.deepStrictEqual(await paddlesFor({ right: true }), [right, left])
       })
     })
   })
