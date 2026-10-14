@@ -87,7 +87,8 @@ function setupBotTest (supportedVersion, port) {
   const bot = mineflayer.createBot({
     username: 'player',
     version: supportedVersion,
-    port
+    port,
+    entityPhysicsEnabled: true // entity physics is opt-in
   })
   bot.test = {}
   bot.test.generateLoginPacket = () => {
