@@ -846,6 +846,32 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the bot\'s pose synced back by the server refits its box (Entity.refreshDimensions, 1.14 - 1.16)', async function () {
+        if (supportedVersion !== '1.16.5') this.skip() // the recording's version
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          // j_sneak_fr (1.16.5): sneaking forward and right at yaw 0 on flat ground from x 0.5; the server echoes the
+          // crouching pose before tick 4, which refits the box on its lower corner and moves x by an ulp from then on
+          const floor = bot.test.buildChunk()
+          for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) floor.setBlockType(vec3(x, pos.y, z), goldId)
+          client.write('map_chunk', generateChunkPacket(floor))
+          const teleported = once(client, 'position_look')
+          client.write('position', { x: 0.5, y: pos.y + 1, z: 1.5, pitch: 0, yaw: 0, flags: 0, teleportId: 2 })
+          await teleported
+          runTicks(2) // lands on the floor
+          for (const key of ['forward', 'right', 'sneak']) manual.setControlState(key, true)
+          runTicks(3)
+          assert.strictEqual(manual.entity.position.x, 0.2947488879121817)
+          const synced = once(manual._client, 'entity_metadata')
+          client.write('entity_metadata', { entityId: manual.entity.id, metadata: [{ key: 6, type: 18, value: 5 }] })
+          await synced
+          runTicks(2)
+          assert.strictEqual(manual.entity.position.x, 0.1637354082452381)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the server reads the sprint start as START_SPRINTING (the player command renumbered in 1.21.6)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
