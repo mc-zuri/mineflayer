@@ -590,8 +590,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
           assert.strictEqual(bot.entity.velocity.y, 0, 'Velocity should be reset to 0 after an absolute teleport')
           assert.deepStrictEqual(bot.entity.position, vec3(1.5, 80, 1.5), 'Position should be set absolutely')
           if (bot.registry.isNewerOrEqualTo('1.21.3')) {
-            assert.strictEqual(responsePacket.flags.hasHorizontalCollision, true,
-              'Teleport response should preserve the current horizontal collision flag')
+            // ClientPacketListener.handleMovePlayer answers with ServerboundMovePlayerPacket.PosRot(..., false, false)
+            assert.strictEqual(responsePacket.flags.hasHorizontalCollision, false,
+              'Teleport response is not on the ground and has no horizontal collision')
           }
 
           // --- Test 2: Relative Position ---
@@ -722,6 +723,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           teleportId: 1
         })
         await reply
+        // the teleport's answer is not what the bot last sent: its first tick sends the position, as vanilla's does
+        manual.physicsTick()
         const written = []
         let tick = 0
         const write = manual._client.write.bind(manual._client)
@@ -749,6 +752,37 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const reminders = manual.registry.isNewerOrEqualTo('1.9') ? [20, 40] : [21, 42]
           assert.deepStrictEqual(written.filter(p => p.name === 'position').map(p => p.tick), reminders)
           assert.strictEqual(manual.entity.position.y, pos.y + 1)
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a teleport is answered straight, without counting as the position sent (ClientPacketListener.handleMovePlayer)', async () => {
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          runTicks(5)
+          written.length = 0
+          const answer = once(client, 'position_look')
+          client.write('position', {
+            x: 3.5,
+            y: pos.y + 1,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 2
+          })
+          const [packet] = await answer
+          assert.strictEqual(packet.x, 3.5)
+          assert.strictEqual(packet.onGround ?? packet.flags.onGround, false)
+          // 1.21.2 - 1.21.3 answer before confirming the teleport
+          const answerFirst = manual.registry.version['>=']('1.21.2') && manual.registry.version['<']('1.21.4')
+          const expected = !manual.supportFeature('teleportUsesOwnPacket') ? ['position_look'] : answerFirst ? ['position_look', 'teleport_confirm'] : ['teleport_confirm', 'position_look']
+          assert.deepStrictEqual(written.map(p => p.name), expected)
+          // what the bot last sent is still the spot it stood on, so its next tick sends the new position
+          written.length = 0
+          runTicks(1)
+          assert.ok(written.some(p => p.name === 'position'), `sent ${written.map(p => p.name)}`)
         } finally {
           manual.end()
         }
