@@ -437,15 +437,15 @@ describe('mineflayer_horse_passenger_sync non-1.17.1', function () {
     else finish()
   })
 
-  it('keeps generic vehicle.height offset for unsaddled horse', (done) => {
+  it('seats the rider of an unsaddled horse at the vanilla seat height (Entity.positionRider)', (done) => {
     server.on('playerJoin', (client) => {
       withLogin(bot, client, done, async () => {
         stubLoadedWorld(bot)
         bot.entity.position.set(0, 68, 0)
         const horse = setupHorse(bot, 100, vec3(0, 64, 0), { saddled: false })
         await once(bot, 'physicsTickBegin')
-        assert.ok(Math.abs(bot.entity.position.y - (horse.position.y + horse.height)) < 0.01)
-        assert.ok(Math.abs(bot.entity.position.y - (horse.position.y + 0.85)) > 0.5)
+        // <= 1.20.1: 1.6F * 0.75 - 0.35; 1.20.2 - 1.20.4: (1.6F - 0.15625F) - 0.6F; 1.20.5+: 1.44375F - 0.6
+        assert.ok(Math.abs(bot.entity.position.y - (horse.position.y + 0.85)) < 0.01)
       })
     })
   })

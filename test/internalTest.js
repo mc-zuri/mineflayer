@@ -1339,6 +1339,21 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a horse seats its rider as Entity.positionRider does (m_horse)', async () => {
+        const { manual, vehicle, runTicks } = await ridingManualBot()
+        try {
+          vehicle.position.set(0.5, 101, 0.5)
+          runTicks(1)
+          // <= 1.20.1: 1.6F * 0.75 - 0.35; 1.20.2 - 1.20.4: (1.6F - 0.15625F) - 0.6F; 1.20.5+: 1.44375F - 0.6
+          const seat = manual.registry.isNewerOrEqualTo('1.20.5')
+            ? 101.84375002384186
+            : manual.registry.isNewerOrEqualTo('1.20.2') ? 101.84375 : 101.8500000178814
+          assert.strictEqual(manual.entity.position.y, seat)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {

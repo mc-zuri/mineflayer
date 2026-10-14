@@ -395,7 +395,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       }
 
-      it('preserves the existing horse passenger sync behavior', (done) => {
+      it('seats a horse passenger at the vanilla seat height (Entity.positionRider)', (done) => {
         server.on('playerJoin', (client) => {
           bot.once('login', async () => {
             bot.entity.position.set(0, 50, 0)
@@ -404,9 +404,14 @@ for (const supportedVersion of mineflayer.testedVersions) {
             const moves = []
             bot.on('move', previousPosition => moves.push(previousPosition))
             const horse = setupHorse(100, vec3(1, 63, 2))
+            // <= 1.20.1: 1.6F * 0.75 - 0.35; 1.20.2 - 1.20.4: (1.6F - 0.15625F) - 0.6F; 1.20.5+: 1.44375F - 0.6
+            const f32 = Math.fround
+            const seat = registry.version['>=']('1.20.5')
+              ? f32(1.44375) - 0.6
+              : registry.version['>=']('1.20.2') ? f32(f32(1.6) - f32(0.15625)) + f32(-0.6) : f32(1.6) * 0.75 - 0.35
 
             if (supportedVersion === '1.17.1') {
-              assert.strictEqual(bot.entity.position.y, horse.position.y + 0.85)
+              assert.strictEqual(bot.entity.position.y, horse.position.y + seat)
               assert.strictEqual(moves.length, 1)
             } else {
               assert(bot.entity.position.equals(oldPos), 'horse mount must not resync immediately')
@@ -414,7 +419,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
             }
 
             await once(bot, 'physicsTick')
-            assert.strictEqual(bot.entity.position.y, supportedVersion === '1.17.1' ? horse.position.y + 0.85 : horse.position.y + horse.height)
+            assert.strictEqual(bot.entity.position.y, horse.position.y + seat)
             done()
           })
           loginBot(client)
