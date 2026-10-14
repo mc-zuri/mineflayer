@@ -1819,7 +1819,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
       for (const [name, y, height, seats] of [
         // <= 1.20.1: Boat.positionRider's float (-0.1 - 0.35); 1.20.2 - 1.20.4: the float attachment + the player's -0.6F
         ['boat', 101, 0.5625, { legacy: 100.55000001192093, attachment: 100.58749997615814, modern: 100.5875 }],
-        ['minecart', 101.0625, 0.7, { legacy: 100.7125, attachment: 100.64999997615814, modern: 100.65 }]
+        ['minecart', 101.0625, 0.7, { legacy: 100.7125, attachment: 100.64999997615814, modern: 100.65 }],
+        // <= 1.20.1: 0.9F * 0.75 - 0.35; 1.20.2 - 1.20.4: (0.9F - 0.03125F) - 0.6F; 1.20.5+: 0.86875F - 0.6
+        ['pig', 101, 0.9, { legacy: 101.32499998211861, attachment: 101.26874995231628, modern: 101.26874997615815 }]
       ]) {
         it(`a ${name} seats its rider at the height of vanilla's Entity.positionRider (v_${name}_* t1)`, async function () {
           const v = require('minecraft-data')(supportedVersion).version
