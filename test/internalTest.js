@@ -158,6 +158,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
   // the packet a teleport is answered with: from 26.3 the confirm carries the position, before a position_look follows
   const teleportAnswer = registry.version['>=']('26.3') ? 'teleport_confirm' : 'position_look'
 
+  // the packet of the bot's swing: from 26.3 a punch, which only the main hand's swing sends
+  const swingPacket = registry.version['>=']('26.3') ? 'punch' : 'arm_animation'
+
   // an entity's relative move as the version writes it: from 26.3 a VecDelta, one delta or the `steps` of several ticks
   function relMovePacket (entityId, { dX = 0, dY = 0, dZ = 0, onGround = false, steps } = {}) {
     if (!registry.version['>=']('26.3')) return { entityId, dX, dY, dZ, onGround }
@@ -433,7 +436,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
             const loginPacket = bot.test.generateLoginPacket()
             loginPacket.gameMode = 0
             client.write('login', loginPacket)
-            client.on('arm_animation', () => {
+            client.on(swingPacket, () => {
               armAnimations++
               for (let i = armAnimationWaiters.length - 1; i >= 0; i--) {
                 if (armAnimationWaiters[i]()) armAnimationWaiters.splice(i, 1)
@@ -1010,6 +1013,44 @@ for (const supportedVersion of mineflayer.testedVersions) {
           assert.strictEqual(packet.yaw, 90)
           assert.strictEqual(packet.pitch, 10)
           assert.strictEqual(packet.flags.onGround, false)
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a swing is a packet of its hand, from 26.3 a punch of the main hand alone (Minecraft.startAttack)', async () => {
+        const { manual, client } = await standingManualBot()
+        try {
+          const swings = []
+          client.on('arm_animation', packet => swings.push(['arm_animation', packet.hand]))
+          client.on('punch', () => swings.push(['punch']))
+          manual.swingArm('right')
+          manual.swingArm('left')
+          await sleep(100)
+          // 1.8's swing names no hand
+          const hand = (h) => manual.registry.version['>=']('1.9') ? h : undefined
+          const expected = registry.version['>=']('26.3') ? [['punch']] : [['arm_animation', hand(0)], ['arm_animation', hand(1)]]
+          assert.deepStrictEqual(swings, expected)
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a block use swings with a packet before 26.3, from 26.3 the server swings for it (Minecraft.startUseItem)', async () => {
+        const { manual, written, runTicks } = await standingManualBot()
+        try {
+          written.length = 0
+          // the bot turns to the block over its ticks, then uses it
+          const use = { done: false }
+          const used = manual.activateBlock(manual.blockAt(pos)).then(() => { use.done = true })
+          for (let i = 0; i < 20 && !use.done; i++) {
+            runTicks(1)
+            await sleep(0)
+          }
+          await used
+          await sleep(100)
+          const names = written.map(p => p.name).filter(name => ['block_place', 'arm_animation', 'punch'].includes(name))
+          assert.deepStrictEqual(names, registry.version['>=']('26.3') ? ['block_place'] : ['block_place', 'arm_animation'])
         } finally {
           manual.end()
         }
