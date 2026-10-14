@@ -2322,6 +2322,43 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a boat the client steers keeps the moves of the server as its packet position, and is shown where the client left it (ClientPacketListener.handleMoveEntity, v_boat_dismount t30)', async function () {
+        if (!registry.isNewerOrEqualTo('1.9')) return this.skip() // the client steers its boat from 1.9
+        const { manual, client, vehicle, runTicks } = await ridingManualBot('boat')
+        try {
+          Object.assign(vehicle, { height: 0.5625, width: 1.375 })
+          runTicks(1)
+          await sleep(100)
+          const start = vehicle.position.clone()
+          // the server moves the boat a block east: the boat the client steers stays
+          client.write('rel_entity_move', { entityId: 100, dX: 4096, dY: 0, dZ: 0, onGround: true })
+          await sleep(100)
+          assert.ok(vehicle.position.equals(start))
+          // the client moves it two blocks east, and steers it a tick more
+          vehicle.position.x += 2
+          manual._boatPhysics.getCtx().state.rebaseFromEntity(vehicle)
+          const lastTickStart = vehicle.position.clone()
+          runTicks(1)
+          await sleep(100)
+          const left = vehicle.position.clone()
+
+          const dismounted = once(manual, 'dismount')
+          client.write('set_passengers', { entityId: 100, passengers: [] })
+          await dismounted
+          assert.ok(vehicle.interpolatedPosition.equals(left), `shown at ${vehicle.interpolatedPosition}, left at ${left}`)
+
+          // the next server move adds to the packet position: it kept the server's move before 1.16 and from 1.21.2;
+          // 1.16 - 1.21.1 took the boat's position at the start of each tick the client steered it (Boat.tickLerp)
+          client.write('rel_entity_move', { entityId: 100, dX: 0, dY: 0, dZ: 0, onGround: true })
+          await sleep(100)
+          const keepsMoves = !registry.isNewerOrEqualTo('1.16') || registry.isNewerOrEqualTo('1.21.2')
+          const expected = keepsMoves ? start.x + 1 : lastTickStart.x
+          assert.ok(Math.abs(vehicle.position.x - expected) < 1 / 4096, `${vehicle.position.x} !== ${expected}`)
+        } finally {
+          manual.end()
+        }
+      })
+
       // v_raft_forward t1 before 1.21.2: the boat of the bamboo type and the seat it gave its rider
       const BAMBOO_BOAT_SEATS = { '1.20.4': [100.52334181621595, 100.42334179237409], '1.20.6': [100.52334181630349, 100.42334181630349], '1.21.1': [100.52334181630349, 100.42334181630349] }
       it('a boat of the bamboo type seats its rider as a raft (Boat.Type.BAMBOO, v_raft_forward t1)', async function () {
