@@ -1387,6 +1387,19 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the vehicle move tells whether the vehicle is on the ground from 1.21.4 (ServerboundMoveVehiclePacket, m_horse)', async function () {
+        const { manual, client, runTicks } = await ridingManualBot()
+        try {
+          if (!manual.registry.isNewerOrEqualTo('1.21.4')) return this.skip()
+          const move = once(client, 'vehicle_move')
+          runTicks(1)
+          const [packet] = await move
+          assert.strictEqual(packet.onGround, true)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
