@@ -1076,6 +1076,20 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot the player list turns into a spectator stops falling (LocalPlayer.onGameModeChanged)', async function () {
+        if (version['<']('1.20')) return this.skip()
+        const { manual, client } = await standingManualBot()
+        try {
+          manual.entity.velocity.y = -0.5
+          const updated = once(manual._client, 'player_info')
+          client.write('player_info', { action: { update_game_mode: true }, data: [{ uuid: manual._client.uuid, gamemode: 3 }] })
+          await updated
+          assert.strictEqual(manual.entity.velocity.y, 0)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
