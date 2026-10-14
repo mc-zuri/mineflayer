@@ -1572,6 +1572,30 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the rider of a saddled horse takes its server move at once and answers it, from 1.17 (handleMoveVehicle, m_horse)', async () => {
+        const { manual, client, vehicle, runTicks } = await ridingManualBot()
+        try {
+          vehicle.metadata = []
+          vehicle.metadata[17] = 6 // tame and saddled: the rider controls it
+          vehicle.position.set(8.5, pos.y + 1, 8.5)
+          runTicks(1)
+          await sleep(100)
+          const answers = []
+          client.on('vehicle_move', packet => answers.push(packet))
+          client.write('vehicle_move', { x: 9.5, y: pos.y + 1, z: 8.5, yaw: -90, pitch: 0 })
+          await sleep(100)
+          if (manual.registry.version['>=']('1.17')) {
+            assert.strictEqual(vehicle.position.x, 9.5)
+            assert.strictEqual(answers[0]?.x, 9.5)
+            assert.strictEqual(answers[0]?.yaw, -90)
+          } else {
+            assert.strictEqual(answers.length, 0)
+          }
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
