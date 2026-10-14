@@ -1170,6 +1170,28 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it("a respawned bot stands at its level's spawn until the server moves it (Player, Player.resetPos)", async function () {
+        const respawn = respawnPacket()
+        if (!respawn) return this.skip()
+        const { manual, client } = await standingManualBot()
+        try {
+          // before 1.14 every respawn puts the player at 8, 64, 8, then at the level's spawn (from 1.21.6 at 0, 0, 0):
+          // a gold block on each spawn lifts it a block
+          const placed = once(manual, `blockUpdate:${vec3(8, pos.y, 8)}`)
+          for (const x of [5, 8]) client.write('block_change', { location: vec3(x, pos.y, x), type: manual.registry.blocksByName.gold_block.defaultState ?? goldId << 4 })
+          await placed
+          if (version['>=']('1.14') && version['<']('1.21.9')) client.write('spawn_position', { location: vec3(5, pos.y - 1, 5), angle: 0 })
+          manual.entity.velocity.set(0, -0.5, 0)
+          const respawned = once(manual, 'respawn')
+          client.write('respawn', respawn)
+          await respawned
+          const expected = version['<']('1.14') ? vec3(8.5, pos.y + 1, 8.5) : version['<']('1.21.6') ? vec3(5.5, pos.y + 1, 5.5) : vec3(0, 0, 0)
+          assert.deepStrictEqual([manual.entity.position, manual.entity.velocity, manual.entity.onGround], [expected, vec3(0, 0, 0), false])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot put to bed before 1.14 lies toward its head (Player.startSleepInBed)', async function () {
         if (version['>=']('1.14')) return this.skip() // the use_bed packet
         const { manual, client } = await standingManualBot()
