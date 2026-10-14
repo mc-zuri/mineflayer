@@ -1330,6 +1330,25 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('bot._checkChunk runs the chunk check alone, for replays (internal)', async function () {
+        if (version['<']('1.9') || version['>=']('1.14')) return this.skip() // the versions whose check delays a tick
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          await teleport(manual, client, { x: 40.5 })
+          runTicks(1)
+          const chunk = bot.test.buildChunk()
+          chunk.setBlockType(vec3(0, 0, 0), goldId)
+          client.write('map_chunk', { ...generateChunkPacket(chunk), x: 2 })
+          await once(manual, 'chunkColumnLoad')
+          // put in its chunk now, it ticks on the next tick instead of the one after
+          manual._checkChunk()
+          runTicks(1)
+          assert.strictEqual(manual.entity.velocity.y, -0.0784000015258789)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot put to bed before 1.14 lies toward its head (Player.startSleepInBed)', async function () {
         if (version['>=']('1.14')) return this.skip() // the use_bed packet
         const { manual, client } = await standingManualBot()
