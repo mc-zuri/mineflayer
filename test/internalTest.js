@@ -903,27 +903,34 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
-      it('a press of jump while falling with an elytra asks to glide before the move (LocalPlayer.aiStep)', async function () {
+      // The standing bot given an elytra and put 20 blocks up, falling for three ticks.
+      async function fallingWithElytra () {
         const Item = require('prismarine-item')(supportedVersion)
         const itemRegistry = require('minecraft-data')(supportedVersion)
-        if (!itemRegistry.itemsByName.elytra) return this.skip() // 1.9+
-        const { manual, client, written, runTicks } = await standingManualBot()
+        const standing = await standingManualBot()
+        const { manual, client, runTicks } = standing
+        const equipped = once(manual.inventory, 'updateSlot:6')
+        client.write('set_slot', { windowId: 0, stateId: 0, slot: 6, item: Item.toNotch(new Item(itemRegistry.itemsByName.elytra.id, 1)) })
+        await equipped
+        const reply = once(client, 'position_look')
+        client.write('position', {
+          x: 1.5,
+          y: pos.y + 20,
+          z: 1.5,
+          pitch: 0,
+          yaw: 0,
+          flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+          teleportId: 2
+        })
+        await reply
+        runTicks(3)
+        return standing
+      }
+
+      it('a press of jump while falling with an elytra asks to glide before the move (LocalPlayer.aiStep)', async function () {
+        if (!require('minecraft-data')(supportedVersion).itemsByName.elytra) return this.skip() // 1.9+
+        const { manual, client, written, runTicks } = await fallingWithElytra()
         try {
-          const equipped = once(manual.inventory, 'updateSlot:6')
-          client.write('set_slot', { windowId: 0, stateId: 0, slot: 6, item: Item.toNotch(new Item(itemRegistry.itemsByName.elytra.id, 1)) })
-          await equipped
-          const reply = once(client, 'position_look')
-          client.write('position', {
-            x: 1.5,
-            y: pos.y + 20,
-            z: 1.5,
-            pitch: 0,
-            yaw: 0,
-            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
-            teleportId: 2
-          })
-          await reply
-          runTicks(3) // falling
           const command = once(client, 'entity_action')
           manual.setControlState('jump', true)
           const before = written.length
@@ -932,6 +939,56 @@ for (const supportedVersion of mineflayer.testedVersions) {
           assert.strictEqual(sent[0], 'entity_action', sent.join())
           const [packet] = await command
           assert.strictEqual(packet.actionId, 'start_fall_flying')
+        } finally {
+          manual.end()
+        }
+      })
+      it('a rocket attached to the gliding bot boosts it until the server removes it (FireworkRocketEntity.tick)', async function () {
+        const itemRegistry = require('minecraft-data')(supportedVersion)
+        const byName = itemRegistry.supportFeature('mcDataHasEntityMetadata')
+        // (the attachment's metadata entry: by name with minecraft-data's metadata keys, else 1.11 - 1.13's varint 7)
+        if (!itemRegistry.itemsByName.elytra || (!byName && !itemRegistry.supportFeature('fireworkMetadataVarInt7'))) return this.skip()
+        const { manual, client, runTicks } = await fallingWithElytra()
+        try {
+          manual.setControlState('jump', true)
+          runTicks(1)
+          manual.setControlState('jump', false)
+          manual.look(0, Math.PI / 2, true) // straight up, staying over the one loaded chunk
+          // the server's glide flag (shared flag 0x80, a signed byte), which starts the glide before 1.15
+          client.write('entity_metadata', { entityId: manual.entity.id, metadata: [{ key: 0, type: byName ? 'byte' : 0, value: -128 }] })
+          const rocketType = itemRegistry.entitiesByName.firework_rocket ?? itemRegistry.entitiesByName.fireworks_rocket
+          const used = once(manual, 'usedFirework')
+          client.write('spawn_entity', {
+            entityId: 99,
+            objectUUID: '00112233-4455-6677-8899-aabbccddeeff',
+            type: rocketType.id,
+            x: 1.5,
+            y: pos.y + 20,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            headPitch: 0,
+            objectData: 0,
+            velocity: { x: 0, y: 0, z: 0 },
+            velocityX: 0,
+            velocityY: 0,
+            velocityZ: 0
+          })
+          const attached = byName
+            ? { key: rocketType.metadataKeys.indexOf('attached_to_target'), type: 'optional_unsigned_int', value: manual.entity.id + 1 }
+            : { key: 7, type: 1, value: manual.entity.id }
+          client.write('entity_metadata', { entityId: 99, metadata: [attached] })
+          await used
+          assert.strictEqual(manual.fireworkRockets, 1)
+          runTicks(60) // longer than any rocket's own lifetime: the boost lasts while the server keeps the rocket
+          assert.ok(manual.entity.velocity.y > 1.5, String(manual.entity.velocity))
+          const gone = once(manual, 'entityGone')
+          client.write('entity_destroy', { entityIds: [99] })
+          await gone
+          assert.strictEqual(manual.fireworkRockets, 0)
+          const speed = manual.entity.velocity.y
+          runTicks(1)
+          assert.ok(manual.entity.velocity.y < speed, 'no boost once the rocket is gone')
         } finally {
           manual.end()
         }

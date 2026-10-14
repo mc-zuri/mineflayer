@@ -205,6 +205,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
   }
   entities: { [id: string]: Entity }
   fireworkRocketDuration: number
+  fireworkRockets: number
   spawnPoint: Vec3
   game: GameState
   player: Player

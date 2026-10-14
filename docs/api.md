@@ -138,6 +138,7 @@
       - [bot.oxygenLevel](#botoxygenlevel)
       - [bot.physics](#botphysics)
       - [bot.fireworkRocketDuration](#botfireworkrocketduration)
+      - [bot.fireworkRockets](#botfireworkrockets)
       - [bot.simpleClick.leftMouse (slot)](#botsimpleclickleftmouse-slot)
       - [bot.simpleClick.rightMouse (slot)](#botsimpleclickrightmouse-slot)
       - [bot.simpleClick.shiftMouse (slot)](#botsimpleclickshiftmouse-slot)
@@ -1062,7 +1063,11 @@ Do this at your own risk.
 
 #### bot.fireworkRocketDuration
 
-How many physics ticks worth of firework rocket boost are left.
+How many physics ticks worth of firework rocket boost are left (kept at 1 while a rocket is attached to the bot).
+
+#### bot.fireworkRockets
+
+How many firework rockets are attached to the bot. Each boosts it every tick while it glides, until the server removes the rocket.
 
 #### bot.simpleClick.leftMouse (slot)
 
