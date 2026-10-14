@@ -1258,6 +1258,26 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a respawned bot moves off the ground until it lands (Entity.onGround)', async function () {
+        const respawn = respawnPacket()
+        if (!respawn) return this.skip()
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          assert.ok(manual.entity.onGround)
+          const respawned = once(manual, 'respawn')
+          client.write('respawn', respawn)
+          await respawned
+          await teleport(manual, client)
+          manual.entity.velocity.x = 0.1
+          runTicks(1)
+          // the new player has not touched the ground: the air's drag, not the block's friction
+          assert.strictEqual(manual.entity.velocity.x, 0.09100000262260438)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot put to bed before 1.14 lies toward its head (Player.startSleepInBed)', async function () {
         if (version['>=']('1.14')) return this.skip() // the use_bed packet
         const { manual, client } = await standingManualBot()
