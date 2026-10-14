@@ -1873,6 +1873,30 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // v_horse_running_jump 1.21.3: a horse the server has rearing (its flags, bit 32) takes no input on the ground
+      // unless its rider's jump let it (AbstractHorse.getRiddenInput); the recorded horse stops at tick 45
+      it('a rearing saddled horse does not walk on the input of its rider (v_horse_running_jump)', async function () {
+        const version = registry.version
+        if (!version['>=']('1.9')) return this.skip() // (set_passengers)
+        const { manual, client, vehicle, runTicks } = await ridingManualBot('horse')
+        try {
+          const index = version['<']('1.10') ? 12 : version['<']('1.14') ? 13 : version['<']('1.15') ? 15 : version['<']('1.17') ? 16 : 17
+          vehicle.metadata = []
+          if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+          else vehicle.metadata[index] = 0x02 | 0x04
+          const synced = once(manual._client, 'entity_metadata')
+          client.write('entity_metadata', { entityId: 100, metadata: [{ key: index, type: version['>=']('1.19.4') ? 'byte' : 0, value: version['>=']('1.21.5') ? 0x22 : 0x26 }] })
+          await synced
+          vehicle.velocity.set(0, -0.0784000015258789, 0)
+          manual.setControlState('forward', true)
+          runTicks(2)
+          assert.strictEqual(vehicle.velocity.z, 0)
+          assert.strictEqual(vehicle.position.z, 1.5)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a passenger keeps its own velocity, gravity after Entity.rideTick zeroes it (m_horse)', async () => {
         const { manual, vehicle, runTicks } = await ridingManualBot()
         try {
