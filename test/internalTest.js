@@ -757,6 +757,29 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       }
 
+      // A respawn into the login's level, or into another one (1.16 - 1.20.4 not built: null)
+      function respawnPacket ({ copyMetadata = 0, level = null } = {}) {
+        const login = bot.test.generateLoginPacket()
+        if (login.worldState) return { worldState: { ...login.worldState, death: undefined, ...(level && { name: level }) }, copyMetadata }
+        if (registry.supportFeature('usesLoginPacket')) return null
+        return { dimension: level ? -1 : 0, difficulty: 0, hashedSeed: [0, 0], gamemode: 0, levelType: 'default' }
+      }
+
+      // The server's teleport, answered by the bot
+      async function teleport (manual, client, { x = 1.5, y = pos.y + 1, z = 1.5 } = {}) {
+        const reply = once(client, 'position_look')
+        client.write('position', {
+          x,
+          y,
+          z,
+          pitch: 0,
+          yaw: 0,
+          flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+          teleportId: 2
+        })
+        await reply
+      }
+
       it('shows a minecart the server moves where the vanilla client shows it, stepped after the bot', async function () {
         if (!require('minecraft-data')(supportedVersion).version['>=']('1.9')) return this.skip() // no recording
         const { manual, client, runTicks } = await standingManualBot()
@@ -1119,6 +1142,29 @@ for (const supportedVersion of mineflayer.testedVersions) {
           assert.strictEqual(manual.entity.yawDegrees.valueOf(), -180)
           assert.strictEqual(manual.entity.velocity.y, 0)
           assert.deepStrictEqual([manual._lastSent.x, manual._lastSent.y, manual._lastSent.z, manual._lastSent.yaw], [0, 0, 0, 0])
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a respawned bot lives again before its health update (Player.resetPos)', async function () {
+        const respawn = respawnPacket()
+        if (!respawn) return this.skip()
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          const died = once(manual, 'death')
+          client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+          await died
+          runTicks(25)
+          const respawned = once(manual, 'respawn')
+          client.write('respawn', respawn)
+          await respawned
+          await teleport(manual, client)
+          written.length = 0
+          runTicks(1)
+          // it falls (its first move is still) and sends its position
+          assert.strictEqual(manual.entity.velocity.y, -0.0784000015258789)
+          assert.ok(written.some(p => p.name === 'position' || p.name === 'flying'), written.map(p => p.name).join())
         } finally {
           manual.end()
         }
