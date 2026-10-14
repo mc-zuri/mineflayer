@@ -1860,6 +1860,21 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a sprinting passenger walks at the sprinting air speed, as Player.getFlyingSpeed (v_camel_sprint t1)', async function () {
+        if (!require('minecraft-data')(supportedVersion).version['>=']('1.14')) return this.skip()
+        const { manual, runTicks } = await ridingManualBot('camel')
+        try {
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          manual.setControlState('forward', true)
+          manual.entity.sprinting = true
+          runTicks(1)
+          assert.strictEqual(manual.entity.velocity.x, 0.023186799936810092)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
