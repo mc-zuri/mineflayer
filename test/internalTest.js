@@ -1036,6 +1036,26 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('an entity\'s animations are told by each version\'s ids, from 26.3 its swing by a packet of its own (ClientPacketListener.handleAnimate)', async () => {
+        const { manual, client } = await standingManualBot()
+        try {
+          const events = []
+          for (const name of ['entitySwingArm', 'entityWake', 'entityCriticalEffect', 'entityMagicCriticalEffect']) {
+            manual.on(name, entity => events.push([name, entity.id]))
+          }
+          const is263 = registry.version['>=']('26.3')
+          // ClientboundAnimatePacket: SWING_MAIN_HAND 0, WAKE_UP 2, CRITICAL_HIT 4, MAGIC_CRITICAL_HIT 5; from 26.3 WAKE_UP 0,
+          // CRITICAL_HIT 1, MAGIC_CRITICAL_HIT 2 and the swing a ClientboundSwingAnimationPacket
+          if (is263) client.write('swing_animation', { entityId: 5, hand: 'main_hand', animation: 'whack', duration: 6 })
+          else client.write('animation', { entityId: 5, animation: 0 })
+          for (const animation of is263 ? [0, 1, 2] : [2, 4, 5]) client.write('animation', { entityId: 5, animation })
+          await sleep(100)
+          assert.deepStrictEqual(events, [['entitySwingArm', 5], ['entityWake', 5], ['entityCriticalEffect', 5], ['entityMagicCriticalEffect', 5]])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a dig is started and aborted, and an item use released, by the number of each player action (ServerboundPlayerActionPacket.Action)', async () => {
         const { manual, client } = await standingManualBot()
         try {
