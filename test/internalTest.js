@@ -2067,6 +2067,27 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a rider sneaking asks to dismount with the input of its tick, not a packet of its own (LocalPlayer.tick, v_boat_dismount t21)', async () => {
+        const { manual, client, written, runTicks } = await ridingManualBot('minecart')
+        try {
+          runTicks(1)
+          written.length = 0
+          manual.setControlState('sneak', true)
+          assert.deepStrictEqual(written.map(p => p.name), [])
+          const inputs = []
+          client.on(manual.supportFeature('newPlayerInputPacket') ? 'player_input' : 'steer_vehicle', packet => inputs.push(packet))
+          runTicks(1)
+          await sleep(100)
+          // before 1.21.2 the shift key goes with the position, which a rider does not send
+          if (!manual.registry.version['>=']('1.21.2')) assert.ok(!written.some(p => p.name === 'entity_action'), written.map(p => p.name).join())
+          const last = inputs.at(-1)
+          if (manual.supportFeature('newPlayerInputPacket')) assert.strictEqual(last.inputs.shift, true)
+          else assert.strictEqual(last.jump & 0x02, 0x02)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
