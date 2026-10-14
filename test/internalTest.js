@@ -1550,6 +1550,28 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a horse the bot controls moves turned as its rider too (AbstractHorse.travel, m_horse on 1.17.1)', async function () {
+        if (supportedVersion !== '1.17.1') return this.skip()
+        const { manual, client, vehicle, runTicks } = await ridingManualBot()
+        try {
+          vehicle.metadata = []
+          vehicle.metadata[17] = 6 // tame and saddled: the rider controls it
+          vehicle.position.set(8.5, pos.y + 1, 8.5) // amid loaded blocks, which the horse physics waits for
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.pitchDegrees = new JavaFloat(15)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          manual.entity.pitch = conv.fromNotchianPitch(15)
+          runTicks(1)
+          const move = once(client, 'vehicle_move')
+          runTicks(1)
+          const [packet] = await move
+          assert.strictEqual(packet.yaw, 270)
+          assert.strictEqual(packet.pitch, 7.5)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
