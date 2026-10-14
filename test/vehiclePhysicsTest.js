@@ -794,7 +794,7 @@ describe('mineflayer_vehicle_physics legacy boat behavior', function () {
     })
   })
 
-  it('pauses physics for unsupported non-boat mounts on 1.18.2', (done) => {
+  it('ticks the rider of a pig and sends the move of the pig on 1.18.2 (LocalPlayer.tick)', (done) => {
     server.on('playerJoin', (client) => {
       withLogin(bot, client, done, async () => {
         bot.blockAt = createBlockWorldStub(bot.version)
@@ -812,15 +812,15 @@ describe('mineflayer_vehicle_physics legacy boat behavior', function () {
         bot.entities[100] = pig
         bot._client.emit('set_passengers', { entityId: 100, passengers: [bot.entity.id] })
 
-        let physicsTicks = 0
-        bot.on('physicsTick', () => { physicsTicks++ })
+        // the player ticks on whatever it rides, and a passenger sends its look and input, and the move of the vehicle
+        // it controls (LocalPlayer.tick); before 1.19 a pig's controlling passenger is its first passenger, carrot on a
+        // stick or not (Pig.getControllingPassenger)
         const writes = captureWrites(bot)
-        await once(bot, 'physicsTickBegin')
+        await physicsTicks(bot, 1)
 
-        assert.strictEqual(physicsTicks, 0, 'unsupported mount should pause physicsTick')
-        assert.strictEqual(writes.filter(w => w.name === 'vehicle_move').length, 0)
-        assert.strictEqual(writes.filter(w => w.name === 'position').length, 0)
-        assert.strictEqual(writes.filter(w => w.name === 'position_look').length, 0)
+        // (the first tick's: the timer may run two ticks in one go)
+        assert.deepStrictEqual(writes.slice(0, 3).map(w => w.name), ['look', 'steer_vehicle', 'vehicle_move'])
+        assert.strictEqual(writes.filter(w => w.name === 'position' || w.name === 'position_look').length, 0)
       })
     })
   })
