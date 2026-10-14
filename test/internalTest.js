@@ -1357,6 +1357,36 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot that boards a vehicle keeps sending its look every tick (LocalPlayer.tick)', async function () {
+        if (!registry.isNewerOrEqualTo('1.9')) return this.skip() // (set_passengers)
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          const pig = manual.registry.entitiesByName.pig ?? manual.registry.entitiesByName.Pig
+          client.write(manual.registry.supportFeature('consolidatedEntitySpawnPacket') ? 'spawn_entity' : 'spawn_entity_living', {
+            entityId: 98,
+            entityUUID: '00112233-4455-6677-8899-aabbccddeeff',
+            objectUUID: '00112233-4455-6677-8899-aabbccddeeff',
+            type: pig.id,
+            x: 8.5,
+            y: pos.y + 1,
+            z: 8.5,
+            yaw: 0,
+            pitch: 0,
+            headPitch: 0,
+            velocity: { x: 0, y: 0, z: 0 },
+            metadata: []
+          })
+          const mounted = once(manual, 'mount')
+          client.write('set_passengers', { entityId: 98, passengers: [manual.entity.id] })
+          await mounted
+          const before = written.length
+          runTicks(2)
+          assert.strictEqual(written.slice(before).filter(p => p.name === 'look').length, 2)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a move is sent past 0.03 blocks, from 1.18.2 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
