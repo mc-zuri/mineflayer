@@ -297,7 +297,12 @@ for (const supportedVersion of mineflayer.testedVersions) {
             bot.on('move', previousPosition => moves.push(previousPosition))
 
             const boat = setupBoat(100, vec3(1, 63, 2))
-            const expectedOffset = registry.isNewerOrEqualTo('1.20.2') ? -0.4125 : -0.45
+            // <= 1.20.1: Boat.positionRider's float (-0.1 - 0.35); 1.20.2 - 1.20.4: the float attachment + the player's
+            // -0.6F; 1.20.5+: attachment - 0.6
+            const f32 = Math.fround
+            const expectedOffset = registry.isNewerOrEqualTo('1.20.5')
+              ? -0.4125
+              : registry.isNewerOrEqualTo('1.20.2') ? 0.1875 + f32(-0.6) : f32(-0.45)
 
             assert.strictEqual(bot.entity.position.x, boat.position.x)
             assert.strictEqual(bot.entity.position.y, boat.position.y + expectedOffset)
@@ -320,7 +325,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
               bot.on('move', previousPosition => moves.push(previousPosition))
 
               const minecart = setupMinecart(100, vec3(1, 63, 2))
-              const expectedOffset = supportedVersion === '1.20.1' ? -0.35 : -0.4125
+              // 1.20.2 - 1.20.4 add the player's float ridingOffset(), -0.6F
+              const expectedOffset = supportedVersion === '1.20.1' ? -0.35 : supportedVersion === '1.20.2' ? 0.1875 + Math.fround(-0.6) : -0.4125
 
               assert.strictEqual(bot.entity.position.x, minecart.position.x)
               assert.strictEqual(bot.entity.position.y, minecart.position.y + expectedOffset)

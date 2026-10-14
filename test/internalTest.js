@@ -1816,6 +1816,27 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      for (const [name, y, height, seats] of [
+        // <= 1.20.1: Boat.positionRider's float (-0.1 - 0.35); 1.20.2 - 1.20.4: the float attachment + the player's -0.6F
+        ['boat', 101, 0.5625, { legacy: 100.55000001192093, attachment: 100.58749997615814, modern: 100.5875 }],
+        ['minecart', 101.0625, 0.7, { legacy: 100.7125, attachment: 100.64999997615814, modern: 100.65 }]
+      ]) {
+        it(`a ${name} seats its rider at the height of vanilla's Entity.positionRider (v_${name}_* t1)`, async function () {
+          const v = require('minecraft-data')(supportedVersion).version
+          if (v['<']('1.9')) return this.skip()
+          const { manual, vehicle, runTicks } = await ridingManualBot(name)
+          try {
+            vehicle.height = height
+            vehicle.position.set(0.5, y, 0.5)
+            runTicks(1)
+            const seat = v['>=']('1.20.5') ? seats.modern : v['>=']('1.20.2') ? seats.attachment : seats.legacy
+            assert.strictEqual(manual.entity.position.y, seat)
+          } finally {
+            manual.end()
+          }
+        })
+      }
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
