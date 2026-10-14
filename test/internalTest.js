@@ -1036,6 +1036,23 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a particle is told with the speed the server gave it (ClientboundLevelParticlesPacket)', async function () {
+        if (!registry.supportFeature('updatedParticlesPacket')) return this.skip() // a Particle type from 1.20.5
+        const { manual, client } = await standingManualBot()
+        try {
+          const told = once(manual, 'particle')
+          // from 26.3 a speed per axis (the particle command sets them alike) and how they are randomized
+          const speed = registry.version['>=']('26.3')
+            ? { velocityOffsetX: 0.25, velocityOffsetY: 0.25, velocityOffsetZ: 0.25, randomizationType: 'default' }
+            : { velocityOffset: 0.25 }
+          client.write('world_particles', { particle: { type: 'crit' }, longDistance: false, alwaysShow: false, x: 1.5, y: 66, z: 1.5, offsetX: 0, offsetY: 0, offsetZ: 0, amount: 6, ...speed })
+          const [particle] = await told
+          assert.deepStrictEqual([particle.name, particle.count, particle.movementSpeed], ['crit', 6, 0.25])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a sign\'s text goes to the side the bot writes (ServerboundSignUpdatePacket)', async function () {
         if (!registry.version['>=']('1.20')) return this.skip() // a sign has two sides from 1.20
         const { manual, client } = await standingManualBot()
