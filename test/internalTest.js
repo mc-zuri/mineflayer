@@ -755,6 +755,38 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       }
 
+      it('an extending piston head pushes the bot after its tick (PistonMovingBlockEntity.moveCollidedEntities)', async function () {
+        if (!require('minecraft-data')(supportedVersion).blocksByName.observer) return this.skip() // 1.11+
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          // the recorder's n_piston_push: the bot stands at x 0.5 and a piston west of it (x -1) extends east into its
+          // cell; the head sweeps to its far face plus 0.01 after the bot moved and sent its position
+          client.write('block_change', { location: { x: 0, y: pos.y, z: pos.z }, type: manual.registry.blocksByName.gold_block.defaultState ?? goldId << 4 })
+          const answer = once(client, 'position_look')
+          client.write('position', {
+            x: 0.5,
+            y: pos.y + 1,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 2
+          })
+          await answer
+          runTicks(1)
+          const event = once(manual._client, 'block_action')
+          client.write('block_action', { location: { x: -1, y: pos.y + 1, z: pos.z }, byte1: 0, byte2: 5, blockId: manual.registry.blocksByName.piston.id })
+          await event
+          written.length = 0
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.x, 0.810000011920929)
+          assert.strictEqual(manual.entity.onGround, false)
+          assert.deepStrictEqual(written.filter(p => p.name === 'position'), [])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot standing still sends its position every 20 ticks, 1.8 every 21 (LocalPlayer.positionReminder)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
