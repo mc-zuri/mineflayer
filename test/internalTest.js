@@ -892,6 +892,25 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot put to sleep lies on the bed and looks ahead (LivingEntity.setPosToBed)', async function () {
+        if (version['<']('1.19.3')) return this.skip() // the test writes the metadata type by name
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          const updated = once(manual, 'entityUpdate')
+          client.write('entity_metadata', {
+            entityId: manual.entity.id,
+            metadata: [{ key: 6, type: 'pose', value: 2 }, { key: 14, type: 'optional_block_pos', value: { x: 3, y: pos.y + 1, z: 1 } }]
+          })
+          await updated
+          assert.deepStrictEqual(manual.entity.position, vec3(3.5, pos.y + 1.6875, 1.5))
+          manual.look(0, 0.5, true)
+          runTicks(1)
+          assert.strictEqual(manual.entity.pitch, 0)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
