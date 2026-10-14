@@ -1081,7 +1081,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
 
       it('a bot put to sleep lies on the bed and looks ahead (LivingEntity.setPosToBed)', async function () {
-        if (version['<']('1.19.3')) return this.skip() // the test writes the metadata type by name
+        if (version['<']('1.19.4')) return this.skip() // the test writes the metadata type by name (numbered on 1.19.3)
         const { manual, client, runTicks } = await standingManualBot()
         try {
           const updated = once(manual, 'entityUpdate')
@@ -1199,8 +1199,12 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const bed = vec3(3, pos.y + 1, 1)
           const chunk = bot.test.buildChunk()
           chunk.setBlockType(pos, goldId)
-          chunk.setBlockType(bed, registry.blocksByName.bed.id)
-          chunk.setBlockData(bed, 3) // facing east
+          if (version['<']('1.13')) {
+            chunk.setBlockType(bed, registry.blocksByName.bed.id)
+            chunk.setBlockData(bed, 3) // facing east
+          } else {
+            chunk.setBlockStateId(bed, require('prismarine-block')(registry).fromProperties('red_bed', { facing: 'east', part: 'foot', occupied: false }, 0).stateId)
+          }
           client.write('map_chunk', generateChunkPacket(chunk))
           await once(manual, 'chunkColumnLoad')
           const slept = once(manual, 'sleep')
