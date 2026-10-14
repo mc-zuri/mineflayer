@@ -1891,6 +1891,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the driver of a camel sprints with the sprint key and forward (LocalPlayer.aiStep, v_camel_sprint t1)', async function () {
+        if (!require('minecraft-data')(supportedVersion).version['>=']('1.20')) return this.skip()
+        const { manual, vehicle, runTicks } = await ridingManualBot('camel')
+        try {
+          vehicle.height = 2.375
+          vehicle.position.set(1.5, pos.y + 1, 1.5)
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          manual.setControlState('forward', true)
+          manual.setControlState('sprint', true)
+          runTicks(1)
+          assert.strictEqual(manual.entity.sprinting, true)
+          assert.strictEqual(manual.entity.velocity.x, 0.023186799936810092)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
