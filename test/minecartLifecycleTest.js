@@ -73,6 +73,29 @@ async function completeLoginHandshake (bot) {
   await once(bot, 'physicsTick')
 }
 
+// the client minecart interpolates a server move over the packet's 3 steps + 2 (AbstractMinecart.lerpTo), and its
+// passenger follows the shown minecart, in its tick after the minecart's (Entity.positionRider)
+const MINECART_LERP_STEPS = 5
+
+async function physicsTicks (bot, n) {
+  for (let i = 0; i < n; i++) await once(bot, 'physicsTick')
+}
+
+function asyncTest (done, run) {
+  return async () => {
+    try {
+      await run()
+      done()
+    } catch (err) {
+      done(err)
+    }
+  }
+}
+
+function assertNear (actual, expected, message) {
+  assert.ok(Math.abs(actual - expected) < 1e-9, `${message}: ${actual} !== ${expected}`)
+}
+
 describe('mineflayer_minecart_lifecycle 1.17.1v', function () {
   this.timeout(10 * 1000)
 
@@ -102,9 +125,9 @@ describe('mineflayer_minecart_lifecycle 1.17.1v', function () {
     server.close()
   })
 
-  it('syncs player position on entityMoved before the next physics tick', (done) => {
+  it('moves the rider with the minecart in its tick, along the minecart interpolation (AbstractMinecart.lerpTo)', (done) => {
     server.on('playerJoin', (client) => {
-      bot.once('login', async () => {
+      bot.once('login', asyncTest(done, async () => {
         stubLoadedWorld(bot)
         await completeLoginHandshake(bot)
 
@@ -122,22 +145,36 @@ describe('mineflayer_minecart_lifecycle 1.17.1v', function () {
           dZ: 0
         })
 
-        assert.ok(Math.abs(minecart.position.x - 1) < 0.01)
-        assert.ok(Math.abs(bot.entity.position.x - 1) < 0.01, 'player X should sync on entityMoved')
-        assert.ok(Math.abs(bot.entity.position.y - 62.65) < 0.01, 'player Y should sync on entityMoved')
-        assert.ok(moveCount >= 1, 'expected move event before next physics tick')
+        assertNear(minecart.position.x, 1, 'the server position of the minecart')
+        assert.strictEqual(bot.entity.position.x, 0, 'the packet does not move the rider')
+        assert.strictEqual(moveCount, 0, 'the packet does not move the rider')
 
-        const positionAfterEntityMoved = bot.entity.position.clone()
-        await once(bot, 'physicsTick')
-        assert.ok(positionAfterEntityMoved.equals(bot.entity.position), 'physics tick must not revert synced position')
+        // (recorded in each tick: the timer may run two ticks in one go)
+        const ticks = []
+        const record = () => ticks.push({ position: bot.entity.position.clone(), moves: moveCount })
+        bot.on('physicsTick', record)
+        while (ticks.length <= MINECART_LERP_STEPS) await once(bot, 'physicsTick')
+        bot.removeListener('physicsTick', record)
+
+        let movesBefore = 0
+        for (let tick = 1; tick <= MINECART_LERP_STEPS; tick++) {
+          const { position, moves } = ticks[tick - 1]
+          assertNear(position.x, tick / MINECART_LERP_STEPS, `rider x after tick ${tick}`)
+          assertNear(position.y, 62.65, `rider y after tick ${tick}`)
+          assert.ok(moves > movesBefore, `expected a move event in tick ${tick}`)
+          movesBefore = moves
+        }
+        const positionAtTarget = ticks[MINECART_LERP_STEPS - 1].position
+        assert.ok(positionAtTarget.equals(ticks[MINECART_LERP_STEPS].position), 'the rider stays where the minecart arrived')
 
         const movesBeforeLook = moveCount
         bot._client.emit('entity_look', { entityId: 100, yaw: 64, pitch: 0 })
         assert.strictEqual(moveCount, movesBeforeLook, 'entity_look without movement must not emit move')
+        await once(bot, 'physicsTick')
+        assert.ok(positionAtTarget.equals(bot.entity.position), 'a rotation does not move the rider')
 
         assert.strictEqual(writes.filter(w => w.name === 'vehicle_move').length, 0)
-        done()
-      })
+      }))
       loginBot(bot, client, registry)
     })
   })
@@ -167,7 +204,7 @@ describe('mineflayer_minecart_lifecycle 1.17.1v', function () {
         assert.ok(Math.abs(minecart.position.x - 1) < 0.01)
         assert.ok(Math.abs(minecart.position.z - 1) < 0.01)
 
-        await once(bot, 'physicsTick')
+        await physicsTicks(bot, MINECART_LERP_STEPS)
 
         assert.ok(Math.abs(bot.entity.position.x - 1) < 0.01, 'player X should follow minecart')
         assert.ok(Math.abs(bot.entity.position.y - 62.65) < 0.01, 'player Y should follow minecart')
@@ -201,7 +238,7 @@ describe('mineflayer_minecart_lifecycle 1.17.1v', function () {
           dY: 0,
           dZ: 4096
         })
-        await once(bot, 'physicsTick')
+        await physicsTicks(bot, MINECART_LERP_STEPS)
 
         const positionBeforeDismount = bot.entity.position.clone()
         assert.ok(
@@ -336,7 +373,7 @@ describe('mineflayer_minecart_lifecycle 1.17.1v', function () {
     })
   })
 
-  it('rel_entity_move updates minecart position and syncs player on next physics tick', (done) => {
+  it('rel_entity_move updates minecart position and the rider follows its interpolation', (done) => {
     server.on('playerJoin', (client) => {
       bot.once('login', async () => {
         stubLoadedWorld(bot)
@@ -350,8 +387,11 @@ describe('mineflayer_minecart_lifecycle 1.17.1v', function () {
         })
         assert.ok(Math.abs(minecart.position.x - 1) < 0.01)
 
-        await once(bot, 'physicsTick')
-        assert.ok(Math.abs(bot.entity.position.x - 1) < 0.01)
+        let xAfterOneTick
+        bot.once('physicsTick', () => { xAfterOneTick = bot.entity.position.x })
+        await physicsTicks(bot, MINECART_LERP_STEPS)
+        assertNear(xAfterOneTick, 1 / MINECART_LERP_STEPS, 'the rider after one tick')
+        assertNear(bot.entity.position.x, 1, 'the rider after the interpolation')
         done()
       })
       loginBot(bot, client, registry)
@@ -377,7 +417,7 @@ describe('mineflayer_minecart_lifecycle 1.17.1v', function () {
         assert.ok(Math.abs(minecart.position.z - 1) < 0.01)
         assert.ok(Number.isFinite(minecart.yaw))
 
-        await once(bot, 'physicsTick')
+        await physicsTicks(bot, MINECART_LERP_STEPS)
         assert.ok(Math.abs(bot.entity.position.x - 1) < 0.01)
         assert.ok(Math.abs(bot.entity.position.z - 1) < 0.01)
         done()
