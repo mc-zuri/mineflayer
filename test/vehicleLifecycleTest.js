@@ -9,6 +9,7 @@ const { once } = require('../lib/promise_utils')
 for (const supportedVersion of mineflayer.testedVersions) {
   const registry = require('prismarine-registry')(supportedVersion)
   const Block = require('prismarine-block')(supportedVersion)
+  const Chunk = require('prismarine-chunk')(supportedVersion)
   const hasSetPassengers = registry.version['>=']('1.9')
   const usesLegacySteerVehicle = !registry.supportFeature('newPlayerInputPacket')
 
@@ -89,6 +90,14 @@ for (const supportedVersion of mineflayer.testedVersions) {
     function stubPassableWorld () {
       const air = Block.fromStateId(0, 0)
       bot.blockAt = () => air
+      loadPlayerChunk()
+    }
+
+    // like a vanilla server, send the chunk the player stands in: 1.9 - 1.16 tick the player only in a chunk the client
+    // has loaded (World.updateEntityWithOptionalForce, ClientLevel.tickNonPassenger)
+    function loadPlayerChunk () {
+      const column = new Chunk({ minY: bot.game.minY, worldHeight: bot.game.height })
+      bot.world.setColumn(Math.floor(bot.entity.position.x / 16), Math.floor(bot.entity.position.z / 16), column)
     }
 
     function setupBoat (vehicleId, position, name = 'boat') {
@@ -181,6 +190,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           server.on('playerJoin', (client) => {
             bot.once('login', async () => {
               bot.blockAt = () => ({})
+              loadPlayerChunk()
 
               const vehicleId = 100
               bot._client.emit('set_passengers', { entityId: vehicleId, passengers: [bot.entity.id] })
@@ -223,6 +233,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
             // tickPhysics bails when blockAt returns null; stub so the mounted path is testable
             // without version-specific map_chunk wiring.
             bot.blockAt = () => ({})
+            loadPlayerChunk()
 
             const vehicleId = 100
             bot._client.emit('set_passengers', { entityId: vehicleId, passengers: [bot.entity.id] })
@@ -404,6 +415,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           bot.once('login', async () => {
             bot.entity.position.set(0, 50, 0)
             bot.blockAt = () => ({})
+            loadPlayerChunk()
             const oldPos = bot.entity.position.clone()
             const moves = []
             bot.on('move', previousPosition => moves.push(previousPosition))
