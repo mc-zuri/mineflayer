@@ -1897,6 +1897,31 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // v_horse_back_strafe: the rider holds back and left; its horse takes the rider's xxa and zza after its aiStep,
+      // from 1.21.5 the keys normalized and stretched to the unit square (LocalPlayer.modifyInput): 0.7071067F each, not
+      // 0.98F. The recorded horse's motion after its first moving tick (1.20.4, 1.21.11).
+      it('a saddled horse takes the input of its rider as its version modifies it (v_horse_back_strafe)', async function () {
+        const version = registry.version
+        if (!version['>=']('1.17')) return this.skip() // recorded from 1.18.2
+        const { manual, vehicle, runTicks } = await ridingManualBot('horse')
+        try {
+          vehicle.metadata = []
+          if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+          else vehicle.metadata[17] = 0x02 | 0x04
+          vehicle.attributes = { 'minecraft:generic.movement_speed': { value: 0.225, modifiers: [] } }
+          vehicle.velocity.set(0, -0.0784000015258789, 0)
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          manual.setControlState('back', true)
+          manual.setControlState('left', true)
+          runTicks(2)
+          const expected = version['>=']('1.21.5') ? [-0.021717016762097408, -0.043434033524194816] : [-0.030098253284454306, -0.06019650656890861]
+          assert.deepStrictEqual([vehicle.velocity.x, vehicle.velocity.z], expected)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a passenger keeps its own velocity, gravity after Entity.rideTick zeroes it (m_horse)', async () => {
         const { manual, vehicle, runTicks } = await ridingManualBot()
         try {
