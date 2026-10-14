@@ -1090,6 +1090,22 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot whose entity data says it died stops after 20 ticks, before the health update (LivingEntity.getHealth)', async () => {
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          const healthKey = version['<']('1.10') ? 6 : version['<']('1.14') ? 7 : version['<']('1.17') ? 8 : 9
+          const floatType = version['<']('1.9') ? 3 : manual.supportFeature('mcDataHasEntityMetadata') ? 'float' : 2
+          const updated = once(manual._client, 'entity_metadata')
+          client.write('entity_metadata', { entityId: manual.entity.id, metadata: [{ key: healthKey, type: floatType, value: 0 }] })
+          await updated
+          runTicks(45)
+          const moves = written.filter(p => p.name === 'position' || p.name === 'flying').map(p => p.tick)
+          assert.strictEqual(moves.at(-1), 20)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
