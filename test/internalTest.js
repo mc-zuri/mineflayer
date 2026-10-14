@@ -1816,6 +1816,31 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // m_horse on 1.8.8: before 1.9 the client takes the server's moves of the horse it rides too, easing toward them
+      // over 3 steps (EntityLivingBase.setPositionAndRotation2); the recorded horse goes 0.8333, 1.1667, 1.5 after a /tp
+      it('a 1.8 bot eases the saddled horse it rides toward the server’s teleport (m_horse)', async function () {
+        if (registry.version['>=']('1.9')) return this.skip()
+        const { manual, client, vehicle, runTicks } = await ridingManualBot('EntityHorse')
+        try {
+          vehicle.metadata = []
+          vehicle.metadata[17] = 0x02 | 0x04 // tame, saddled (where this mineflayer looks for it)
+          vehicle.position.set(0.5, pos.y + 1, 1.5)
+          vehicle.velocity.set(0, -0.0784000015258789, 0)
+          runTicks(1)
+          const moved = once(manual._client, 'entity_teleport')
+          client.write('entity_teleport', { entityId: 100, x: 48, y: (pos.y + 1) * 32, z: 48, yaw: 0, pitch: 0, onGround: true })
+          await moved
+          const shown = []
+          for (let t = 0; t < 3; t++) {
+            runTicks(1)
+            shown.push(vehicle.position.x)
+          }
+          assert.deepStrictEqual(shown, [0.8333333333333333, 1.1666666666666665, 1.5])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a passenger keeps its own velocity, gravity after Entity.rideTick zeroes it (m_horse)', async () => {
         const { manual, vehicle, runTicks } = await ridingManualBot()
         try {
