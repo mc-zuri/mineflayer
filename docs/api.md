@@ -108,6 +108,7 @@
       - [bot.game.minY](#botgameminy)
       - [bot.game.height](#botgameheight)
       - [bot.physicsEnabled](#botphysicsenabled)
+      - [bot.levelLoaded](#botlevelloaded)
       - [bot.player](#botplayer)
       - [bot.players](#botplayers)
       - [bot.tablist](#bottablist)
@@ -912,6 +913,13 @@ world height
 #### bot.physicsEnabled
 
 Enable physics, default true.
+
+#### bot.levelLoaded
+
+From 1.21.4, after joining or respawning the bot does not move until it has loaded the level, as the vanilla client
+(which then sends `player_loaded`). Vanilla waits for the server's `level_chunks_load_start` and for the section the
+player stands in to be rendered; mineflayer takes the player's chunk being loaded instead. Set this to a function
+returning whether the client has finished loading to decide that yourself, default null.
 
 #### bot.player
 

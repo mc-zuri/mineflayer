@@ -194,6 +194,15 @@ for (const supportedVersion of mineflayer.testedVersions) {
         port: PORT
       })
       await once(server, 'listening')
+      // like a vanilla server (PlayerList.placeNewPlayer, respawn), tell a 1.21.4+ client its level's chunks are coming
+      server.on('playerJoin', (client) => {
+        if (!registry.version['>=']('1.21.4')) return
+        const write = client.write.bind(client)
+        client.write = (name, params) => {
+          write(name, params)
+          if (name === 'login' || name === 'respawn') write('game_state_change', { reason: 'level_chunks_load_start', gameMode: 0 })
+        }
+      })
       bot = mineflayer.createBot({
         username: 'player',
         version: supportedVersion,
@@ -702,8 +711,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
 
       // A bot stepped tick by tick (physicsManual), standing on the gold block, and the tick of each packet it writes.
-      async function standingManualBot () {
+      async function standingManualBot ({ levelLoaded = null } = {}) {
         const manual = mineflayer.createBot({ username: 'manual', version: supportedVersion, port: PORT, physicsManual: true })
+        manual.levelLoaded = levelLoaded
         let client
         do [client] = await once(server, 'playerJoin'); while (client.username !== 'manual')
         client.write('login', bot.test.generateLoginPacket())
@@ -860,6 +870,23 @@ for (const supportedVersion of mineflayer.testedVersions) {
           written.length = 0
           runTicks(3)
           assert.deepStrictEqual(written.map(p => p.name), manual.registry.isNewerOrEqualTo('1.21.3') ? ['tick_end', 'tick_end', 'tick_end'] : [])
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a 1.21.4+ bot does not move until the client has loaded the level (LocalPlayer.tick: hasClientLoaded)', async function () {
+        if (version['<']('1.21.4')) return this.skip()
+        let loaded = false
+        const { manual, written, runTicks } = await standingManualBot({ levelLoaded: () => loaded })
+        try {
+          runTicks(30)
+          assert.deepStrictEqual([...new Set(written.map(p => p.name))], ['tick_end'])
+          assert.strictEqual(manual.entity.velocity.y, 0)
+          loaded = true
+          written.length = 0
+          runTicks(1)
+          assert.deepStrictEqual(written.map(p => p.name).slice(0, 2), ['player_loaded', 'position'])
         } finally {
           manual.end()
         }
@@ -1269,16 +1296,29 @@ for (const supportedVersion of mineflayer.testedVersions) {
     })
 
     describe('health', () => {
-      it('notifies 1.21.4+ servers when the player has loaded', function (done) {
+      it('notifies 1.21.4+ servers when the player has loaded, once its chunk is (LevelLoadStatusManager)', function (done) {
         if (version['<']('1.21.4')) this.skip()
         server.on('playerJoin', async (client) => {
-          client.once('player_loaded', () => done())
-          await client.write('login', bot.test.generateLoginPacket())
-          await client.write('update_health', {
-            health: 20,
-            food: 20,
-            foodSaturation: 0
+          let chunkSent = false
+          client.once('player_loaded', () => {
+            assert.ok(chunkSent, 'player_loaded came before the chunk of the player')
+            done()
           })
+          // the login is followed by level_chunks_load_start (see beforeEach)
+          await client.write('login', bot.test.generateLoginPacket())
+          await client.write('update_health', { health: 20, food: 20, foodSaturation: 0 })
+          await client.write('position', {
+            x: 1.5,
+            y: 80,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 1
+          })
+          await new Promise(resolve => setTimeout(resolve, 300))
+          chunkSent = true
+          await client.write('map_chunk', generateChunkPacket(bot.test.buildChunk()))
         })
       })
     })
