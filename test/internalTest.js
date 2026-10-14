@@ -1036,6 +1036,31 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('tells the time of the level, from 26.1 the time of its dimension\'s world clock (ClientClockManager)', async () => {
+        const { manual, client } = await standingManualBot()
+        try {
+          const clocks = registry.version['>=']('26.1')
+          // 26.1+: the overworld clock (id 0) at day 1, 6000, running; the End's (id 1) at 5, stopped
+          const update = clocks
+            ? { age: [0, 100], clockUpdates: [{ id: 0, totalTicks: 30000, partialTick: 0, rate: 1 }, { id: 1, totalTicks: 5, partialTick: 0, rate: 0 }] }
+            : { age: [0, 100], time: [0, 30000], tickDayTime: true }
+          let told = once(manual, 'time')
+          client.write('update_time', update)
+          await told
+          const { time, timeOfDay, day, doDaylightCycle, age } = manual.time
+          assert.deepStrictEqual({ time, timeOfDay, day, doDaylightCycle, age }, { time: 30000, timeOfDay: 6000, day: 1, doDaylightCycle: true, age: 100 })
+          if (!clocks) return
+          // in the End (the_end's default_clock) the End's clock
+          manual.game.dimension = 'the_end'
+          told = once(manual, 'time')
+          client.write('update_time', update)
+          await told
+          assert.deepStrictEqual([manual.time.time, manual.time.doDaylightCycle], [5, false])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('an attack is a packet of its own from 26.1, where an entity use says where on the entity it is (ServerboundAttackPacket, ServerboundInteractPacket)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
