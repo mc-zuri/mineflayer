@@ -1288,6 +1288,46 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // A standing manual bot put on a vehicle (id 100) the server says it rides, standing on the gold block beside it.
+      async function ridingManualBot (name = 'horse') {
+        const riding = await standingManualBot()
+        const { manual, client } = riding
+        const mounted = once(manual, 'mount')
+        if (manual.registry.version['>=']('1.9')) client.write('set_passengers', { entityId: 100, passengers: [manual.entity.id] })
+        else client.write('attach_entity', { entityId: manual.entity.id, vehicleId: 100, leash: false })
+        await mounted
+        const vehicle = manual.entities[100]
+        Object.assign(vehicle, { name, height: 1.6, width: 1.3964844, onGround: true })
+        vehicle.position.set(1.5, pos.y + 1, 1.5)
+        // ServerPlayer.startRiding teleports the player to its seat
+        const reply = once(client, 'position_look')
+        client.write('position', {
+          x: 1.5,
+          y: pos.y + 2,
+          z: 1.5,
+          pitch: 0,
+          yaw: 0,
+          flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+          teleportId: 2
+        })
+        await reply
+        riding.written.length = 0
+        return { ...riding, vehicle }
+      }
+
+      it('a passenger is not on the ground (Entity.rideTick moves it by nothing)', async () => {
+        const { manual, client, runTicks } = await ridingManualBot()
+        try {
+          const look = once(client, 'look')
+          runTicks(1)
+          const [packet] = await look
+          assert.strictEqual(packet.onGround ?? packet.flags.onGround, false)
+          assert.strictEqual(manual.entity.onGround, false)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
