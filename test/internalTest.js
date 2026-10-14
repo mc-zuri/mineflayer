@@ -155,6 +155,12 @@ for (const supportedVersion of mineflayer.testedVersions) {
       : JSON.stringify({ text })
   }
 
+  // an entity's relative move as the version writes it: from 26.3 a VecDelta, one delta or the `steps` of several ticks
+  function relMovePacket (entityId, { dX = 0, dY = 0, dZ = 0, onGround = false, steps } = {}) {
+    if (!registry.version['>=']('26.3')) return { entityId, dX, dY, dZ, onGround }
+    return { entityId, delta: steps ? { onGround, steps } : { onGround, dX, dY, dZ } }
+  }
+
   function generateChunkPacket (chunk) {
     const lights = chunk.dumpLight()
     return {
@@ -808,7 +814,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           for (const [dX, x] of recorded) {
             if (dX != null) {
               const moved = once(manual._client, 'rel_entity_move')
-              client.write('rel_entity_move', { entityId: 97, dX, dY: 0, dZ: 0, onGround: false })
+              client.write('rel_entity_move', relMovePacket(97, { dX }))
               await moved
               sent += dX
             }
@@ -816,6 +822,34 @@ for (const supportedVersion of mineflayer.testedVersions) {
             assert.strictEqual(minecart.interpolatedPosition.x, x)
             assert.strictEqual(minecart.position.x, 2.5 + sent / 4096)
           }
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a move of several ticks adds each of its steps to the packet position (VecDelta.Stepped.decode, 26.3)', async function () {
+        if (!registry.version['>=']('1.9')) return this.skip() // 1/32 block moves
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          const cart = registry.isOlderThan('1.14')
+            ? registry.entitiesArray.find(e => /^(minecart|MinecartRideable)$/.test(e.name) && e.type === 'object')
+            : registry.entitiesByName.minecart
+          const spawned = once(manual, 'entitySpawn')
+          client.write('spawn_entity', { entityId: 97, objectUUID: '00112233-4455-6677-8899-aabbccddeeff', type: cart.id, x: 2.5, y: 101.0625, z: 2077.5, pitch: 0, yaw: 0, headPitch: 0, objectData: 0, velocity: { x: 0, y: 0, z: 0 } })
+          const [minecart] = await spawned
+          // two ticks of moves: one packet of two steps from 26.3, a packet each before
+          const steps = [{ ticks: 1, dX: 46, dY: 0, dZ: -12 }, { ticks: 2, dX: 64, dY: 8, dZ: 0 }]
+          const packets = registry.version['>=']('26.3') ? [relMovePacket(97, { steps })] : steps.map(step => relMovePacket(97, step))
+          for (const packet of packets) {
+            const moved = once(manual._client, 'rel_entity_move')
+            client.write('rel_entity_move', packet)
+            await moved
+          }
+          const end = { x: 2.5 + 110 / 4096, y: 101.0625 + 8 / 4096, z: 2077.5 - 12 / 4096 }
+          assert.deepStrictEqual(minecart.position.toArray(), [end.x, end.y, end.z])
+          // shown at the last step once the interpolation ran out
+          runTicks(5)
+          assert.deepStrictEqual(minecart.interpolatedPosition.toArray(), [end.x, end.y, end.z])
         } finally {
           manual.end()
         }
@@ -2510,7 +2544,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           await sleep(100)
           const start = vehicle.position.clone()
           // the server moves the boat a block east: the boat the client steers stays
-          client.write('rel_entity_move', { entityId: 100, dX: 4096, dY: 0, dZ: 0, onGround: true })
+          client.write('rel_entity_move', relMovePacket(100, { dX: 4096, onGround: true }))
           await sleep(100)
           assert.ok(vehicle.position.equals(start))
           // the client moves it two blocks east, and steers it a tick more
@@ -2528,7 +2562,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
 
           // the next server move adds to the packet position: it kept the server's move before 1.16 and from 1.21.2;
           // 1.16 - 1.21.1 took the boat's position at the start of each tick the client steered it (Boat.tickLerp)
-          client.write('rel_entity_move', { entityId: 100, dX: 0, dY: 0, dZ: 0, onGround: true })
+          client.write('rel_entity_move', relMovePacket(100, { onGround: true }))
           await sleep(100)
           const keepsMoves = !registry.isNewerOrEqualTo('1.16') || registry.isNewerOrEqualTo('1.21.2')
           const expected = keepsMoves ? start.x + 1 : lastTickStart.x
