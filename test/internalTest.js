@@ -855,6 +855,30 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a position sync takes the entity to the end of its path (ClientPacketListener.handleEntityPositionSync)', async function () {
+        if (!registry.version['>=']('1.21.2')) return this.skip() // the packet is 1.21.2's
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          const spawned = once(manual, 'entitySpawn')
+          client.write('spawn_entity', { entityId: 97, objectUUID: '00112233-4455-6677-8899-aabbccddeeff', type: registry.entitiesByName.minecart.id, x: 2.5, y: 101.0625, z: 2077.5, pitch: 0, yaw: 0, headPitch: 0, objectData: 0, velocity: { x: 0, y: 0, z: 0 } })
+          const [minecart] = await spawned
+          const end = { x: 3.25, y: 101.0625, z: 2077.75 }
+          // from 26.3 a PositionPath (here the positions of two ticks) and no motion
+          const packet = registry.version['>=']('26.3')
+            ? { entityId: 97, pathType: 'stepped', path: { steps: [{ x: 3, y: 101.0625, z: 2077.5, tickOffset: 1 }, { ...end, tickOffset: 1 }] }, yaw: 0, pitch: 0, onGround: true }
+            : { entityId: 97, ...end, dx: 0, dy: 0, dz: 0, yaw: 0, pitch: 0, onGround: true }
+          const synced = once(manual._client, 'sync_entity_position')
+          client.write('sync_entity_position', packet)
+          await synced
+          assert.deepStrictEqual(minecart.position.toArray(), [end.x, end.y, end.z])
+          assert.deepStrictEqual(minecart.velocity.toArray(), [0, 0, 0])
+          runTicks(5) // a minecart interpolates over 5 ticks before 1.21.5
+          assert.deepStrictEqual(minecart.interpolatedPosition.toArray(), [end.x, end.y, end.z])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('an extending piston head pushes the bot after its tick (PistonMovingBlockEntity.moveCollidedEntities)', async function () {
         if (!require('minecraft-data')(supportedVersion).blocksByName.observer) return this.skip() // 1.11+
         const { manual, client, written, runTicks } = await standingManualBot()
