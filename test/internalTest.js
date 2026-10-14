@@ -1950,6 +1950,36 @@ for (const supportedVersion of mineflayer.testedVersions) {
     })
 
     describe('item use', () => {
+      // MultiPlayerGameMode.useItem (q_shield_walk and the other q_ cases): 1.17 - 1.20.6 send the position and look
+      // just before the use (vanilla 1.20.4: position_look 0.5 101 38.5, yaw 0, pitch 0, on the ground)
+      it('sends the position and look before using an item only from 1.17 to 1.20.6', function (done) {
+        if (!bot.supportFeature('useItemWithOwnPacket')) return this.skip()
+        server.on('playerJoin', (client) => {
+          client.write('login', bot.test.generateLoginPacket())
+        })
+        bot.once('login', () => {
+          bot.entity.position.set(0.5, 101, 38.5)
+          bot.entity.onGround = true
+          bot.entity.yaw = Math.PI
+          bot.entity.yawDegrees = undefined
+          bot.entity.pitch = 0
+          bot.entity.pitchDegrees = undefined
+          const written = []
+          const write = bot._client.write.bind(bot._client)
+          bot._client.write = (name, params) => written.push({ name, params })
+          bot.activateItem()
+          bot._client.write = write
+          if (bot.registry.version['>=']('1.17') && bot.registry.version['<']('1.21')) {
+            assert.deepStrictEqual(written.map(p => p.name), ['position_look', 'use_item'])
+            const { x, y, z, yaw, pitch, onGround } = written[0].params
+            assert.deepStrictEqual([x, y, z, yaw, pitch, onGround], [0.5, 101, 38.5, 0, 0, true])
+          } else {
+            assert.deepStrictEqual(written.map(p => p.name), ['use_item'])
+          }
+          done()
+        })
+      })
+
       // LivingEntity.updatingUsingItem goes on using an item the server only resends (q_crossbow_load_walk: the
       // charged crossbow's set_slot): only a change of the held item's type or count stops it
       it('keeps using the held item when the server resends it unchanged', (done) => {
