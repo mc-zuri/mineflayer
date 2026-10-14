@@ -2005,6 +2005,25 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a passenger in a boat sprints before 1.19.4, at the air speed of the next tick (v_boat_sprint_key_ignored)', async () => {
+        const { manual, runTicks } = await ridingManualBot('boat')
+        try {
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          manual.setControlState('forward', true)
+          manual.setControlState('sprint', true)
+          runTicks(1)
+          const sprints = !manual.registry.isNewerOrEqualTo('1.19.4')
+          assert.strictEqual(!!manual.entity.sprinting, sprints)
+          const walk = manual.entity.velocity.x
+          runTicks(1)
+          // (the boat is not steered here: only the rider's own travel moves its velocity)
+          assert.strictEqual(manual.entity.velocity.x > walk, sprints)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
