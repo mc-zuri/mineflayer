@@ -531,7 +531,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
     describe('physics', () => {
       const pos = vec3(1, 65, 1)
       const goldId = 41
-      it('no physics if there is no chunk', (done) => {
+      it('no physics if there is no chunk', function (done) {
+        // (the 1.8 and 1.17 - 1.21.3 clients tick a player whose chunk has not loaded)
+        if (bot.registry.version['<']('1.9') || (bot.registry.version['>=']('1.17') && bot.registry.version['<']('1.21.4'))) return this.skip()
         let fail = 0
         const basePosition = {
           x: 1.5,
@@ -677,6 +679,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           chunk.setBlockType(pos, goldId)
           client.write('map_chunk', generateChunkPacket(chunk))
           await once(manual, 'chunkColumnLoad')
+          // 1.9 - 1.13 tick a player from the tick after its chunk loaded
+          if (manual.registry.version['>=']('1.9') && manual.registry.version['<']('1.14')) manual.physicsTick()
           const reply = once(client, 'position_look')
           client.write('position', {
             x: 1.5,
@@ -724,6 +728,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
         chunk.setBlockType(pos, goldId)
         client.write('map_chunk', generateChunkPacket(chunk))
         await once(manual, 'chunkColumnLoad')
+        // 1.9 - 1.13 tick a player from the tick after its chunk loaded
+        if (manual.registry.version['>=']('1.9') && manual.registry.version['<']('1.14')) manual.physicsTick()
         const reply = once(client, 'position_look')
         client.write('position', {
           x: 1.5,
@@ -1057,7 +1063,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           await answer
           written.length = 0
           runTicks(3)
-          assert.deepStrictEqual(written.map(p => p.name), manual.registry.isNewerOrEqualTo('1.21.3') ? ['tick_end', 'tick_end', 'tick_end'] : [])
+          assert.strictEqual(written.filter(p => p.name === 'tick_end').length, manual.registry.isNewerOrEqualTo('1.21.3') ? 3 : 0)
         } finally {
           manual.end()
         }
@@ -1187,6 +1193,41 @@ for (const supportedVersion of mineflayer.testedVersions) {
           await respawned
           const expected = version['<']('1.14') ? vec3(8.5, pos.y + 1, 8.5) : version['<']('1.21.6') ? vec3(5.5, pos.y + 1, 5.5) : vec3(0, 0, 0)
           assert.deepStrictEqual([manual.entity.position, manual.entity.velocity, manual.entity.onGround], [expected, vec3(0, 0, 0), false])
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a bot ticks in a chunk the client has not loaded as vanilla does (World.updateEntityWithOptionalForce, ClientLevel.tickNonPassenger)', async () => {
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          // teleported into chunk 2, 0, which the server has not sent
+          await teleport(manual, client, { x: 40.5 })
+          written.length = 0
+          runTicks(2)
+          const y = pos.y + 1
+          if (version['<']('1.9')) {
+            // ticked, it sinks at 0.1 a tick (LivingEntity.travel)
+            assert.deepStrictEqual([manual.entity.position.y, manual.entity.velocity.y], [y - 0.09800000190734864, -0.09800000190734864])
+          } else if (version['<']('1.14')) {
+            // not ticked while its chunk is not loaded
+            assert.deepStrictEqual([manual.entity.position.y, manual.entity.velocity.y, written.length], [y, 0, 0])
+          } else {
+            // ticked: it falls (1.14 - 1.16 keep the player in the loaded chunk it left; from 1.17 every chunk counts as
+            // loaded)
+            assert.deepStrictEqual([manual.entity.position.y, manual.entity.velocity.y], [y - 0.0784000015258789, -0.1552320045166016])
+          }
+          if (version['>=']('1.9') && version['<']('1.14')) {
+            // its chunk loads (a block deep below, as a chunk with no section unloads it): it ticks from the tick after
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(0, 0, 0), goldId)
+            client.write('map_chunk', { ...generateChunkPacket(chunk), x: 2 })
+            await once(manual, 'chunkColumnLoad')
+            runTicks(1)
+            assert.strictEqual(manual.entity.velocity.y, 0)
+            runTicks(1)
+            assert.strictEqual(manual.entity.velocity.y, -0.0784000015258789)
+          }
         } finally {
           manual.end()
         }
