@@ -1950,6 +1950,20 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a raft seats its rider on its float ride height (Raft.rideHeight, v_raft_forward t1)', async function () {
+        if (!require('minecraft-data')(supportedVersion).version['>=']('1.21.2')) return this.skip() // a raft of its own
+        const { manual, vehicle, runTicks } = await ridingManualBot('bamboo_raft')
+        try {
+          vehicle.height = 0.5625
+          vehicle.position.set(0.5, 100.52326051029182, 0.5)
+          runTicks(1)
+          // (float)(0.5625F * 0.8888889F) - 0.6
+          assert.strictEqual(manual.entity.position.y, 100.42326051029183)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
