@@ -1897,6 +1897,35 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // v_horse_jump_full_charge: the horse rears from the server's flags; after its first rearing tick (standAnim
+      // 0.45F) its rider sits back on it by 0.7 * standAnimO (AbstractHorse.positionRider, getPassengerAttachmentPoint
+      // from 1.20.2): the recorded rider x on its horse at x 0.5 facing east (in float before 1.20.5)
+      it('the rider of a rearing horse sits back on it (v_horse_jump_full_charge)', async function () {
+        const version = registry.version
+        if (!version['>=']('1.9')) return this.skip() // (set_passengers)
+        const { manual, client, vehicle, runTicks } = await ridingManualBot('horse')
+        try {
+          const index = version['<']('1.10') ? 12 : version['<']('1.14') ? 13 : version['<']('1.15') ? 15 : version['<']('1.17') ? 16 : 17
+          vehicle.metadata = []
+          if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+          else vehicle.metadata[index] = 0x02 | 0x04
+          const synced = once(manual._client, 'entity_metadata')
+          client.write('entity_metadata', { entityId: 100, metadata: [{ key: index, type: version['>=']('1.19.4') ? 'byte' : 0, value: version['>=']('1.21.5') ? 0x22 : 0x26 }] })
+          await synced
+          vehicle.position.set(0.5, pos.y + 1, 1.5)
+          vehicle.velocity.set(0, -0.0784000015258789, 0)
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.x, 0.5)
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.x, version['>=']('1.20.5') ? 0.1849999874830246 : 0.1850000023841858)
+          assert.strictEqual(manual.entity.position.z, 1.5)
+        } finally {
+          manual.end()
+        }
+      })
+
       // v_horse_back_strafe: the rider holds back and left; its horse takes the rider's xxa and zza after its aiStep,
       // from 1.21.5 the keys normalized and stretched to the unit square (LocalPlayer.modifyInput): 0.7071067F each, not
       // 0.98F. The recorded horse's motion after its first moving tick (1.20.4, 1.21.11).
