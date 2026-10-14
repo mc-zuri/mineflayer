@@ -2139,11 +2139,14 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
-      it('the rider of a saddled horse takes its server move at once and answers it, from 1.17 (handleMoveVehicle, m_horse)', async () => {
+      // The server moves the horse the bot rides (vehicle_move) and the client answers where it put it
+      async function serverMovesHorse (saddled) {
         const { manual, client, vehicle, runTicks } = await ridingManualBot()
         try {
+          // AbstractHorse's flags, tame (2) and saddled (4), at the version's index
+          const v = manual.registry.version
           vehicle.metadata = []
-          vehicle.metadata[17] = 6 // tame and saddled: the rider controls it
+          vehicle.metadata[v['<']('1.14') ? 13 : v['<']('1.15') ? 15 : v['<']('1.17') ? 16 : 17] = saddled ? 6 : 2
           vehicle.position.set(8.5, pos.y + 1, 8.5)
           runTicks(1)
           await sleep(100)
@@ -2151,16 +2154,27 @@ for (const supportedVersion of mineflayer.testedVersions) {
           client.on('vehicle_move', packet => answers.push(packet))
           client.write('vehicle_move', { x: 9.5, y: pos.y + 1, z: 8.5, yaw: -90, pitch: 0 })
           await sleep(100)
-          if (manual.registry.version['>=']('1.17')) {
-            assert.strictEqual(vehicle.position.x, 9.5)
-            assert.strictEqual(answers[0]?.x, 9.5)
-            assert.strictEqual(answers[0]?.yaw, -90)
-          } else {
-            assert.strictEqual(answers.length, 0)
-          }
+          return { x: vehicle.position.x, answers }
         } finally {
           manual.end()
         }
+      }
+
+      it('the rider of a saddled horse takes its server move at once and answers it, from 1.9 (handleMoveVehicle, m_horse on 1.15.2)', async () => {
+        const { x, answers } = await serverMovesHorse(true)
+        if (require('minecraft-data')(supportedVersion).version['>=']('1.9')) {
+          assert.strictEqual(x, 9.5)
+          assert.strictEqual(answers[0]?.x, 9.5)
+          assert.strictEqual(answers[0]?.yaw, -90)
+        } else {
+          assert.strictEqual(answers.length, 0)
+        }
+      })
+
+      it('the first passenger controls a horse without a saddle too before 1.19 (AbstractHorse.getControllingPassenger)', async () => {
+        const v = require('minecraft-data')(supportedVersion).version
+        const { answers } = await serverMovesHorse(false)
+        assert.strictEqual(answers.length, v['>=']('1.9') && v['<']('1.19') ? 1 : 0)
       })
 
       it('a saddled horse its rider controls still takes a teleport from 1.21.2 (handleTeleportEntity, m_horse)', async function () {
