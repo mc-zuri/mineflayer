@@ -927,6 +927,28 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the server\'s swimming flag and pose apply to the bot (ClientPacketListener.handleSetEntityData)', async function () {
+        // (the pose is entity data from 1.14, swimming from 1.13)
+        const data = require('minecraft-data')(supportedVersion)
+        if (!data.isNewerOrEqualTo('1.14')) return this.skip()
+        const byName = data.supportFeature('mcDataHasEntityMetadata')
+        const poseType = byName ? 'pose' : data.supportFeature('entityMetadataHasLong') ? 19 : 18
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          const update = once(manual, 'entityUpdate')
+          client.write('entity_metadata', {
+            entityId: manual.entity.id,
+            metadata: [{ key: 0, type: byName ? 'byte' : 0, value: 0x10 }, { key: 6, type: poseType, value: 3 }]
+          })
+          await update
+          assert.strictEqual(manual.entity.swimming, true)
+          assert.strictEqual(manual.entity.pose, 3)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the bot flies when the abilities packet says so (ClientPacketListener.handlePlayerAbilities)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
