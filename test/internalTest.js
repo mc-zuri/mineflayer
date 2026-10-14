@@ -908,10 +908,15 @@ for (const supportedVersion of mineflayer.testedVersions) {
           client.write('block_action', { location: { x: -1, y: pos.y + 1, z: pos.z }, byte1: 0, byte2: 5, blockId: manual.registry.blocksByName.piston.id })
           await event
           written.length = 0
+          const sent = []
+          client.on('position', packet => sent.push(packet.x))
           runTicks(1)
           assert.strictEqual(manual.entity.position.x, 0.810000011920929)
           assert.strictEqual(manual.entity.onGround, false)
-          assert.deepStrictEqual(written.filter(p => p.name === 'position'), [])
+          await sleep(50)
+          // the push goes out the tick after; from 26.3 the client sends its changes once the pistons ticked
+          // (Minecraft.tick: LocalPlayer.sendChanges), the push with them (the recorder's 26.3 n_piston_push)
+          assert.deepStrictEqual(sent, registry.version['>=']('26.3') ? [0.810000011920929] : [])
         } finally {
           manual.end()
         }
@@ -2686,8 +2691,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const look = once(client, 'look')
           runTicks(1)
           const [packet] = await look
-          // the look goes as held, 112 degrees off the boat; then the boat keeps its rider within 105 degrees
-          assert.strictEqual(packet.yaw, 270)
+          // the look goes as held, 112 degrees off the boat; then the boat keeps its rider within 105 degrees. From 26.3 the
+          // client sends its look once the boat turned it (Minecraft.tick: LocalPlayer.sendChanges), within the 105
+          assert.strictEqual(packet.yaw, registry.version['>=']('26.3') ? Number(manual.entity.yawDegrees) : 270)
           const boatYaw = Number(vehicle.yawDegrees)
           const relative = ((Number(manual.entity.yawDegrees) - boatYaw) % 360 + 540) % 360 - 180
           assert.ok(Math.abs(relative) <= 105.0001, `rider ${Number(manual.entity.yawDegrees)} boat ${boatYaw}`)
