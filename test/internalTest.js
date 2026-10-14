@@ -1124,6 +1124,26 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot put to bed before 1.14 lies toward its head (Player.startSleepInBed)', async function () {
+        if (version['>=']('1.14')) return this.skip() // the use_bed packet
+        const { manual, client } = await standingManualBot()
+        try {
+          const bed = vec3(3, pos.y + 1, 1)
+          const chunk = bot.test.buildChunk()
+          chunk.setBlockType(pos, goldId)
+          chunk.setBlockType(bed, registry.blocksByName.bed.id)
+          chunk.setBlockData(bed, 3) // facing east
+          client.write('map_chunk', generateChunkPacket(chunk))
+          await once(manual, 'chunkColumnLoad')
+          const slept = once(manual, 'sleep')
+          client.write('bed', { entityId: manual.entity.id, location: bed })
+          await slept
+          assert.deepStrictEqual(manual.entity.position, vec3(3.9000000953674316, pos.y + 1.6875, 1.5))
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
