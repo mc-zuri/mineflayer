@@ -943,11 +943,12 @@ for (const supportedVersion of mineflayer.testedVersions) {
           manual.end()
         }
       })
+
       it('a rocket attached to the gliding bot boosts it until the server removes it (FireworkRocketEntity.tick)', async function () {
         const itemRegistry = require('minecraft-data')(supportedVersion)
         const byName = itemRegistry.supportFeature('mcDataHasEntityMetadata')
-        // (the attachment's metadata entry: by name with minecraft-data's metadata keys, else 1.11 - 1.13's varint 7)
-        if (!itemRegistry.itemsByName.elytra || (!byName && !itemRegistry.supportFeature('fireworkMetadataVarInt7'))) return this.skip()
+        // (the attachment's metadata entry by name, with minecraft-data's metadata keys)
+        if (!itemRegistry.itemsByName.elytra || !byName) return this.skip()
         const { manual, client, runTicks } = await fallingWithElytra()
         try {
           manual.setControlState('jump', true)
@@ -955,7 +956,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           manual.setControlState('jump', false)
           manual.look(0, Math.PI / 2, true) // straight up, staying over the one loaded chunk
           // the server's glide flag (shared flag 0x80, a signed byte), which starts the glide before 1.15
-          client.write('entity_metadata', { entityId: manual.entity.id, metadata: [{ key: 0, type: byName ? 'byte' : 0, value: -128 }] })
+          client.write('entity_metadata', { entityId: manual.entity.id, metadata: [{ key: 0, type: 'byte', value: -128 }] })
           const rocketType = itemRegistry.entitiesByName.firework_rocket ?? itemRegistry.entitiesByName.fireworks_rocket
           const used = once(manual, 'usedFirework')
           client.write('spawn_entity', {
@@ -974,9 +975,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
             velocityY: 0,
             velocityZ: 0
           })
-          const attached = byName
-            ? { key: rocketType.metadataKeys.indexOf('attached_to_target'), type: 'optional_unsigned_int', value: manual.entity.id + 1 }
-            : { key: 7, type: 1, value: manual.entity.id }
+          const attached = { key: rocketType.metadataKeys.indexOf('attached_to_target'), type: 'optional_unsigned_int', value: manual.entity.id + 1 }
           client.write('entity_metadata', { entityId: 99, metadata: [attached] })
           await used
           assert.strictEqual(manual.fireworkRockets, 1)
@@ -989,6 +988,33 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const speed = manual.entity.velocity.y
           runTicks(1)
           assert.ok(manual.entity.velocity.y < speed, 'no boost once the rocket is gone')
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('before 1.14 a rocket naming entity 0 attaches to nothing (EntityFireworkRocket.wasShotByEntity: id > 0)', async function () {
+        const itemRegistry = require('minecraft-data')(supportedVersion)
+        if (!itemRegistry.supportFeature('fireworkMetadataVarInt7')) return this.skip() // 1.11 - 1.13
+        const { manual, client } = await standingManualBot()
+        try {
+          assert.strictEqual(manual.entity.id, 0)
+          client.write('spawn_entity', {
+            entityId: 99,
+            objectUUID: '00112233-4455-6677-8899-aabbccddeeff',
+            type: itemRegistry.entitiesByName.fireworks_rocket.id,
+            x: 1.5,
+            y: pos.y + 1,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            objectData: 0,
+            velocity: { x: 0, y: 0, z: 0 }
+          })
+          const updated = once(manual, 'entityUpdate')
+          client.write('entity_metadata', { entityId: 99, metadata: [{ key: 7, type: 1, value: 0 }] })
+          await updated
+          assert.strictEqual(manual.fireworkRockets, 0)
         } finally {
           manual.end()
         }
