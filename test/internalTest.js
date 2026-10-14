@@ -1839,6 +1839,27 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       }
 
+      it('a camel seats its driver half a block forward, on its body anchor (Camel.getPassengerAttachmentPoint, v_camel_walk t1)', async function () {
+        if (!require('minecraft-data')(supportedVersion).version['>=']('1.20.2')) return this.skip()
+        const { manual, vehicle, runTicks } = await ridingManualBot('camel')
+        try {
+          vehicle.height = 2.375
+          // standing on the gold block (the camel the driver steers moves itself, so it must stand)
+          vehicle.position.set(pos.x + 0.5, pos.y + 1, pos.z + 0.5)
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          runTicks(2) // the first turns the look sent to the east
+          // (2.375F - 0.375F) - 0.6F before 1.20.5, - 0.6 since; 0.5 forward, turned to the east
+          const seat = manual.registry.isNewerOrEqualTo('1.20.5') ? 2 - 0.6 : 2 + Math.fround(-0.6)
+          assert.strictEqual(manual.entity.position.x, vehicle.position.x + 0.5)
+          assert.strictEqual(manual.entity.position.y, vehicle.position.y + seat)
+          // (the turn's cosine is a float near 0: Mth's or JOML's)
+          assert.ok(Math.abs(manual.entity.position.z - vehicle.position.z) < 1e-12)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
