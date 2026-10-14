@@ -1909,6 +1909,27 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // v_strider_on_lava t4: the strider's walk animation (speed, position) the client had and the seat it gave
+      const STRIDER_SEATS = {
+        '1.20.4': [0.7470652, 3.507784, 101.63132345676422],
+        '1.20.6': [0.7764138579368591, 4.284197807312012, 101.65938724726439],
+        '1.21.11': [0.7155282, 2.8046792, 101.5709481496364]
+      }
+      it('a strider seats its rider bobbing with its walk animation (Strider.getPassengerAttachmentPoint, v_strider_on_lava t4)', async function () {
+        const seat = STRIDER_SEATS[supportedVersion]
+        if (!seat) return this.skip() // the recordings' versions
+        const { manual, vehicle, runTicks } = await ridingManualBot('strider')
+        try {
+          vehicle.height = 1.7
+          vehicle.position.set(1.5, 100.5, 1.5)
+          vehicle.walkAnimation = { speed: Math.fround(seat[0]), position: Math.fround(seat[1]) }
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.y, seat[2])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
