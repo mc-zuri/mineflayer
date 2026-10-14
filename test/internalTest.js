@@ -819,6 +819,30 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a teleport after a death is answered at once (ClientPacketListener.handleMovePlayer)', async () => {
+        const { manual, client } = await standingManualBot()
+        try {
+          const died = once(manual, 'death')
+          client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+          await died
+          const answer = once(client, 'position_look')
+          const sentAt = Date.now()
+          client.write('position', {
+            x: 1.5,
+            y: pos.y + 1,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 2
+          })
+          await answer
+          assert.ok(Date.now() - sentAt < 1000, `answered after ${Date.now() - sentAt} ms`)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
