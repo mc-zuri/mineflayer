@@ -613,7 +613,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
             pitch: 0,
             yaw: 0,
             teleportId: 2,
-            flags: bot.supportFeature('positionPacketHasBitflags') ? { x: true, y: true, z: true, yaw: false, pitch: false } : 7
+            // (1.21.2+ keep the motion by its own delta flags)
+            flags: bot.supportFeature('positionPacketHasBitflags') ? { x: true, y: true, z: true, yaw: false, pitch: false, dx: true, dy: true, dz: true } : 7
           }
 
           // Set a known velocity *before* the relative update
@@ -818,6 +819,42 @@ for (const supportedVersion of mineflayer.testedVersions) {
           assert.strictEqual(manual.entity.position.x, 0.810000011920929)
           assert.strictEqual(manual.entity.onGround, false)
           assert.deepStrictEqual(written.filter(p => p.name === 'position'), [])
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a teleport keeps the motion by its delta flags and adds its deltas, 1.21.2+ (PositionMoveRotation.calculateAbsolute)', async function () {
+        if (!require('minecraft-data')(supportedVersion).isNewerOrEqualTo('1.21.2')) return this.skip()
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(1)
+          const falling = manual.entity.velocity.y
+          assert.notStrictEqual(falling, 0)
+          // the recorder's m_cooldown: an ender pearl teleport sets the position absolutely and keeps the motion
+          // (relative dx, dy, dz with zero deltas)
+          const teleport = (teleportId, deltas, dx, dy, dz) => {
+            const moved = once(manual, 'forcedMove')
+            client.write('position', {
+              teleportId,
+              x: 1.25,
+              y: pos.y + 1.5,
+              z: 1.5,
+              dx,
+              dy,
+              dz,
+              yaw: 0,
+              pitch: 0,
+              flags: { x: false, y: false, z: false, yaw: true, pitch: true, dx: deltas, dy: deltas, dz: deltas, yawDelta: true }
+            })
+            return moved
+          }
+          await teleport(2, true, 0, 0, 0)
+          assert.deepStrictEqual(manual.entity.position, vec3(1.25, pos.y + 1.5, 1.5))
+          assert.strictEqual(manual.entity.velocity.y, falling)
+          // without the delta flags the motion is the packet's own
+          await teleport(3, false, 0.25, 0.5, -0.125)
+          assert.deepStrictEqual(manual.entity.velocity, vec3(0.25, 0.5, -0.125))
         } finally {
           manual.end()
         }
