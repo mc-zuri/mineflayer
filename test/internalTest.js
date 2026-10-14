@@ -1875,6 +1875,22 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a rider sits where it steered its pig, not where the server last showed it (v_pig_carrot_on_a_stick t2)', async () => {
+        const { manual, vehicle, runTicks } = await ridingManualBot('pig')
+        try {
+          manual.quickBarSlot = 0
+          manual.inventory.slots[manual.QUICK_BAR_START] = { name: 'carrot_on_a_stick' }
+          vehicle.height = 0.9
+          vehicle.position.set(1.5, pos.y + 1, 1.5)
+          // where the client showed the pig before the rider took it over
+          vehicle.interpolatedPosition = vehicle.position.clone().set(1.25, pos.y + 1, 1.5)
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.x, vehicle.position.x)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
