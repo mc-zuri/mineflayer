@@ -1400,6 +1400,18 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a horse is a horse before 1.11 too, where minecraft-data names it EntityHorse (m_horse)', async function () {
+        if (!require('minecraft-data')(supportedVersion).entitiesByName.EntityHorse) return this.skip()
+        const { manual, vehicle, runTicks } = await ridingManualBot('EntityHorse')
+        try {
+          vehicle.position.set(0.5, 101, 0.5)
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.y, 101.8500000178814)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
