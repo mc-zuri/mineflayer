@@ -1106,6 +1106,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a respawned bot is a new player that has sent nothing (ClientPacketListener.handleRespawn)', async function () {
+        if (!registry.supportFeature('spawnRespawnWorldDataField')) return this.skip() // the test builds the respawn from the login
+        const { manual, client } = await standingManualBot()
+        try {
+          manual.look(1, 0.5, true)
+          manual.entity.velocity.set(0, -0.5, 0)
+          const respawned = once(manual, 'respawn')
+          const worldState = { ...bot.test.generateLoginPacket().worldState, death: undefined }
+          client.write('respawn', { worldState, copyMetadata: 0 })
+          await respawned
+          assert.strictEqual(manual.entity.yawDegrees.valueOf(), -180)
+          assert.strictEqual(manual.entity.velocity.y, 0)
+          assert.deepStrictEqual([manual._lastSent.x, manual._lastSent.y, manual._lastSent.z, manual._lastSent.yaw], [0, 0, 0, 0])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
