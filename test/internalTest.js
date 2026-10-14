@@ -2083,6 +2083,25 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // MultiPlayerGameMode.releaseUsingItem (PlayerControllerMP before 1.13): RELEASE_USE_ITEM, BlockPos.ORIGIN,
+      // Direction.DOWN on every version
+      it('releases an item facing down', (done) => {
+        server.on('playerJoin', (client) => {
+          client.write('login', bot.test.generateLoginPacket())
+        })
+        bot.once('login', () => {
+          const written = []
+          const write = bot._client.write.bind(bot._client)
+          bot._client.write = (name, params) => written.push({ name, params })
+          bot.deactivateItem()
+          bot._client.write = write
+          assert.deepStrictEqual(written.map(p => p.name), ['block_dig'])
+          const { status, location, face } = written[0].params
+          assert.deepStrictEqual([status, location.x, location.y, location.z, face], [5, 0, 0, 0, 0])
+          done()
+        })
+      })
+
       // LivingEntity.updatingUsingItem goes on using an item the server only resends (q_crossbow_load_walk: the
       // charged crossbow's set_slot): only a change of the held item's type or count stops it
       it('keeps using the held item when the server resends it unchanged', (done) => {
