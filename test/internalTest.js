@@ -1842,6 +1842,37 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // v_horse_jump_full_charge: the rider holds jump for 10 ticks (LocalPlayer.aiStep's jumpRidingScale reaches 0.9F)
+      // and lets go: it tells the server START_RIDING_JUMP with 90, and its horse (JUMP_STRENGTH 0.7) jumps at its next
+      // tick, its motion up then as recorded (in float from 1.20.5)
+      it('a saddled horse jumps the tick after its rider lets go of a charged jump (v_horse_jump_full_charge)', async function () {
+        const version = registry.version
+        if (!version['>=']('1.9')) return this.skip() // (set_passengers)
+        const { manual, vehicle, written, runTicks } = await ridingManualBot('horse')
+        try {
+          vehicle.metadata = []
+          if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+          else vehicle.metadata[version['<']('1.10') ? 12 : version['<']('1.14') ? 13 : version['<']('1.15') ? 15 : version['<']('1.17') ? 16 : 17] = 0x02 | 0x04
+          vehicle.attributes = { 'horse.jump_strength': { value: 0.7, modifiers: [] } }
+          const actions = []
+          const write = manual._client.write.bind(manual._client)
+          manual._client.write = (name, params) => {
+            if (name === 'entity_action') actions.push(params)
+            write(name, params)
+          }
+          manual.setControlState('jump', true)
+          runTicks(10)
+          manual.setControlState('jump', false)
+          runTicks(1)
+          assert.deepStrictEqual(actions.map(a => [a.actionId, a.jumpBoost]), [['start_riding_jump', 90]])
+          runTicks(1)
+          assert.strictEqual(vehicle.velocity.y, version['>=']('1.20.5') ? 0.6076000001430509 : 0.6076000118255616)
+          assert.ok(written.length > 0)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a passenger keeps its own velocity, gravity after Entity.rideTick zeroes it (m_horse)', async () => {
         const { manual, vehicle, runTicks } = await ridingManualBot()
         try {
