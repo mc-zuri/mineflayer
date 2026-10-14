@@ -1964,6 +1964,27 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a passenger moving under 1E-7 into a block is not stopped, as Mth.equal (v_minecart_look_around t54)', async function () {
+        if (!require('minecraft-data')(supportedVersion).version['>=']('1.18.2')) return this.skip()
+        const { manual, client, runTicks } = await ridingManualBot('minecart')
+        try {
+          // facing north (180), the walk's x is Mth.sin's float residue of a half turn, against the gold block
+          manual.entity.yawDegrees = new JavaFloat(180)
+          manual.entity.yaw = conv.fromNotchianYaw(180)
+          manual.setControlState('forward', true)
+          runTicks(1)
+          await sleep(100)
+          manual.entity.position.set(pos.x - 0.3, pos.y, pos.z + 0.5)
+          const look = once(client, 'look')
+          runTicks(1)
+          const [packet] = await look
+          assert.notStrictEqual(manual.entity.velocity.x, 0)
+          if (manual.registry.isNewerOrEqualTo('1.21.3')) assert.strictEqual(packet.flags.hasHorizontalCollision, false)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
