@@ -362,9 +362,8 @@ describe('mineflayer_horse_physics 1.17.1v', function () {
         assert.ok(Math.abs(bot.entity.position.x - horse.position.x) < 0.01)
         assert.ok(Math.abs(bot.entity.position.z - horse.position.z) < 0.01)
         assert.ok(Math.abs(bot.entity.position.y - (horse.position.y + 0.85)) < 0.01)
-        assert.strictEqual(bot.entity.velocity.x, horse.velocity.x)
-        assert.strictEqual(bot.entity.velocity.y, horse.velocity.y)
-        assert.strictEqual(bot.entity.velocity.z, horse.velocity.z)
+        // the passenger keeps its own velocity: gravity after Entity.rideTick zeroed it
+        assert.deepStrictEqual(bot.entity.velocity.toArray(), [0, -0.0784000015258789, 0])
         assert.strictEqual(moveCount, 1)
         assert.strictEqual(moveOldPos.y, 72)
         await once(bot, 'physicsTickBegin')

@@ -243,9 +243,10 @@ for (const supportedVersion of mineflayer.testedVersions) {
             assert.strictEqual(bot.entity.position.x, 1)
             assert.strictEqual(bot.entity.position.y, 64)
             assert.strictEqual(bot.entity.position.z, 2)
-            assert.strictEqual(bot.entity.velocity.x, 0.25)
-            assert.strictEqual(bot.entity.velocity.y, 0.1)
-            assert.strictEqual(bot.entity.velocity.z, -0.5)
+            // the passenger keeps its own velocity: gravity after Entity.rideTick zeroed it
+            assert.strictEqual(bot.entity.velocity.x, 0)
+            assert.strictEqual(bot.entity.velocity.y, -0.0784000015258789)
+            assert.strictEqual(bot.entity.velocity.z, 0)
             // the passenger itself is not on the ground (Entity.rideTick)
             assert.strictEqual(bot.entity.onGround, false)
             done()

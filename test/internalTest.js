@@ -1328,6 +1328,17 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a passenger keeps its own velocity, gravity after Entity.rideTick zeroes it (m_horse)', async () => {
+        const { manual, vehicle, runTicks } = await ridingManualBot()
+        try {
+          vehicle.velocity.set(0.25, 0.1, -0.5)
+          runTicks(1)
+          assert.deepStrictEqual(manual.entity.velocity.toArray(), [0, -0.0784000015258789, 0])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
