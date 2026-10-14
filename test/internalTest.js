@@ -1110,6 +1110,22 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('the server\'s motion is its 1/8000 units divided by 8000 (ClientPacketListener.handleSetEntityMotion)', async function () {
+        if (require('minecraft-data')(supportedVersion).supportFeature('entityVelocityIsLpVec3')) return this.skip()
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          // m_more_explosion's knockback: -1759 / 8000.0 is -0.219875, -1759 * (1 / 8000) an ulp past it
+          const moved = once(manual, 'entityVelocity')
+          client.write('entity_velocity', { entityId: manual.entity.id, velocity: { x: -1759, y: 323, z: 0 }, velocityX: -1759, velocityY: 323, velocityZ: 0 })
+          await moved
+          assert.strictEqual(manual.entity.velocity.x, -0.219875)
+          assert.strictEqual(manual.entity.velocity.y, 0.040375)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the bot flies when the abilities packet says so (ClientPacketListener.handlePlayerAbilities)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
