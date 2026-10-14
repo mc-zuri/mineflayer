@@ -72,6 +72,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
 
     function loginBot (client) {
       client.write('login', bot.test.generateLoginPacket())
+      // like a vanilla server (PlayerList.placeNewPlayer), tell a 1.21.4+ client its level's chunks are coming: it does
+      // not tick before (LocalPlayer.tick: hasClientLoaded)
+      if (registry.version['>=']('1.21.4')) client.write('game_state_change', { reason: 'level_chunks_load_start', gameMode: 0 })
       client.write('position', {
         x: 0,
         y: 64,
