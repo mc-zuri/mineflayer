@@ -145,13 +145,13 @@ describe('mineflayer_vehicle_physics 1.17.1v', function () {
     server = mc.createServer({
       'online-mode': false,
       version: supportedVersion,
-      port: 25569
+      port: 0 // any free port
     })
     server.on('listening', () => {
       bot = mineflayer.createBot({
         username: 'player',
         version: supportedVersion,
-        port: 25569
+        port: server.socketServer.address().port
       })
       bot.test = {}
       bot.test.generateLoginPacket = () => {
@@ -690,13 +690,13 @@ describe('mineflayer_vehicle_physics legacy boat behavior', function () {
     server = mc.createServer({
       'online-mode': false,
       version: supportedVersion,
-      port: 25570
+      port: 0 // any free port
     })
     server.on('listening', () => {
       bot = mineflayer.createBot({
         username: 'player',
         version: supportedVersion,
-        port: 25570
+        port: server.socketServer.address().port
       })
       bot.test = {}
       bot.test.generateLoginPacket = () => {
