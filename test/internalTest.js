@@ -1596,6 +1596,39 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // v_pig_carrot_on_a_stick: the pig the rider steers with a carrot on a stick, mid-ride east (yaw 270) as each
+      // recording has it (before 1.17 with the box the client kept), moves itself before its rider's tick
+      // (LivingEntity.travelRidden) and is told to the server where it went
+      const PIG_RIDES = {
+        '1.12.2': { x: 0.8716506525753676, vx: 0.06106414182178433, box: [0.4216506644962964, 1.3216506406544386], next: 0.9877434988947291 },
+        '1.20.4': { x: 1.0075869751633637, vx: 0.06358696695722502, next: 1.126152201291328 },
+        '1.21.11': { x: 1.0145765959604338, vx: 0.06484047432160546, next: 1.1356670687919233 }
+      }
+      it('a pig its rider steers moves itself first and is told to the server (Pig.travelRidden, v_pig_carrot_on_a_stick)', async function () {
+        const ride = PIG_RIDES[supportedVersion]
+        if (!ride) return this.skip() // the recordings' versions
+        const { manual, client, vehicle, runTicks } = await ridingManualBot('pig')
+        try {
+          manual.quickBarSlot = 0
+          manual.inventory.slots[manual.QUICK_BAR_START] = { name: 'carrot_on_a_stick' }
+          // on the gold block (y 65): the pig's feet at its top
+          vehicle.position.set(ride.x, pos.y + 1, 1.5)
+          vehicle.velocity.set(ride.vx, -0.0784000015258789, 0)
+          vehicle.yaw = conv.fromNotchianYaw(270)
+          if (ride.box) vehicle.box = [ride.box[0], pos.y + 1, 1.5 - Math.fround(0.45), ride.box[1], pos.y + 1 + Math.fround(0.9), 1.5 + Math.fround(0.45)]
+          manual.entity.yawDegrees = 270
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          const moved = once(client, 'vehicle_move')
+          runTicks(1)
+          const [packet] = await moved
+          assert.strictEqual(vehicle.position.x, ride.next)
+          assert.strictEqual(packet.x, ride.next)
+          assert.strictEqual(packet.yaw, 270)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a ridden horse moves turned as its rider, half its pitch (AbstractHorse.travel, m_horse)', async function () {
         const { manual, client, runTicks } = await ridingManualBot()
         try {
