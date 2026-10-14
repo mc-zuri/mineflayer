@@ -1798,6 +1798,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a passenger walks by its input in its own travel, as LivingEntity.travel (v_boat_forward_left t1)', async function () {
+        const v = require('minecraft-data')(supportedVersion).version
+        // recorded on 1.12.2, 1.20.4 and 1.21.5 - 1.21.11 (1.14 - 1.16 normalize with a float square root)
+        if (v['>=']('1.14') && v['<']('1.17')) return this.skip()
+        const { manual, runTicks } = await ridingManualBot()
+        try {
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          manual.setControlState('forward', true)
+          manual.setControlState('left', true)
+          runTicks(1)
+          const speed = v['>=']('1.21.5') ? 0.012869342195781208 : v['>=']('1.14') ? 0.012869343500835182 : 0.012869343364837138
+          assert.deepStrictEqual(manual.entity.velocity.toArray(), [speed, -0.0784000015258789, -speed])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
