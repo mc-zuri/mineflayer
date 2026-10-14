@@ -155,6 +155,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
       : JSON.stringify({ text })
   }
 
+  // the packet a teleport is answered with: from 26.3 the confirm carries the position, before a position_look follows
+  const teleportAnswer = registry.version['>=']('26.3') ? 'teleport_confirm' : 'position_look'
+
   // an entity's relative move as the version writes it: from 26.3 a VecDelta, one delta or the `steps` of several ticks
   function relMovePacket (entityId, { dX = 0, dY = 0, dZ = 0, onGround = false, steps } = {}) {
     if (!registry.version['>=']('26.3')) return { entityId, dX, dY, dZ, onGround }
@@ -599,7 +602,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           bot.entity.isCollidedHorizontally = true
 
           const p1 = once(bot, 'forcedMove')
-          const response = once(client, 'position_look')
+          const response = once(client, teleportAnswer)
           client.write('position', absolutePositionPacket)
           await p1
           const [responsePacket] = await response
@@ -607,7 +610,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           // Assertions for absolute teleport
           assert.strictEqual(bot.entity.velocity.y, 0, 'Velocity should be reset to 0 after an absolute teleport')
           assert.deepStrictEqual(bot.entity.position, vec3(1.5, 80, 1.5), 'Position should be set absolutely')
-          if (bot.registry.isNewerOrEqualTo('1.21.3')) {
+          if (bot.registry.isNewerOrEqualTo('1.21.3') && teleportAnswer === 'position_look') {
             // ClientPacketListener.handleMovePlayer answers with ServerboundMovePlayerPacket.PosRot(..., false, false)
             assert.strictEqual(responsePacket.flags.hasHorizontalCollision, false,
               'Teleport response is not on the ground and has no horizontal collision')
@@ -687,7 +690,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           await once(manual, 'chunkColumnLoad')
           // 1.9 - 1.13 tick a player from the tick after its chunk loaded
           if (manual.registry.version['>=']('1.9') && manual.registry.version['<']('1.14')) manual.physicsTick()
-          const reply = once(client, 'position_look')
+          const reply = once(client, teleportAnswer)
           client.write('position', {
             x: 1.5,
             y: 80,
@@ -736,7 +739,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         await once(manual, 'chunkColumnLoad')
         // 1.9 - 1.13 tick a player from the tick after its chunk loaded
         if (manual.registry.version['>=']('1.9') && manual.registry.version['<']('1.14')) manual.physicsTick()
-        const reply = once(client, 'position_look')
+        const reply = once(client, teleportAnswer)
         client.write('position', {
           x: 1.5,
           y: pos.y + 1,
@@ -779,7 +782,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
 
       // The server's teleport, answered by the bot
       async function teleport (manual, client, { x = 1.5, y = pos.y + 1, z = 1.5 } = {}) {
-        const reply = once(client, 'position_look')
+        const reply = once(client, teleportAnswer)
         client.write('position', {
           x,
           y,
@@ -886,7 +889,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           // the recorder's n_piston_push: the bot stands at x 0.5 and a piston west of it (x -1) extends east into its
           // cell; the head sweeps to its far face plus 0.01 after the bot moved and sent its position
           client.write('block_change', { location: { x: 0, y: pos.y, z: pos.z }, type: manual.registry.blocksByName.gold_block.defaultState ?? goldId << 4 })
-          const answer = once(client, 'position_look')
+          const answer = once(client, teleportAnswer)
           client.write('position', {
             x: 0.5,
             y: pos.y + 1,
@@ -964,7 +967,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         try {
           runTicks(5)
           written.length = 0
-          const answer = once(client, 'position_look')
+          const answer = once(client, teleportAnswer)
           client.write('position', {
             x: 3.5,
             y: pos.y + 1,
@@ -976,11 +979,18 @@ for (const supportedVersion of mineflayer.testedVersions) {
           })
           const [packet] = await answer
           assert.strictEqual(packet.x, 3.5)
-          assert.strictEqual(packet.onGround ?? packet.flags.onGround, false)
-          // 1.21.2 - 1.21.3 answer before confirming the teleport
+          if (teleportAnswer === 'position_look') assert.strictEqual(packet.onGround ?? packet.flags.onGround, false)
+          // 1.21.2 - 1.21.3 answer before confirming the teleport; from 26.3 the confirm is the answer (the recorder's
+          // b_land_3_farmland: teleport_confirm with the player's x, y, z, yaw and pitch, nothing after it)
           const answerFirst = manual.registry.version['>=']('1.21.2') && manual.registry.version['<']('1.21.4')
-          const expected = !manual.supportFeature('teleportUsesOwnPacket') ? ['position_look'] : answerFirst ? ['position_look', 'teleport_confirm'] : ['teleport_confirm', 'position_look']
+          const expected = !manual.supportFeature('teleportUsesOwnPacket')
+            ? ['position_look']
+            : teleportAnswer === 'teleport_confirm' ? ['teleport_confirm'] : answerFirst ? ['position_look', 'teleport_confirm'] : ['teleport_confirm', 'position_look']
+          await sleep(50)
           assert.deepStrictEqual(written.map(p => p.name), expected)
+          if (teleportAnswer === 'teleport_confirm') {
+            assert.deepStrictEqual([packet.teleportId, packet.x, packet.y, packet.z, packet.yaw, packet.pitch], [2, 3.5, pos.y + 1, 1.5, 0, 0])
+          }
           // what the bot last sent is still the spot it stood on, so its next tick sends the new position
           written.length = 0
           runTicks(1)
@@ -1112,7 +1122,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const died = once(manual, 'death')
           client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
           await died
-          const answer = once(client, 'position_look')
+          const answer = once(client, teleportAnswer)
           const sentAt = Date.now()
           client.write('position', {
             x: 1.5,
@@ -1133,7 +1143,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
       it('a bot outside the loaded chunks still ends its client tick (ServerboundClientTickEndPacket)', async () => {
         const { manual, client, written, runTicks } = await standingManualBot()
         try {
-          const answer = once(client, 'position_look')
+          const answer = once(client, teleportAnswer)
           client.write('position', {
             x: 1000.5,
             y: pos.y + 1,
@@ -1488,7 +1498,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const floor = bot.test.buildChunk()
           for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) floor.setBlockType(vec3(x, pos.y, z), goldId)
           client.write('map_chunk', generateChunkPacket(floor))
-          const teleported = once(client, 'position_look')
+          const teleported = once(client, teleportAnswer)
           client.write('position', { x: 0.5, y: pos.y + 1, z: 1.5, pitch: 0, yaw: 0, flags: 0, teleportId: 2 })
           await teleported
           runTicks(2) // lands on the floor
@@ -1609,7 +1619,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         const equipped = once(manual.inventory, 'updateSlot:6')
         client.write('set_slot', { windowId: 0, stateId: 0, slot: 6, item: Item.toNotch(new Item(itemRegistry.itemsByName.elytra.id, 1)) })
         await equipped
-        const reply = once(client, 'position_look')
+        const reply = once(client, teleportAnswer)
         client.write('position', {
           x: 1.5,
           y: pos.y + 20,
@@ -1821,7 +1831,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         Object.assign(vehicle, { name, height: 1.6, width: 1.3964844, onGround: true })
         vehicle.position.set(1.5, pos.y + 1, 1.5)
         // ServerPlayer.startRiding teleports the player to its seat
-        const reply = once(client, 'position_look')
+        const reply = once(client, teleportAnswer)
         client.write('position', {
           x: 1.5,
           y: pos.y + 2,
@@ -2156,7 +2166,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         try {
           runTicks(1)
           const seat = manual.entity.position.clone()
-          const answer = once(client, 'position_look')
+          const answer = once(client, teleportAnswer)
           client.write('position', {
             x: 1,
             y: 0,
@@ -2619,7 +2629,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         try {
           runTicks(2)
           // the server turns the player to 270 degrees, not wrapped to -90
-          const reply = once(client, 'position_look')
+          const reply = once(client, teleportAnswer)
           client.write('position', {
             x: 0,
             y: 0,
