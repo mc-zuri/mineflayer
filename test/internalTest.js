@@ -1387,6 +1387,48 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // The standing bot seated in a boat the server spawned in the middle of the chunk (set_passengers).
+      async function ridingBoat () {
+        const standing = await standingManualBot()
+        const { manual, client } = standing
+        const boat = manual.registry.entitiesByName.oak_boat ?? manual.registry.entitiesByName.boat ?? manual.registry.entitiesByName.Boat
+        client.write('spawn_entity', {
+          entityId: 99,
+          objectUUID: '00112233-4455-6677-8899-aabbccddeeff',
+          type: boat.id,
+          x: 8.5,
+          y: pos.y + 1,
+          z: 8.5,
+          pitch: 0,
+          yaw: 0,
+          headPitch: 0,
+          objectData: 0,
+          velocity: { x: 0, y: 0, z: 0 }
+        })
+        const mounted = once(manual, 'mount')
+        client.write('set_passengers', { entityId: 99, passengers: [manual.entity.id] })
+        await mounted
+        return standing
+      }
+
+      it('a boat paddles by the keys of the tick before, first in the tick (Boat.tick before LocalPlayer.rideTick)', async function () {
+        if (!registry.isNewerOrEqualTo('1.9')) return this.skip() // the client steers its boat from 1.9
+        const { manual, client, written, runTicks } = await ridingBoat()
+        try {
+          const paddles = []
+          client.on('steer_boat', packet => paddles.push([packet.leftPaddle, packet.rightPaddle]))
+          manual.setControlState('forward', true)
+          const before = written.length
+          runTicks(2)
+          await sleep(100)
+          assert.deepStrictEqual(paddles, [[false, false], [true, true]])
+          assert.strictEqual(written[before].name, 'steer_boat')
+          assert.ok(written.slice(before).some(p => p.name === 'vehicle_move'))
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a move is sent past 0.03 blocks, from 1.18.2 past 2.0E-4 (LocalPlayer.sendPosition)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
