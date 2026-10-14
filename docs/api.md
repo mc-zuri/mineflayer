@@ -2290,7 +2290,9 @@ Open a block, for example a chest, returns a promise on the opening `Window`.
 
 #### bot.openEntity(entity)
 
-Open an entity with an inventory, for example a villager, returns a promise on the opening `Window`.
+Open an entity with an inventory, for example a villager, returns a promise on the opening `Window`. When the entity
+is the horse (or donkey, mule, llama, camel) the bot rides, the bot asks the server to open its inventory, as the
+vanilla client's inventory key does.
 
 - `entity` is the entity the bot will open
 

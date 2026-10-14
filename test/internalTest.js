@@ -1412,6 +1412,19 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a rider opens its horse inventory by asking the server (LocalPlayer.sendOpenInventory, m_horse)', async () => {
+        const { manual, client } = await ridingManualBot()
+        try {
+          const command = once(client, 'entity_action')
+          manual.openEntity(manual.vehicle).catch(() => {})
+          const [packet] = await command
+          assert.strictEqual(packet.entityId, manual.entity.id)
+          assert.strictEqual(packet.actionId, 'open_inventory')
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
