@@ -1292,6 +1292,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it("a teleport leaves a bot's jump delay alone (LivingEntity.noJumpDelay)", async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          manual.setControlState('jump', true)
+          runTicks(1)
+          assert.ok(manual.entity.velocity.y > 0)
+          // put back on the floor, it lands, and holding jump waits out the 10 ticks since its jump
+          await teleport(manual, client)
+          runTicks(2)
+          assert.ok(manual.entity.onGround)
+          runTicks(1)
+          assert.ok(manual.entity.velocity.y < 0, `${manual.entity.velocity.y}`)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a respawned bot moves off the ground until it lands (Entity.onGround)', async function () {
         const respawn = respawnPacket()
         if (!respawn) return this.skip()
