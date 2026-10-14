@@ -1036,6 +1036,22 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a sign\'s text goes to the side the bot writes (ServerboundSignUpdatePacket)', async function () {
+        if (!registry.version['>=']('1.20')) return this.skip() // a sign has two sides from 1.20
+        const { manual, client } = await standingManualBot()
+        try {
+          const sides = []
+          // isFrontText before 26.3, from 26.3 the side's name (slot)
+          client.on('update_sign', packet => sides.push(packet.slot ?? (packet.isFrontText ? 'front' : 'back')))
+          manual.updateSign(manual.blockAt(pos), 'front text', false)
+          manual.updateSign(manual.blockAt(pos), 'back text', true)
+          await sleep(100)
+          assert.deepStrictEqual(sides, ['front', 'back'])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('an entity\'s animations are told by each version\'s ids, from 26.3 its swing by a packet of its own (ClientPacketListener.handleAnimate)', async () => {
         const { manual, client } = await standingManualBot()
         try {
