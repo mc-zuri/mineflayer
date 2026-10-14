@@ -803,6 +803,22 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a dead bot moves and sends until its 20th tick removes it (LivingEntity.tickDeath)', async () => {
+        const { manual, client, written, runTicks } = await standingManualBot()
+        try {
+          const died = once(manual, 'death')
+          client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+          await died
+          runTicks(30)
+          // standing still it sends its position every 20 ticks (21 on 1.8): the 20th tick after its death is its last
+          const sent = written.filter(p => p.name === 'position').map(p => p.tick)
+          assert.deepStrictEqual(sent, manual.registry.isNewerOrEqualTo('1.9') ? [20] : [])
+          if (!manual.registry.isNewerOrEqualTo('1.9')) assert.deepStrictEqual(written.filter(p => p.name === 'flying').map(p => p.tick).at(-1), 20)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot landing tells the server it is on the ground (ServerboundMovePlayerPacket.StatusOnly)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
