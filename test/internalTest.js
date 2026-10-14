@@ -1036,6 +1036,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a dig is started and aborted, and an item use released, by the number of each player action (ServerboundPlayerActionPacket.Action)', async () => {
+        const { manual, client } = await standingManualBot()
+        try {
+          const statuses = []
+          client.on('block_dig', packet => statuses.push(packet.status))
+          const digging = manual.dig(manual.blockAt(pos), 'ignore').catch(err => err)
+          await sleep(50)
+          manual.stopDigging()
+          assert.strictEqual((await digging).message, 'Digging aborted')
+          manual.deactivateItem()
+          await sleep(100)
+          // START_DESTROY_BLOCK, ABORT_DESTROY_BLOCK, RELEASE_USE_ITEM: 26.3 put CHANGE_DESTROY_DIRECTION at 1
+          assert.deepStrictEqual(statuses, registry.version['>=']('26.3') ? [0, 2, 6] : [0, 1, 5])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a block use swings with a packet before 26.3, from 26.3 the server swings for it (Minecraft.startUseItem)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
@@ -3638,7 +3656,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           bot._client.write = write
           assert.deepStrictEqual(written.map(p => p.name), ['block_dig'])
           const { status, location, face } = written[0].params
-          assert.deepStrictEqual([status, location.x, location.y, location.z, face], [5, 0, 0, 0, 0])
+          // RELEASE_USE_ITEM: 6 from 26.3, which put CHANGE_DESTROY_DIRECTION at 1
+          assert.deepStrictEqual([status, location.x, location.y, location.z, face], [registry.version['>=']('26.3') ? 6 : 5, 0, 0, 0, 0])
           done()
         })
       })
