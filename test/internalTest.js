@@ -756,6 +756,41 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       }
 
+      it('shows a minecart the server moves where the vanilla client shows it, stepped after the bot', async function () {
+        if (!require('minecraft-data')(supportedVersion).version['>=']('1.9')) return this.skip() // no recording
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          // the recorder's v_minecart_push_forward: a minecart at x 2.5 the server moves by 1/4096 steps
+          const registry = manual.registry
+          const cart = registry.isOlderThan('1.14')
+            ? registry.entitiesArray.find(e => /^(minecart|MinecartRideable)$/.test(e.name) && e.type === 'object')
+            : registry.entitiesByName.minecart
+          const spawned = once(manual, 'entitySpawn')
+          client.write('spawn_entity', { entityId: 97, objectUUID: '00112233-4455-6677-8899-aabbccddeeff', type: cart.id, x: 2.5, y: 101.0625, z: 2077.5, pitch: 0, yaw: 0, headPitch: 0, objectData: 0, velocity: { x: 0, y: 0, z: 0 } })
+          const [minecart] = await spawned
+          // [relative move dX or null, the x the client showed after the tick] (1.12.2, 1.20.4, 1.21.11)
+          const recorded = registry.version['<']('1.20.2')
+            ? [[920, 2.544921875], [null, 2.58984375], [null, 2.634765625], [null, 2.6796875], [1830, 2.77802734375]]
+            : registry.version['<']('1.21.5')
+              ? [[32, 2.5015625], [null, 2.503125], [null, 2.5046874999999997], [80, 2.5092187499999996]]
+              : [[46, 2.5037434895833335], [null, 2.507486979166667], [null, 2.51123046875], [null, 2.51123046875], [64, 2.5164388020833335]]
+          let sent = 0
+          for (const [dX, x] of recorded) {
+            if (dX != null) {
+              const moved = once(manual._client, 'rel_entity_move')
+              client.write('rel_entity_move', { entityId: 97, dX, dY: 0, dZ: 0, onGround: false })
+              await moved
+              sent += dX
+            }
+            runTicks(1)
+            assert.strictEqual(minecart.interpolatedPosition.x, x)
+            assert.strictEqual(minecart.position.x, 2.5 + sent / 4096)
+          }
+        } finally {
+          manual.end()
+        }
+      })
+
       it('an extending piston head pushes the bot after its tick (PistonMovingBlockEntity.moveCollidedEntities)', async function () {
         if (!require('minecraft-data')(supportedVersion).blocksByName.observer) return this.skip() // 1.11+
         const { manual, client, written, runTicks } = await standingManualBot()

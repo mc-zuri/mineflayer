@@ -953,3 +953,10 @@ export interface Abilities {
   flyingSpeed: number
   walkingSpeed: number
 }
+
+declare module 'prismarine-entity' {
+  interface Entity {
+    /** Where the vanilla client shows an entity the bot does not control: interpolated toward entity.position each tick. */
+    interpolatedPosition?: Vec3
+  }
+}

@@ -427,6 +427,13 @@ Entities represent players, mobs, and objects. They are emitted
 in many events, and you can access your own entity with `bot.entity`.
 See [prismarine-entity](https://github.com/PrismarineJS/prismarine-entity)
 
+#### Interpolated position
+
+For the entities the bot does not control, `entity.position` is where the server last placed the entity, and
+`entity.interpolatedPosition` (a `Vec3`, once the entity has spawned or moved) is where the vanilla client shows it:
+it moves toward each server position over a few client ticks (a minecart over 5, from 1.21.5 over 3; a mob over 3; a
+boat over 10 before 1.21.2), as the vanilla client interpolates, and is stepped by the bot's physics tick.
+
 #### Player Skin Data
 
 The skin data is stored in the `skinData` property of the player object, if present.
