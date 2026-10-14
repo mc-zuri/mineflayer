@@ -1930,6 +1930,26 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a passenger blocked by a block in its own move loses that motion (Entity.move, v_boat_ice t60)', async () => {
+        const { manual, client, runTicks } = await ridingManualBot('minecart')
+        try {
+          manual.entity.yawDegrees = new JavaFloat(270)
+          manual.entity.yaw = conv.fromNotchianYaw(270)
+          manual.setControlState('forward', true)
+          runTicks(1)
+          await sleep(100)
+          // where it sat at its tick's start: just west of the gold block, walking east into it
+          manual.entity.position.set(pos.x - 0.301, pos.y, pos.z + 0.5)
+          const look = once(client, 'look')
+          runTicks(1)
+          const [packet] = await look
+          assert.strictEqual(manual.entity.velocity.x, 0)
+          if (manual.registry.isNewerOrEqualTo('1.21.3')) assert.strictEqual(packet.flags.hasHorizontalCollision, true)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the look goes as the float degrees the player holds, unwrapped and without -0 (LocalPlayer.sendPosition)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
