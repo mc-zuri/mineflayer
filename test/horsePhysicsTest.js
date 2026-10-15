@@ -141,14 +141,19 @@ describe('mineflayer_horse_physics 1.17.1v', function () {
     else finish()
   })
 
+  // the client moves the saddled horse its first passenger steers (AbstractHorse.travel, tickRidden), through
+  // RiddenMobPhysics on every version; HorsePhysics is no longer used
   it('creates horse context for saddled first passenger', (done) => {
     server.on('playerJoin', (client) => {
       withLogin(bot, client, done, async () => {
         stubLoadedWorld(bot)
         setupHorse(bot, 100, vec3(0, 64, 0))
         await once(bot, 'physicsTick')
-        assert(bot._horsePhysics.getCtx())
-        assert.strictEqual(bot._horsePhysics.getCtx().state.constructor.name, 'HorseState')
+        const ctx = bot._riddenMobPhysics.getCtx()
+        assert(ctx)
+        assert.strictEqual(ctx.state.constructor.name, 'RiddenMobState')
+        assert.strictEqual(ctx.state.type, 'horse')
+        assert.strictEqual(bot._horsePhysics.getCtx(), null)
       })
     })
   })
