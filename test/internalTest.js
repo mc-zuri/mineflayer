@@ -3020,6 +3020,44 @@ for (const supportedVersion of mineflayer.testedVersions) {
     })
 
     describe('entities', () => {
+      // Between the server's updates the client moves a falling block and thrown items itself: the block falls (gravity
+      // 0.04, drag 0.98) and lands on the block under it (Entity.move); a snowball passes through until the server removes it
+      it('lands a falling block on the block under it, while a thrown item falls on', (done) => {
+        const stonePos = vec3(1, 64, 1)
+        bot.once('chunkColumnLoad', async () => {
+          try {
+            const Entity = require('prismarine-entity')(bot.version)
+            const add = (id, name) => {
+              const entity = new Entity(id)
+              entity.name = name
+              entity.isValid = true
+              entity.position.set(1.5, 67, 1.5)
+              bot.entities[id] = entity
+              return entity
+            }
+            const block = add(90, 'falling_block')
+            const snowball = add(91, 'snowball')
+            // the bot has not spawned: its physics ticks are run here, a tick each 50 ms
+            for (let i = 0; i < 30; i++) {
+              await sleep(50)
+              bot.emit('physicsTick')
+            }
+            assert.strictEqual(block.position.y, 65)
+            assert.strictEqual(block.velocity.y, 0)
+            assert.ok(snowball.position.y < 64, `the snowball at ${snowball.position.y}`)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+        server.on('playerJoin', (client) => {
+          client.write('login', bot.test.generateLoginPacket())
+          const chunk = bot.test.buildChunk()
+          chunk.setBlockType(stonePos, bot.registry.blocksByName.stone.id)
+          client.write('map_chunk', generateChunkPacket(chunk))
+        })
+      })
+
       // The vanilla client's view of an entity it does not control: the recorder's v_minecart_push_forward, a minecart
       // spawned at x 2.5 and moved by the server's relative moves (1/4096 block), as the client showed it each tick
       it('interpolates a minecart toward the server moves as the vanilla client (Entity.lerpTo, InterpolationHandler)', function () {
