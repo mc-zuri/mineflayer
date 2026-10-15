@@ -2769,6 +2769,45 @@ for (const supportedVersion of mineflayer.testedVersions) {
         return f32(f32(from + f32(diff * f32(0.08))) % 360)
       }
 
+      // The rider who gets off stands on the ghast's top (HappyGhast.canBeCollidedWith). The client moved the ghast while
+      // it steered it, with no interpolation of the server's moves (isLocalInstanceAuthoritative): the ghast is where the
+      // client flew it from the first tick off, not where it was when the rider got on (on the local vanilla 26.3
+      // server the stale box let the player fall into the ghast three times, and the server put it back each time)
+      it('the rider who gets off a happy ghast it flew stands on its top from the first tick (HappyGhast.canBeCollidedWith)', async function () {
+        if (!registry.entitiesByName.happy_ghast) return this.skip() // from 1.21.6
+        const { manual, client, vehicle, runTicks } = await ridingHappyGhast()
+        try {
+          manual.setControlState('forward', true)
+          manual.setControlState('jump', true)
+          runTicks(20)
+          manual.clearControlStates()
+          runTicks(1)
+          const dismounted = once(manual, 'dismount')
+          client.write('set_passengers', { entityId: 100, passengers: [] })
+          await dismounted
+          assert.deepStrictEqual(vehicle.interpolatedPosition.toArray(), vehicle.position.toArray())
+          const top = vehicle.position.y + 4
+          const reply = once(client, teleportAnswer)
+          client.write('position', {
+            x: vehicle.position.x,
+            y: top,
+            z: vehicle.position.z,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 3
+          })
+          await reply
+          for (let tick = 0; tick < 3; tick++) {
+            runTicks(1)
+            assert.strictEqual(manual.entity.position.y, top, `tick ${tick}`)
+          }
+          assert.strictEqual(manual.entity.onGround, true)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a harnessed happy ghast flies along its rider’s look, up on its jump, and is told to the server (HappyGhast.travelRidden)', async function () {
         if (!registry.entitiesByName.happy_ghast) return this.skip() // from 1.21.6
         const { manual, client, vehicle, runTicks } = await ridingHappyGhast()
