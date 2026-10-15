@@ -1030,6 +1030,62 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('horizontal collision flag', () => {
+      // From 1.21.2 every movement packet carries the horizontal collision next to the ground flag, and a change of it
+      // alone sends the ground-only packet (LocalPlayer.sendPosition, lastHorizontalCollision)
+      it('tells the server about a horizontal collision from 1.21.2', function (done) {
+        const sends = bot.registry.version['>=']('1.21.2')
+        const movement = ['position', 'position_look', 'look', 'flying']
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            bot.physicsEnabled = false // the bot stays as it is set (no physicsTick events from here)
+            await sleep(150)
+            const sent = []
+            client.on('packet', (data, meta) => { if (movement.includes(meta.name)) sent.push({ name: meta.name, data }) })
+            const ticks = async () => { await sleep(200) }
+
+            bot.entity.isCollidedHorizontally = true
+            bot.entity.position = bot.entity.position.offset(0.1, 0, 0)
+            await ticks()
+            const moved = sent.find(p => p.name === 'position')
+            assert.ok(moved, 'the move is sent')
+            if (sends) assert.strictEqual(moved.data.flags.hasHorizontalCollision, true)
+            sent.length = 0
+            bot.entity.isCollidedHorizontally = false // the collision ends without a move
+            await ticks()
+            const flying = sent.filter(p => p.name === 'flying')
+            if (sends) {
+              assert.strictEqual(flying.length, 1, 'one ground-only packet')
+              assert.strictEqual(flying[0].data.flags.hasHorizontalCollision, false)
+            } else if (!bot.supportFeature('positionUpdateSentEveryTick')) {
+              assert.strictEqual(flying.length, 0)
+            }
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+    })
+
     describe('elytra command', () => {
       // LocalPlayer.aiStep sends start_fall_flying when a press of jump in the air with an elytra asks to glide, before
       // the tick's movement packets. The physics decide when (PlayerState.fallFlyingRequested).
