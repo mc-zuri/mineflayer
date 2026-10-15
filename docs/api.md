@@ -338,6 +338,7 @@
       - [bot.setCommandBlock(pos, command, [options])](#botsetcommandblockpos-command-options)
       - [bot.supportFeature(name)](#botsupportfeaturename)
       - [bot.waitForTicks(ticks)](#botwaitforticksticks)
+      - [bot.tickPhysics()](#bottickphysics)
       - [bot.respawn()](#botrespawn)
     - [Lower level inventory methods](#lower-level-inventory-methods)
       - [bot.clickWindow(slot, mouseButton, mode)](#botclickwindowslot-mousebutton-mode)
@@ -826,6 +827,7 @@ Create and return an instance of the class bot.
    - pluginName : true : load internal plugin with given name ie. `pluginName` even though loadInternalplugins is set to false
    - pluginName : external plugin inject function : loads external plugin, overrides internal plugin with given name ie. `pluginName`
  * physicsEnabled : true by default, should the bot be affected by physics? can later be modified via bot.physicsEnabled
+ * physicsManual : false by default, set at creation only. When true, no timer runs the client tick: each call to [bot.tickPhysics()](#bottickphysics) runs one tick instead, and maxCatchupTicks does not apply
  * [chat](#bot.settings.chat)
  * [colorsEnabled](#bot.settings.colorsEnabled)
  * [viewDistance](#bot.settings.viewDistance)
@@ -2184,6 +2186,12 @@ The list of available features can be found inside the [features.json](https://g
 #### bot.waitForTicks(ticks)
 
 This is a promise-based function that waits for a given number of in-game ticks to pass before continuing. This is useful for quick timers that need to function with specific timing, regardless of the given physics tick speed of the bot. This is similar to the standard Javascript setTimeout function, but runs on the physics timer of the bot specifically.
+
+#### bot.tickPhysics()
+
+Runs one client tick, only when the bot was created with the `physicsManual` option (throws otherwise, and when called from inside a tick). A tick sends the replies queued since the previous one (pongs, teleport confirmations), simulates the bot's movement, writes its movement packets and, from 1.21.2, `tick_end`. The timing the tick uses counts calls rather than wall-clock time: the position resend once a second, the delayed position answer after a death, and the timeout of [bot.waitForTicks()](#botwaitforticksticks). This allows stepping a bot from a simulation, a server or a test.
+
+Actions you call still write their packets when called (e.g. `bot.setControlState('sprint', true)`), and other plugins keep their own timers (e.g. digging). After the bot ended, a call does nothing.
 
 #### bot.respawn()
 

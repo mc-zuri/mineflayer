@@ -29,6 +29,8 @@ export interface BotOptions extends ClientOptions {
   physicsEnabled?: boolean
   /** @default 4 */
   maxCatchupTicks?: number
+  /** @default false */
+  physicsManual?: boolean
   client?: Client
   brand?: string
   defaultChatPatterns?: boolean
@@ -433,6 +435,8 @@ export interface Bot extends TypedEmitter<BotEvents> {
   nearestEntity: (filter?: (entity: Entity) => boolean) => Entity | null
 
   waitForTicks: (ticks: number) => Promise<void>
+
+  tickPhysics: () => void
 
   addChatPattern: (name: string, pattern: RegExp, options?: chatPatternOptions) => number
 

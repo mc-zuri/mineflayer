@@ -361,6 +361,117 @@ for (const supportedVersion of mineflayer.testedVersions) {
           done()
         })
       })
+      it('physicsManual runs a client tick only on bot.tickPhysics()', async () => {
+        await bot.test.pluginsLoaded
+        assert.throws(() => bot.tickPhysics(), /physicsManual/)
+        const joined = new Promise(resolve => {
+          const onJoin = (client) => {
+            if (client.username !== 'manual') return
+            server.removeListener('playerJoin', onJoin)
+            resolve(client)
+          }
+          server.on('playerJoin', onJoin)
+        })
+        const manual = mineflayer.createBot({ username: 'manual', version: supportedVersion, port: PORT, physicsManual: true })
+        try {
+          const client = await joined
+          client.write('login', bot.test.generateLoginPacket())
+          const chunk = bot.test.buildChunk()
+          chunk.setBlockType(pos, registry.blocksByName.stone.id)
+          client.write('map_chunk', generateChunkPacket(chunk))
+          await once(manual, 'chunkColumnLoad')
+
+          const tickWrites = ['teleport_confirm', 'position', 'position_look', 'look', 'flying', 'tick_end', 'pong']
+          const writes = []
+          const write = manual._client.write.bind(manual._client)
+          manual._client.write = (name, params) => {
+            if (tickWrites.includes(name)) writes.push(name === 'pong' ? `pong ${params.id}` : name)
+            return write(name, params)
+          }
+          client.write('position', {
+            x: 1.5,
+            y: 80,
+            z: 1.5,
+            dx: 0,
+            dy: 0,
+            dz: 0,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 1
+          })
+          await once(manual._client, 'position')
+          await sleep(300)
+          assert.deepStrictEqual(writes, [], 'nothing is written while no tick runs')
+
+          const tickEnd = manual.supportFeature('sendsClientTickEndPacket') ? ['tick_end'] : []
+          manual.tickPhysics()
+          assert.deepStrictEqual(writes, [
+            ...(manual.supportFeature('teleportUsesOwnPacket') ? ['teleport_confirm'] : []),
+            'position_look',
+            ...(manual.supportFeature('positionUpdateSentEveryTick') ? ['flying'] : []),
+            ...tickEnd
+          ], 'the teleport is answered at the start of the tick, which starts the fall from rest')
+
+          for (let i = 0; i < 3; i++) {
+            writes.length = 0
+            const y = manual.entity.position.y
+            manual.tickPhysics()
+            assert.ok(manual.entity.position.y < y, 'each call simulates one tick')
+            assert.deepStrictEqual(writes, ['position', ...tickEnd])
+          }
+
+          // Standing still, the position is sent again on the 20th tick after the last one, counted in calls.
+          manual.physicsEnabled = false
+          const still = manual.supportFeature('positionUpdateSentEveryTick') ? ['flying'] : []
+          for (let i = 1; i <= 20; i++) {
+            writes.length = 0
+            manual.tickPhysics()
+            assert.deepStrictEqual(writes, [...(i === 20 ? ['position'] : still), ...tickEnd], `tick ${i} after the last position`)
+          }
+          manual.physicsEnabled = true
+
+          if (!manual.supportFeature('transactionPacketExists')) {
+            writes.length = 0
+            client.write('ping', { id: 7 })
+            await once(manual._client, 'ping')
+            await sleep(100)
+            assert.deepStrictEqual(writes, [], 'a ping is answered by the next tick, not a timer')
+            manual.tickPhysics()
+            assert.deepStrictEqual(writes, ['pong 7', 'position', ...tickEnd])
+          }
+
+          // After a death the teleport's position answer waits 1500 ms, here 30 calls.
+          client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+          await once(manual, 'death')
+          client.write('position', {
+            x: 1.5,
+            y: 66,
+            z: 1.5,
+            dx: 0,
+            dy: 0,
+            dz: 0,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 2
+          })
+          await once(manual._client, 'position')
+          writes.length = 0
+          manual.tickPhysics()
+          assert.deepStrictEqual(writes, [...(manual.supportFeature('teleportUsesOwnPacket') ? ['teleport_confirm'] : []), ...tickEnd])
+          for (let i = 1; i < 30; i++) {
+            writes.length = 0
+            manual.tickPhysics()
+            assert.deepStrictEqual(writes, tickEnd, `no position answer ${i} ticks after the teleport`)
+          }
+          writes.length = 0
+          manual.tickPhysics()
+          assert.strictEqual(writes[0], 'position_look', 'the delayed answer runs at the start of the 30th tick')
+        } finally {
+          manual.end()
+        }
+      })
       it('absolute position & relative position (velocity)', (done) => {
         // forcedMove fires when the teleport is answered at the start of a physics tick, so the state
         // it produces has to be read then; awaiting the event resumes after that tick's simulation.
