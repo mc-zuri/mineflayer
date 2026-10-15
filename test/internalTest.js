@@ -723,6 +723,102 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('player_input', () => {
+      // LocalPlayer.tick: after the physics step, a player_input with every movement key whenever they changed, first in
+      // the tick: before its movement packet and its tick_end
+      it('sends the movement keys whenever they change on 1.21.2+', function (done) {
+        if (!bot.supportFeature('newPlayerInputPacket')) return this.skip()
+        const held = inputs => Object.keys(inputs).filter(key => key !== '_value' && inputs[key]).sort()
+        const movement = ['position', 'position_look', 'look', 'flying']
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            const sent = []
+            client.on('packet', (data, meta) => {
+              if (meta.name === 'player_input' || meta.name === 'tick_end' || movement.includes(meta.name)) sent.push({ name: meta.name, data })
+            })
+            // a few ticks, and the time for their packets to reach the server
+            const ticks = async () => { await bot.waitForTicks(3); await sleep(100) }
+            bot.setControlState('forward', true)
+            bot.setControlState('sprint', true)
+            await ticks()
+            bot.setControlState('left', true)
+            bot.setControlState('jump', true)
+            await ticks()
+            bot.clearControlStates()
+            await ticks()
+
+            const inputs = sent.filter(p => p.name === 'player_input')
+            assert.deepStrictEqual(inputs.map(p => held(p.data.inputs)), [['forward', 'sprint'], ['forward', 'jump', 'left', 'sprint'], []])
+            for (const input of inputs) {
+              const i = sent.indexOf(input)
+              assert.ok(i === 0 || sent[i - 1].name === 'tick_end', 'player_input comes first in its tick')
+              const tickEnd = sent.findIndex((p, j) => j > i && p.name === 'tick_end')
+              assert.ok(tickEnd > i, 'the tick ends after its player_input')
+              assert.ok(sent.slice(i + 1, tickEnd).every(p => p.name !== 'player_input'), 'one player_input per change')
+            }
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
+      it('sends a rider\'s keys too', function (done) {
+        if (!bot.supportFeature('newPlayerInputPacket')) return this.skip()
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            const inputs = []
+            client.on('player_input', packet => inputs.push(packet.inputs.shift))
+            // as the entities plugin does when the server seats the bot (no physics ticks while riding)
+            bot.vehicle = { id: 1 }
+            bot.emit('mount')
+            bot.setControlState('sneak', true)
+            await sleep(300)
+            assert.deepStrictEqual(inputs, [true])
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+    })
+
     describe('world', () => {
       const pos = vec3(1, 65, 1)
       const goldId = 41
