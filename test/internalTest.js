@@ -1125,6 +1125,51 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('position reminder', () => {
+      // LocalPlayer.positionReminder counts the ticks since the position was last sent and sends it again at 20: counted
+      // before the check from 1.9 (every 20 ticks), after it on 1.8 (every 21)
+      it('sends the position again every 20 ticks (21 on 1.8)', function (done) {
+        this.timeout(10000)
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // the bot stands on this block
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 66,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            let tick = 0
+            bot.on('physicsTick', () => { tick++ })
+            const sentAt = []
+            const write = bot._client.write
+            bot._client.write = function (name, params) {
+              if (name === 'position' || name === 'position_look') sentAt.push(tick)
+              return write.call(this, name, params)
+            }
+            while (sentAt.length < 3) await bot.waitForTicks(1)
+            bot._client.write = write
+            const period = bot.registry.version['<']('1.9') ? 21 : 20
+            assert.deepStrictEqual([sentAt[2] - sentAt[1]], [period])
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+    })
+
     describe('elytra command', () => {
       // LocalPlayer.aiStep sends start_fall_flying when a press of jump in the air with an elytra asks to glide, before
       // the tick's movement packets. The physics decide when (PlayerState.fallFlyingRequested).
