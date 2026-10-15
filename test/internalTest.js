@@ -2294,8 +2294,10 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
 
       it('a passenger sends its look and input each tick, and the vehicle move only from 1.9 (LocalPlayer.tick)', async () => {
-        const { manual, written, runTicks } = await ridingManualBot()
+        const { manual, vehicle, written, runTicks } = await ridingManualBot()
         try {
+          // from 1.19 its rider controls a horse only while it is saddled (AbstractHorse.getControllingPassenger)
+          if (manual.registry.version['>=']('1.19')) tameHorse(manual, vehicle, true)
           runTicks(1)
           const sent = written.map(p => p.name).filter(name => name !== 'tick_end')
           const input = manual.supportFeature('newPlayerInputPacket') ? [] : ['steer_vehicle']
@@ -2340,9 +2342,11 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
 
       it('a ridden horse moves turned as its rider, half its pitch (AbstractHorse.travel, m_horse)', async function () {
-        const { manual, client, runTicks } = await ridingManualBot()
+        const { manual, client, vehicle, runTicks } = await ridingManualBot()
         try {
           if (!manual.registry.isNewerOrEqualTo('1.9')) return this.skip()
+          // from 1.19 its rider controls a horse only while it is saddled (AbstractHorse.getControllingPassenger)
+          if (manual.registry.version['>=']('1.19')) tameHorse(manual, vehicle, true)
           manual.entity.yawDegrees = new JavaFloat(270)
           manual.entity.pitchDegrees = new JavaFloat(15)
           manual.entity.yaw = conv.fromNotchianYaw(270)
@@ -2359,9 +2363,13 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
 
       it('the vehicle move tells whether the vehicle is on the ground from 1.21.4 (ServerboundMoveVehiclePacket, m_horse)', async function () {
-        const { manual, client, runTicks } = await ridingManualBot()
+        const { manual, client, vehicle, runTicks } = await ridingManualBot()
         try {
           if (!manual.registry.isNewerOrEqualTo('1.21.4')) return this.skip()
+          // from 1.19 its rider controls a horse only while it is saddled (AbstractHorse.getControllingPassenger)
+          if (manual.registry.version['>=']('1.19')) tameHorse(manual, vehicle, true)
+          // (moved by its own physics then: it lands on the block as it falls onto it)
+          vehicle.velocity.set(0, -0.0784000015258789, 0)
           const move = once(client, 'vehicle_move')
           runTicks(1)
           const [packet] = await move
@@ -2497,6 +2505,48 @@ for (const supportedVersion of mineflayer.testedVersions) {
         const v = require('minecraft-data')(supportedVersion).version
         const { answers } = await serverMovesHorse(false)
         assert.strictEqual(answers.length, v['>=']('1.9') && v['<']('1.19') ? 1 : 0)
+      })
+
+      // From 1.19 a rider does not control a horse without a saddle, nor a pig without its carrot on a stick in hand
+      // (AbstractHorse / Pig.getControllingPassenger): the server turns the mob, which no Entity.positionRider passes
+      // to its rider (only a boat's turns it), so the look the rider holds stays as it is and goes to the server each
+      // tick with the rider's input, but no vehicle move (LocalPlayer.sendChanges: isLocalInstanceAuthoritative; 26.3's
+      // server logs "was expected to be controlling vehicle" and puts the mob back for one)
+      it('the rider of a mob it does not control keeps its look as the mob turns and sends no vehicle move (LocalPlayer.sendChanges)', async function () {
+        const v = require('minecraft-data')(supportedVersion).version
+        if (!v['>=']('1.19')) return this.skip() // the first passenger controls them before
+        for (const name of ['horse', 'pig']) {
+          const { manual, client, vehicle, written, runTicks } = await ridingManualBot(name)
+          try {
+            if (name === 'horse') tameHorse(manual, vehicle, false)
+            manual.entity.yawDegrees = new JavaFloat(30)
+            manual.entity.yaw = conv.fromNotchianYaw(30)
+            const looks = []
+            const write = manual._client.write.bind(manual._client)
+            manual._client.write = (packetName, params) => {
+              if (packetName === 'look') looks.push(params.yaw)
+              write(packetName, params)
+            }
+            const riderYaws = []
+            const mobYaws = []
+            for (let t = 1; t <= 4; t++) {
+              // the server turns the mob 16 steps of 256 a tick
+              const turned = once(manual._client, 'entity_look')
+              client.write('entity_look', { entityId: 100, yaw: 16 * t, pitch: 0, onGround: true })
+              await turned
+              runTicks(1)
+              riderYaws.push(manual.entity.yaw)
+              mobYaws.push(vehicle.yaw)
+            }
+            assert.deepStrictEqual(mobYaws, [1, 2, 3, 4].map(t => conv.fromNotchianYawByte(16 * t)), name)
+            assert.deepStrictEqual(riderYaws, Array(4).fill(conv.fromNotchianYaw(30)), name)
+            assert.deepStrictEqual(looks, [30, 30, 30, 30], name)
+            const sent = written.map(p => p.name).filter(n => n !== 'tick_end' && n !== 'look')
+            assert.deepStrictEqual(sent, Array(4).fill(manual.supportFeature('newPlayerInputPacket') ? [] : ['steer_vehicle']).flat(), name)
+          } finally {
+            manual.end()
+          }
+        }
       })
 
       it('a saddled horse its rider controls still takes a teleport from 1.21.2 (handleTeleportEntity, m_horse)', async function () {
