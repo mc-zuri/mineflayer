@@ -163,6 +163,7 @@ export interface BotEvents {
   physicsTick: () => Promise<void> | void
   physicTick: () => Promise<void> | void
   entityPhysicsTick: () => Promise<void> | void
+  entityInterpolationTick: () => Promise<void> | void
   scoreboardCreated: (scoreboard: ScoreBoard) => Promise<void> | void
   scoreboardDeleted: (scoreboard: ScoreBoard) => Promise<void> | void
   scoreboardTitleChanged: (scoreboard: ScoreBoard) => Promise<void> | void

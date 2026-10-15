@@ -816,6 +816,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
             : registry.version['<']('1.21.5')
               ? [[32, 2.5015625], [null, 2.503125], [null, 2.5046874999999997], [80, 2.5092187499999996]]
               : [[46, 2.5037434895833335], [null, 2.507486979166667], [null, 2.51123046875], [null, 2.51123046875], [64, 2.5164388020833335]]
+          // a renderer takes where the entity is shown from the event each tick emits after the step
+          const shown = []
+          manual.on('entityInterpolationTick', () => shown.push(minecart.interpolatedPosition.x))
           let sent = 0
           for (const [dX, x] of recorded) {
             if (dX != null) {
@@ -828,6 +831,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
             assert.strictEqual(minecart.interpolatedPosition.x, x)
             assert.strictEqual(minecart.position.x, 2.5 + sent / 4096)
           }
+          assert.deepStrictEqual(shown, recorded.map(([, x]) => x))
         } finally {
           manual.end()
         }

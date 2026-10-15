@@ -1635,6 +1635,12 @@ Fires when new boss bar is updated.
 
 Fires when the held item is changed.
 
+#### "entityInterpolationTick" ()
+
+Emitted every client tick once the other entities took their step toward the server's moves: each entity's
+`interpolatedPosition` is where the game shows it this tick. A renderer draws an entity between the positions of its
+last two ticks.
+
 #### "physicsTick" ()
 
 Fires every tick if bot.physicsEnabled is set to true.
