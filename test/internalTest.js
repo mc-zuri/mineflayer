@@ -2111,6 +2111,39 @@ for (const supportedVersion of mineflayer.testedVersions) {
       // (the vehicle ticks first), moved by the client itself (AbstractHorse.travel, tickRidden); its motion after its
       // first moving tick as recorded (1.12.2, 1.13.2, and the same on 1.19.2 - 1.21.11). The recording rides east, the
       // bot here south (yaw 0): the same speed along z.
+      // ClientPacketListener.handleEntityPositionSync: a mob the client moves (isLocalInstanceAuthoritative) takes only the
+      // base of its relative moves, not the position; the steered horse and camel stay where their own physics put them
+      for (const name of ['horse', 'camel']) {
+        it(`a ${name} its rider steers keeps its position through the server's position sync (handleEntityPositionSync)`, async function () {
+          const version = registry.version
+          if (!version['>=']('1.21.2') || !registry.entitiesByName[name]) return this.skip() // the packet is 1.21.2's
+          const { manual, client, vehicle, runTicks } = await ridingManualBot(name)
+          try {
+            vehicle.metadata = []
+            if (name === 'horse') {
+              if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+              else vehicle.metadata[17] = 0x02 | 0x04 // tame, saddled
+            }
+            vehicle.attributes = { 'minecraft:movement_speed': { value: 0.225, modifiers: [] } }
+            manual.setControlState('forward', true)
+            runTicks(3)
+            const before = vehicle.position.toArray()
+            const far = { x: vehicle.position.x + 3, y: vehicle.position.y, z: vehicle.position.z - 2 }
+            const packet = version['>=']('26.3')
+              ? { entityId: 100, pathType: 'linear', path: far, yaw: 90, pitch: 0, onGround: true }
+              : { entityId: 100, ...far, dx: 0, dy: 0, dz: 0, yaw: 90, pitch: 0, onGround: true }
+            const synced = once(manual._client, 'sync_entity_position')
+            client.write('sync_entity_position', packet)
+            await synced
+            assert.deepStrictEqual(vehicle.position.toArray(), before)
+            runTicks(1)
+            assert.ok(Math.abs(vehicle.position.x - far.x) > 2, `the ${name} went to the server's position`)
+          } finally {
+            manual.end()
+          }
+        })
+      }
+
       it('a saddled horse walks on the input its rider gave the tick before (v_horse_walk)', async function () {
         const version = registry.version
         const recorded = version['<']('1.13') ? 0.12039298541021015 : version['<']('1.14') ? 0.12039299354624511 : version['>=']('1.17') ? 0.12039301313781722 : null
