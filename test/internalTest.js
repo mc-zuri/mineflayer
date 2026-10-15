@@ -1755,6 +1755,37 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a second press of jump flies and landing stops it, each told to the server (LocalPlayer.aiStep, onUpdateAbilities)', async () => {
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          runTicks(2)
+          const abilities = once(manual, 'abilities')
+          client.write('abilities', { flags: 4, flyingSpeed: 0.05, walkingSpeed: 0.1 })
+          await abilities
+          const sent = []
+          client.on('abilities', packet => sent.push(packet.flags))
+          // jump, then press it again within 7 ticks
+          manual.setControlState('jump', true)
+          runTicks(1)
+          manual.setControlState('jump', false)
+          runTicks(2)
+          manual.setControlState('jump', true)
+          runTicks(1)
+          manual.setControlState('jump', false)
+          assert.strictEqual(manual.entity.flying, true)
+          // down to the ground: landing stops flying
+          manual.setControlState('sneak', true)
+          for (let i = 0; i < 40 && manual.entity.flying; i++) runTicks(1)
+          assert.strictEqual(manual.entity.flying, false)
+          await sleep(100)
+          // since 1.16 the flying bit alone; before, the abilities the server gave (may fly, 4) with it
+          const mayFly = manual.registry.version['>=']('1.16') ? 0 : 4
+          assert.deepStrictEqual(sent, [2 | mayFly, mayFly])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('the sprint goes before the shift key, from 1.21.2 after it (LocalPlayer.sendPosition, LocalPlayer.tick)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
