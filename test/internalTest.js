@@ -1086,6 +1086,45 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('ground-only packet', () => {
+      // When nothing else is due, the 1.8 client sends the ground-only movement packet every tick; from 1.9 only when the
+      // ground flag changed (LocalPlayer.sendPosition)
+      it('sends the ground-only packet every tick only on 1.8', function (done) {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            bot.physicsEnabled = false // the bot stays as it is (no physicsTick events from here)
+            await sleep(150)
+            let flying = 0
+            client.on('flying', () => { flying++ })
+            await sleep(300) // about 6 ticks, well inside the position reminder's 20
+            if (bot.registry.version['<']('1.9')) assert.ok(flying >= 3, `${flying} ground-only packets`)
+            else assert.strictEqual(flying, 0)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+    })
+
     describe('elytra command', () => {
       // LocalPlayer.aiStep sends start_fall_flying when a press of jump in the air with an elytra asks to glide, before
       // the tick's movement packets. The physics decide when (PlayerState.fallFlyingRequested).
