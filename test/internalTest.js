@@ -2580,6 +2580,107 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // A harnessed happy ghast (1.21.6+) its first passenger steers (HappyGhast.getControllingPassenger): the client
+      // flies it (getRiddenInput, tickRidden, travelFlying) and sends where it went (LocalPlayer.sendChanges)
+      async function ridingHappyGhast ({ harnessed = true, staysStill = false, at = [8.5, pos.y + 10, 8.5], yaw = 0 } = {}) {
+        const riding = await ridingManualBot('happy_ghast')
+        const { manual, vehicle } = riding
+        Object.assign(vehicle, { height: 4, width: 4, onGround: false })
+        vehicle.position.set(...at)
+        vehicle.velocity.set(0, 0, 0)
+        vehicle.yaw = conv.fromNotchianYaw(yaw)
+        vehicle.metadata = []
+        vehicle.metadata[manual.registry.entitiesByName.happy_ghast.metadataKeys.indexOf('stays_still')] = staysStill
+        if (harnessed) vehicle.setEquipment(6, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.white_harness.id, 1))
+        return riding
+      }
+
+      // HappyGhast.getRiddenInput's scale (3.9F * FLYING_SPEED 0.05) and travel's speed (FLYING_SPEED * 5F / 3F)
+      const GHAST_INPUT_SCALE = 3.9000000953674316 * 0.05
+      const GHAST_SPEED = Math.fround(Math.fround(Math.fround(0.05) * 5) / 3)
+      // Mth.wrapDegrees of a float, and tickRidden's turn 0.08F of the way to the rider's yaw
+      const ghastTurn = (from, to) => {
+        const f32 = Math.fround
+        let diff = f32(f32(f32(to) - from) % 360)
+        if (diff >= 180) diff = f32(diff - 360)
+        if (diff < -180) diff = f32(diff + 360)
+        return f32(f32(from + f32(diff * f32(0.08))) % 360)
+      }
+
+      it('a harnessed happy ghast flies along its rider’s look, up on its jump, and is told to the server (HappyGhast.travelRidden)', async function () {
+        if (!registry.entitiesByName.happy_ghast) return this.skip() // from 1.21.6
+        const { manual, client, vehicle, runTicks } = await ridingHappyGhast()
+        try {
+          const mth = manual.physicsEngine.mth
+          const f32 = Math.fround
+          manual.entity.yawDegrees = new JavaFloat(0)
+          manual.entity.pitchDegrees = new JavaFloat(30)
+          manual.entity.yaw = conv.fromNotchianYaw(0)
+          manual.entity.pitch = conv.fromNotchianPitch(30)
+          manual.setControlState('forward', true)
+          manual.setControlState('jump', true)
+          const sent = []
+          client.on('vehicle_move', (packet) => sent.push(packet))
+          runTicks(1) // the ghast ticks before its rider: the keys reach it the tick after
+          assert.deepStrictEqual(vehicle.position.toArray(), [8.5, pos.y + 10, 8.5])
+          runTicks(1)
+          await sleep(100)
+          assert.strictEqual(sent.length, 2)
+          const packet = sent[1]
+          const pitch = f32(f32(30) * f32(0.017453292))
+          const forward = mth.cos(pitch) * GHAST_INPUT_SCALE * GHAST_SPEED
+          const up = f32(-mth.sin(pitch) + f32(0.5)) * GHAST_INPUT_SCALE * GHAST_SPEED
+          // facing south: forward is +z; looking 30 degrees down, the jump's 0.5 up still rises
+          assert.deepStrictEqual([packet.x, packet.y, packet.z], [8.5, pos.y + 10 + up, 8.5 + forward])
+          assert.deepStrictEqual(vehicle.position.toArray(), [packet.x, packet.y, packet.z])
+          assert.strictEqual(packet.yaw, 0)
+          assert.strictEqual(packet.pitch, 15)
+          assert.ok(up > 0)
+        } finally {
+          manual.end()
+        }
+      })
+
+      // packets-replay-2026-10-15T17_09_13 (play.mcraft.fun, 26.3): the ghast the rider pressed forward and jump on, where
+      // the client kept telling the server it was, its yaw then and the rider's look
+      it('the logged happy ghast ride moves where vanilla flies it (packets-replay-2026-10-15T17_09_13, forward + jump)', async function () {
+        if (!registry.entitiesByName.happy_ghast) return this.skip() // from 1.21.6
+        const logged = { at: [116.820556640625, 70.53369140625, 173.854736328125], yaw: 4.21875, riderYaw: 341.8500061035156, riderPitch: 32.55000305175781 }
+        const { manual, client, vehicle, runTicks } = await ridingHappyGhast({ at: logged.at, yaw: logged.yaw })
+        try {
+          // the chunk the ghast flies in
+          client.write('map_chunk', { ...generateChunkPacket(bot.test.buildChunk()), x: 7, z: 10 })
+          await once(manual, 'chunkColumnLoad')
+          const mth = manual.physicsEngine.mth
+          const f32 = Math.fround
+          manual.entity.yawDegrees = new JavaFloat(logged.riderYaw)
+          manual.entity.pitchDegrees = new JavaFloat(logged.riderPitch)
+          manual.entity.yaw = conv.fromNotchianYaw(logged.riderYaw)
+          manual.entity.pitch = conv.fromNotchianPitch(logged.riderPitch)
+          manual.setControlState('forward', true)
+          manual.setControlState('jump', true)
+          const sent = []
+          client.on('vehicle_move', (packet) => sent.push(packet))
+          runTicks(2)
+          await sleep(100)
+          // the first tick only turns it (the keys reach it the tick after), the second turns and flies it
+          const yaw1 = ghastTurn(logged.yaw, logged.riderYaw)
+          const yaw2 = ghastTurn(yaw1, logged.riderYaw)
+          assert.deepStrictEqual(sent.map(p => p.yaw), [yaw1, yaw2])
+          assert.deepStrictEqual([sent[0].x, sent[0].y, sent[0].z], logged.at)
+          const pitch = f32(f32(logged.riderPitch) * f32(0.017453292))
+          const forward = mth.cos(pitch) * GHAST_INPUT_SCALE * GHAST_SPEED
+          const up = f32(-mth.sin(pitch) + f32(0.5)) * GHAST_INPUT_SCALE * GHAST_SPEED
+          const turn = f32(f32(yaw2) * f32(0.017453292))
+          const [sin, cos] = [mth.sin(turn), mth.cos(turn)]
+          assert.deepStrictEqual([sent[1].x, sent[1].y, sent[1].z], [logged.at[0] + (0 * cos - forward * sin), logged.at[1] + up, logged.at[2] + (forward * cos + 0 * sin)])
+          assert.strictEqual(sent[1].pitch, f32(f32(logged.riderPitch) * 0.5))
+          assert.deepStrictEqual(vehicle.position.toArray(), [sent[1].x, sent[1].y, sent[1].z])
+        } finally {
+          manual.end()
+        }
+      })
+
       // From 26.2 Entity.restituteMovementAfterCollisions makes the blocked motion -v * 0, -0 walking east
       // (v_minecart_push_forward t26)
       it('a passenger blocked by a block in its own move loses that motion (Entity.move, v_boat_ice t60)', async () => {
