@@ -1170,6 +1170,66 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('continuous yaw', () => {
+      // The client sends its yRot as it is, never wrapped: from a teleport to 270, a turn of 10 is sent as 280
+      it('sends the yaw on from the teleport\'s, without wrapping it', function (done) {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 270,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            await bot.waitForTicks(2) // the teleport answer goes out first
+            await sleep(100)
+            const yaws = []
+            client.on('packet', (data, meta) => { if (meta.name === 'look' || meta.name === 'position_look') yaws.push(data.yaw) })
+            bot.entity.yaw = require('../lib/conversions').fromNotchianYaw(280)
+            await bot.waitForTicks(2)
+            await sleep(100)
+            assert.ok(yaws.length > 0, 'a look was sent')
+            assert.ok(Math.abs(yaws[yaws.length - 1] - 280) < 1e-3, `the yaw is ${yaws[yaws.length - 1]}`)
+            // a teleport that turns the look by 10 from there: the client answers 290, its yRot plus 10
+            const answers = []
+            client.on('packet', (data, meta) => { if (meta.name === 'position_look') answers.push(data.yaw) })
+            client.write('position', {
+              x: 0,
+              y: 0,
+              z: 0,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 10,
+              teleportId: 2,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: true, y: true, z: true, yaw: true, pitch: true } : 0x1f
+            })
+            await once(bot, 'forcedMove')
+            await bot.waitForTicks(2)
+            await sleep(100)
+            assert.ok(answers.length > 0, 'the teleport was answered')
+            assert.ok(Math.abs(answers[0] - 290) < 1e-3, `the answer's yaw is ${answers[0]}`)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+    })
+
     describe('elytra command', () => {
       // LocalPlayer.aiStep sends start_fall_flying when a press of jump in the air with an elytra asks to glide, before
       // the tick's movement packets. The physics decide when (PlayerState.fallFlyingRequested).
