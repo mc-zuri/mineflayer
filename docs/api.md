@@ -1864,7 +1864,8 @@ This is the main method controlling the bot movements. It works similarly to pre
 For example forward with state true will make the bot move forward. Forward with state false will make the bot stop moving forward.
 You may use bot.lookAt in conjunction with this to control movement. The jumper.js example shows how to use this.
 Like the sprint key, `sprint` asks to sprint: the physics decide when the bot sprints (`bot.entity.isSprinting`), and
-the server is told when that changes.
+the server is told when that changes. Like the client, the bot tells the server about its keys on its next physics tick:
+wait a tick (`await bot.waitForTicks(1)`) before an action that depends on the server seeing `sneak`.
 
  * `control` - one of ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak']
  * `state` - `true` or `false`
