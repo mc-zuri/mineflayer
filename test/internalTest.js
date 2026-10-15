@@ -2700,6 +2700,21 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a happy ghast its rider does not control is neither moved nor told to the server (LocalPlayer.sendChanges)', async function () {
+        if (!registry.entitiesByName.happy_ghast) return this.skip() // from 1.21.6
+        for (const options of [{ harnessed: false }, { staysStill: true }]) {
+          const { manual, vehicle, written, runTicks } = await ridingHappyGhast(options)
+          try {
+            manual.setControlState('forward', true)
+            runTicks(3)
+            assert.deepStrictEqual(vehicle.position.toArray(), [8.5, pos.y + 10, 8.5])
+            assert.ok(!written.some(p => p.name === 'vehicle_move'), JSON.stringify(options))
+          } finally {
+            manual.end()
+          }
+        }
+      })
+
       // From 26.2 Entity.restituteMovementAfterCollisions makes the blocked motion -v * 0, -0 walking east
       // (v_minecart_push_forward t26)
       it('a passenger blocked by a block in its own move loses that motion (Entity.move, v_boat_ice t60)', async () => {
