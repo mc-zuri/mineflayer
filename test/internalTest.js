@@ -981,6 +981,55 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('movement packets', () => {
+      // LocalPlayer.sendPosition sends the position only after a move whose squared length is over 9.0E-4 (0.03 blocks)
+      // up to 1.18.1, over (2.0E-4)² from 1.18.2
+      it('sends the position only after a move as long as vanilla needs', function (done) {
+        const movement = ['position', 'position_look', 'look', 'flying']
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            bot.physicsEnabled = false // the bot stays where it is put (no physicsTick events from here)
+            await sleep(150)
+            const sent = []
+            client.on('packet', (data, meta) => { if (movement.includes(meta.name)) sent.push(meta.name) })
+            const positions = () => sent.filter(name => name === 'position' || name === 'position_look').length
+            const ticks = async () => { await sleep(200) }
+
+            bot.entity.position = bot.entity.position.offset(0.0001, 0, 0)
+            await ticks()
+            assert.strictEqual(positions(), 0, 'a move of 0.0001')
+            bot.entity.position = bot.entity.position.offset(0.02, 0, 0)
+            await ticks()
+            assert.strictEqual(positions(), bot.registry.version['>=']('1.18.2') ? 1 : 0, 'a move of 0.02')
+            bot.entity.position = bot.entity.position.offset(0.05, 0, 0)
+            await ticks()
+            assert.strictEqual(positions(), bot.registry.version['>=']('1.18.2') ? 2 : 1, 'a move of 0.05')
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+    })
+
     describe('elytra command', () => {
       // LocalPlayer.aiStep sends start_fall_flying when a press of jump in the air with an elytra asks to glide, before
       // the tick's movement packets. The physics decide when (PlayerState.fallFlyingRequested).
