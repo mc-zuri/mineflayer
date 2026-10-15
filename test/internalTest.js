@@ -781,6 +781,60 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // LocalPlayer.tick while a passenger: the look every tick and, up to 1.21.1, steer_vehicle after it (the impulses
+      // times 0.98F, sneaking times 0.3F first up to 1.20.1; jump and sneak flags), with no sneak command
+      it('sends a rider\'s look and keys every tick', function (done) {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            await sleep(150)
+            // as the entities plugin does when the server seats the bot
+            bot.vehicle = { id: 1 }
+            bot.emit('mount')
+            const sent = []
+            client.on('packet', (data, meta) => { if (!['keep_alive', 'tick_end'].includes(meta.name)) sent.push({ name: meta.name, data }) })
+            bot.setControlState('forward', true)
+            bot.setControlState('sneak', true)
+            await sleep(300)
+            bot.clearControlStates()
+            const names = sent.map(p => p.name)
+            assert.ok(names.filter(n => n === 'look').length >= 3, 'a look every tick')
+            if (bot.supportFeature('newPlayerInputPacket')) {
+              assert.strictEqual(names.filter(n => n === 'player_input').length, 1)
+              assert.ok(!names.includes('steer_vehicle'))
+            } else {
+              assert.ok(!names.includes('entity_action'), 'no sneak command')
+              const f = Math.fround
+              const forward = bot.registry.version['<']('1.20.2') ? f(f(0.3) * f(0.98)) : f(0.98)
+              const steers = sent.filter(p => p.name === 'steer_vehicle')
+              assert.ok(steers.length >= 3, 'steer_vehicle every tick')
+              assert.deepStrictEqual([steers[0].data.sideways, steers[0].data.forward, steers[0].data.jump], [0, forward, 2])
+              assert.strictEqual(names[names.indexOf('steer_vehicle') - 1], 'look', 'the look comes first')
+            }
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('sends a rider\'s keys too', function (done) {
         if (!bot.supportFeature('newPlayerInputPacket')) return this.skip()
         server.on('playerJoin', async (client) => {
