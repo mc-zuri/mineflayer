@@ -885,6 +885,54 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // From 1.21.2 a server with the minecart_improvements feature sends a minecart's track steps instead of its moves.
+      // The values each tick are vanilla's NewMinecartBehavior.lerpClientPositionAndRotation and getCurrentLerpStep run
+      // on these packets in Java (float alpha and weights against their double total: the first tick lands a hair past
+      // the first step).
+      it('a minecart on the experimental behaviour goes along the steps the server sends, its rider with it (NewMinecartBehavior)', async function () {
+        if (!registry.version['>=']('1.21.2')) return this.skip() // ClientboundMoveMinecartPacket is 1.21.2's
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          const spawned = once(manual, 'entitySpawn')
+          client.write('spawn_entity', { entityId: 97, objectUUID: '00112233-4455-6677-8899-aabbccddeeff', type: registry.entitiesByName.minecart.id, x: 2.5, y: 101.0625, z: 2077.5, pitch: 0, yaw: 0, headPitch: 0, objectData: 0, velocity: { x: 0, y: 0, z: 0 } })
+          const [minecart] = await spawned
+          const mounted = once(manual, 'mount')
+          client.write('set_passengers', { entityId: 97, passengers: [manual.entity.id] })
+          await mounted
+          const step = (x, y, z, vx, vy, vz, yaw, weight) => ({ position: { x, y, z }, movement: { x: vx, y: vy, z: vz }, velocity: { x: vx, y: vy, z: vz }, yaw, pitch: 0, weight })
+          const send = async (steps) => {
+            const moved = once(manual._client, 'move_minecart')
+            client.write('move_minecart', { entityId: 97, steps })
+            await moved
+          }
+          // [x, y, z, motion x, y, z] after each tick
+          const expected = [
+            [2.6000000044703486, 101.0625, 2077.5, 0.10000000149011612, 0, 0],
+            [2.750000011920929, 101.06250000223517, 2077.5000000029804, 0.15000000298023222, 2.2351741790771484E-9, 2.9802322387695314E-9],
+            [2.95, 101.1, 2077.55, 0.2, 0.0375, 0.05],
+            [3.0583333343267443, 101.1, 2077.55, 0.22166666686534883, 0.021249999850988386, 0.028333333134651185],
+            [3.1666666686534883, 101.1, 2077.55, 0.24333333373069763, 0.004999999701976773, 0.006666666269302367],
+            [3.3, 101.1, 2077.55, 0.1, 0, 0],
+            [3.3, 101.1, 2077.55, 0.1, 0, 0]
+          ]
+          await send([step(2.6, 101.0625, 2077.5, 0.1, 0, 0, -64, 1), step(2.75, 101.0625, 2077.5, 0.15, 0, 0, -64, 1), step(2.95, 101.1, 2077.55, 0.2, 0.0375, 0.05, -60, 1)])
+          assert.deepStrictEqual(minecart.position.toArray(), [2.95, 101.1, 2077.55])
+          // the passenger sits on the minecart as its tick left it (EntityType.MINECART's attachment - the player's 0.6)
+          const seatY = (y) => registry.version['>=']('1.20.5') ? y + (0.1875 + -0.6) : y + (0.1875 + Math.fround(-0.6))
+          for (let tick = 0; tick < expected.length; tick++) {
+            // the next steps arrive mid-way and wait for the three ticks of the first ones
+            if (tick === 2) await send([step(3.2, 101.1, 2077.55, 0.25, 0, 0, -60, 1), step(3.3, 101.1, 2077.55, 0.1, 0, 0, -60, 0.3)])
+            runTicks(1)
+            const [x, y, z, vx, vy, vz] = expected[tick]
+            assert.deepStrictEqual(minecart.interpolatedPosition.toArray(), [x, y, z], `tick ${tick + 1}`)
+            assert.deepStrictEqual(minecart.velocity.toArray(), [vx, vy, vz], `tick ${tick + 1}`)
+            assert.deepStrictEqual(manual.entity.position.toArray(), [x, seatY(y), z], `tick ${tick + 1}`)
+          }
+        } finally {
+          manual.end()
+        }
+      })
+
       it('an extending piston head pushes the bot after its tick (PistonMovingBlockEntity.moveCollidedEntities)', async function () {
         if (!require('minecraft-data')(supportedVersion).blocksByName.observer) return this.skip() // 1.11+
         const { manual, client, written, runTicks } = await standingManualBot()
