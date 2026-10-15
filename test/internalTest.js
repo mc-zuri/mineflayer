@@ -2681,6 +2681,25 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a happy ghast seats its rider 1.7 in front of it, turned with it (HappyGhast passengerAttachments)', async function () {
+        if (!registry.entitiesByName.happy_ghast) return this.skip() // from 1.21.6
+        const { manual, vehicle, runTicks } = await ridingHappyGhast({ harnessed: false, yaw: 270 })
+        try {
+          runTicks(1)
+          // facing east: the front seat is 1.7 east, 4 up less the player's vehicle attachment 0.6
+          const angle = Math.fround(-Math.fround(270) * Math.fround(0.017453292))
+          const mth = manual.physicsEngine.mth
+          assert.deepStrictEqual(manual.entity.position.toArray(), [
+            vehicle.position.x + (0 * mth.cos(angle) + 1.7 * mth.sin(angle)),
+            vehicle.position.y + 4 - 0.6,
+            vehicle.position.z + (1.7 * mth.cos(angle) - 0 * mth.sin(angle))
+          ])
+          assert.ok(Math.abs(manual.entity.position.x - (vehicle.position.x + 1.7)) < 1e-6)
+        } finally {
+          manual.end()
+        }
+      })
+
       // From 26.2 Entity.restituteMovementAfterCollisions makes the blocked motion -v * 0, -0 walking east
       // (v_minecart_push_forward t26)
       it('a passenger blocked by a block in its own move loses that motion (Entity.move, v_boat_ice t60)', async () => {
