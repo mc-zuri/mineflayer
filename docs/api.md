@@ -1863,6 +1863,8 @@ Get out of bed.
 This is the main method controlling the bot movements. It works similarly to pressing keys in minecraft.
 For example forward with state true will make the bot move forward. Forward with state false will make the bot stop moving forward.
 You may use bot.lookAt in conjunction with this to control movement. The jumper.js example shows how to use this.
+Like the sprint key, `sprint` asks to sprint: the physics decide when the bot sprints (`bot.entity.isSprinting`), and
+the server is told when that changes.
 
  * `control` - one of ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak']
  * `state` - `true` or `false`

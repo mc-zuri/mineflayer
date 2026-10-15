@@ -819,6 +819,74 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('sprint command', () => {
+      // LocalPlayer.sendIsSprintingIfNeeded: start_sprinting / stop_sprinting when the player's sprint state changed,
+      // first in the tick's movement packets. The sprint state is the physics' (entity.isSprinting).
+      function physicsReportsSprinting () {
+        const { PlayerState } = require('prismarine-physics')
+        const fake = {
+          registry: bot.registry,
+          version: bot.version,
+          entity: { position: vec3(0, 0, 0), velocity: vec3(0, 0, 0), yaw: 0, pitch: 0, effects: {} },
+          inventory: { slots: [] },
+          jumpTicks: 0,
+          jumpQueued: false,
+          fireworkRocketDuration: 0
+        }
+        return 'isSprinting' in new PlayerState(fake, {})
+      }
+
+      it('tells the server when the player starts and stops sprinting', function (done) {
+        if (!physicsReportsSprinting()) return this.skip()
+        const movement = ['position', 'position_look', 'look', 'flying']
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            const sent = []
+            client.on('packet', (data, meta) => {
+              if (meta.name === 'entity_action' || movement.includes(meta.name)) sent.push({ name: meta.name, action: data.actionId })
+            })
+            const sprintCommands = () => sent.filter(p => p.name === 'entity_action').map(p => p.action)
+            // a few ticks, and the time for their packets to reach the server
+            const ticks = async () => { await bot.waitForTicks(3); await sleep(100) }
+
+            bot.setControlState('sprint', true) // no forward input: no sprint
+            await ticks()
+            assert.deepStrictEqual(sprintCommands(), [])
+            bot.setControlState('forward', true)
+            await ticks()
+            assert.deepStrictEqual(sprintCommands(), ['start_sprinting'])
+            const start = sent.findIndex(p => p.name === 'entity_action')
+            assert.ok(movement.includes(sent[start + 1]?.name), 'the sprint command comes right before a movement packet')
+            bot.setControlState('forward', false) // a sprint stops without forward input
+            await ticks()
+            assert.deepStrictEqual(sprintCommands(), ['start_sprinting', 'stop_sprinting'])
+            bot.setControlState('sprint', false)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+    })
+
     describe('world', () => {
       const pos = vec3(1, 65, 1)
       const goldId = 41
