@@ -3919,6 +3919,39 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
     })
 
+    describe('clickWindow', () => {
+      // ServerboundContainerClickPacket: since 1.21.5 the slots are HashedStack, an empty one absent (HashedStack.EMPTY);
+      // before, the empty Slot of its version
+      it('sends a slot a click emptied as the version\'s empty slot', function (done) {
+        if (!bot.supportFeature('stateIdUsed')) return this.skip() // 1.17.1+
+        const Item = require('prismarine-item')(supportedVersion)
+        const stone = registry.itemsByName.stone.id
+        server.on('playerJoin', (client) => {
+          client.write('login', bot.test.generateLoginPacket())
+          client.on('window_click', (packet) => {
+            try {
+              const [changed] = packet.changedSlots
+              assert.strictEqual(changed.location, 36)
+              if (registry.version['>=']('1.21.5')) {
+                assert.strictEqual(changed.item, undefined)
+                assert.strictEqual(packet.cursorItem.itemId, stone)
+                assert.strictEqual(packet.cursorItem.itemCount, 3)
+              } else {
+                assert.ok(changed.item.present === false || changed.item.itemCount === 0, JSON.stringify(changed.item))
+              }
+              done()
+            } catch (err) {
+              done(err)
+            }
+          })
+        })
+        bot.once('login', () => {
+          bot.inventory.updateSlot(36, new Item(stone, 3))
+          bot.clickWindow(36, 0, 0).catch(done)
+        })
+      })
+    })
+
     describe('item use', () => {
       // MultiPlayerGameMode.useItem (q_shield_walk and the other q_ cases): 1.17 - 1.20.6 send the position and look
       // just before the use (vanilla 1.20.4: position_look 0.5 101 38.5, yaw 0, pitch 0, on the ground)
