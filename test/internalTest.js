@@ -3242,8 +3242,58 @@ for (const supportedVersion of mineflayer.testedVersions) {
               bot._client.emit('position', { ...teleport, yaw: 30, teleportId: 1 })
               bot._client.emit('player_rotation', { yaw: 90, pitch: 0 })
               await once(bot, 'forcedMove')
-              assert.deepStrictEqual(replies, [30], 'the teleport is answered with its own rotation')
+              // the answer carries the teleport's rotation (a later tick may send the bot's own look)
+              assert.deepStrictEqual(replies.slice(0, 1), [30], 'the teleport is answered with its own rotation')
               assert.strictEqual(bot.entity.yaw, require('../lib/conversions').fromNotchianYaw(90), 'the later rotation wins')
+            } finally {
+              bot._client.write = write
+            }
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
+      // the answer goes straight to the connection: what the player last sent stays, so its next tick sends the
+      // teleported position, as the client does
+      it('sends the teleported position on the tick after the answer', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), registry.blocksByName.stone.id)
+            chunk.setBlockType(vec3(1, 65, 3), registry.blocksByName.stone.id)
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            const teleport = {
+              x: 1.5,
+              y: 66,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+              teleportId: 0
+            }
+            client.write('position', teleport)
+            await once(bot, 'forcedMove')
+            for (let i = 0; i < 5; i++) await new Promise(resolve => bot.once('physicsTick', resolve))
+            assert.ok(bot.entity.onGround, 'standing before the teleport')
+
+            const writes = []
+            const write = bot._client.write.bind(bot._client)
+            bot._client.write = (name, params) => {
+              if (['position', 'look', 'position_look', 'flying'].includes(name)) writes.push({ name, z: params.z })
+              return write(name, params)
+            }
+            try {
+              bot._client.emit('position', { ...teleport, z: 3.5, teleportId: 1 })
+              await once(bot, 'forcedMove')
+              for (let i = 0; i < 3; i++) await new Promise(resolve => bot.once('physicsTick', resolve))
+              assert.deepStrictEqual(writes.slice(0, 2), [{ name: 'position_look', z: 3.5 }, { name: 'position', z: 3.5 }])
             } finally {
               bot._client.write = write
             }
