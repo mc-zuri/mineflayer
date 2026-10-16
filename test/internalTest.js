@@ -837,6 +837,39 @@ for (const supportedVersion of mineflayer.testedVersions) {
 
       // LocalPlayer.tick while a passenger: the look every tick and, up to 1.21.1, steer_vehicle after it (the impulses
       // times 0.98F, sneaking times 0.3F first up to 1.20.1; jump and sneak flags), with no sneak command
+      // Entity.rideTick: a passenger ticks from no motion with its own input, as in the air, and stays where its vehicle
+      // puts it
+      it('moves a rider by its own input from no motion, where it sits', function (done) {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', { x: 1.5, y: 80, z: 1.5, dx: 0, dy: 0, dz: 0, pitch: 0, yaw: 0, teleportId: 1, flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0 })
+            await once(bot, 'forcedMove')
+            // as the entities plugin does when the server seats the bot
+            bot.vehicle = { id: 1 }
+            bot.emit('mount')
+            bot.entity.velocity.set(0.3, 0.2, 0)
+            const seat = bot.entity.position.clone()
+            bot.setControlState('forward', true)
+            await sleep(150)
+            bot.clearControlStates()
+            const f = Math.fround
+            // 0.02 times the forward impulse, slowed by 0.91; falling from no motion
+            assert.ok(Math.abs(bot.entity.velocity.z - f(0.02) * f(0.98) * f(0.91)) < 1e-9, `${bot.entity.velocity.z}`)
+            assert.strictEqual(bot.entity.velocity.x, 0)
+            assert.strictEqual(bot.entity.velocity.y, -0.0784000015258789)
+            assert.deepStrictEqual(bot.entity.position, seat)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('sends a rider\'s look and keys every tick', function (done) {
         server.on('playerJoin', async (client) => {
           try {
