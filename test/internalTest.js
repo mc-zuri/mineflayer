@@ -2765,6 +2765,45 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // CrossbowItem.use: shooting a charged crossbow empties it on the client too (its NBT up to 1.20.4, its item
+      // components from 1.20.5)
+      it('empties a charged crossbow it shoots', function (done) {
+        if (!registry.itemsByName.crossbow) return this.skip()
+        server.on('playerJoin', async (client) => {
+          await bot.test.pluginsLoaded
+          const loggedIn = once(bot, 'login')
+          await client.write('login', bot.test.generateLoginPacket())
+          await loggedIn
+          bot._client.write = () => {}
+          bot.quickBarSlot = 0
+          const components = bot.registry.version['>=']('1.20.5')
+          const crossbow = new Item(registry.itemsByName.crossbow.id, 1)
+          if (components) {
+            const arrow = { itemCount: 1, itemId: registry.itemsByName.arrow.id, addedComponentCount: 0, removedComponentCount: 0, components: [], removeComponents: [] }
+            const charged = { type: 'charged_projectiles', data: { projectiles: [arrow] } }
+            crossbow.components = [charged]
+            crossbow.componentMap.set('charged_projectiles', charged)
+          } else {
+            const arrow = { id: { type: 'string', value: 'minecraft:arrow' }, Count: { type: 'byte', value: 1 } }
+            crossbow.nbt = { type: 'compound', name: '', value: { Charged: { type: 'byte', value: 1 }, ChargedProjectiles: { type: 'list', value: { type: 'compound', value: [arrow] } } } }
+          }
+          bot.inventory.updateSlot(bot.QUICK_BAR_START, crossbow)
+          try {
+            bot.activateItem()
+            if (components) {
+              assert.strictEqual(bot.heldItem.componentMap.has('charged_projectiles'), false)
+              assert.deepStrictEqual(bot.heldItem.components, [])
+            } else {
+              assert.strictEqual(bot.heldItem.nbt.value.Charged.value, 0)
+              assert.deepStrictEqual(bot.heldItem.nbt.value.ChargedProjectiles.value.value, [])
+            }
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // MultiPlayerGameMode.useItem: from 1.17 to 1.20.6 the position and look as they are, before the use
       it('sends the position and look before using an item on 1.17 to 1.20.6', function (done) {
         if (bot.registry.version['<']('1.17') || bot.registry.version['>=']('1.21')) return this.skip()
