@@ -835,6 +835,56 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // moveVehicle and dismount go through the rider's keys, which the next ticks send
+      it('steers and dismounts through the rider\'s keys', function (done) {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              teleportId: 1,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0
+            })
+            await once(bot, 'forcedMove')
+            await sleep(150)
+            bot.vehicle = { id: 1 }
+            bot.emit('mount')
+            const steers = []
+            const inputs = []
+            client.on('steer_vehicle', packet => steers.push(packet))
+            client.on('player_input', packet => inputs.push(packet.inputs))
+            bot.moveVehicle(1, 1)
+            await sleep(250)
+            bot.dismount()
+            await sleep(150)
+            if (bot.supportFeature('newPlayerInputPacket')) {
+              assert.ok(inputs.some(i => i.forward && i.left && !i.shift), 'steering')
+              assert.ok(inputs[inputs.length - 1].shift, 'dismounting')
+            } else {
+              const f = Math.fround
+              const held = steers.filter(p => p.sideways === f(0.98) && p.forward === f(0.98))
+              assert.ok(held.length >= 2, 'the steering is held')
+              assert.strictEqual(steers[steers.length - 1].jump & 2, 2, 'dismounting')
+            }
+            bot.clearControlStates()
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('sends a rider\'s keys too', function (done) {
         if (!bot.supportFeature('newPlayerInputPacket')) return this.skip()
         server.on('playerJoin', async (client) => {

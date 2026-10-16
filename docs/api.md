@@ -2088,14 +2088,15 @@ Mount a vehicle. To get back out, use `bot.dismount`.
 
 #### bot.dismount()
 
-Dismounts from the vehicle you are in.
+Dismounts from the vehicle you are in: holds the sneak control until the server takes the bot off the vehicle, as the
+client dismounts with the sneak key.
 
 #### bot.moveVehicle(left,forward)
 
-Moves the vehicle :
+Moves the vehicle, by holding the movement controls the client steers with (they stay held until changed) :
 
- * left can take -1 or 1 : -1 means right, 1 means left
- * forward can take -1 or 1 : -1 means backward, 1 means forward
+ * left can take -1, 0 or 1 : -1 means right, 1 means left
+ * forward can take -1, 0 or 1 : -1 means backward, 1 means forward
 
 All the direction are relative to where the bot is looking at
 
