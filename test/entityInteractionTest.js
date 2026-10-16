@@ -85,6 +85,24 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
       await old.close()
     }
   })
+
+  it('a villager takes the use and opens its trades (Villager before 1.11), a spawn egg passes before 1.11', async () => {
+    for (const [version, name] of [['1.8.8', 'Villager'], ['1.10.2', 'Villager'], ['1.20.4', 'villager']]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        t.bot.lookAt = async () => {}
+        const villager = addEntity(t.bot, 9, { name, type: 'mob', position: new Vec3(0.5, 65, 2.5), width: 0.6, height: 1.95 })
+        assert.strictEqual(await t.bot.activateEntity(villager), 'success', version)
+        if (!t.registry.version['>=']('1.11')) {
+          const Item = require('prismarine-item')(t.registry)
+          t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.spawn_egg.id, 1, 50))
+          assert.strictEqual(await t.bot.activateEntity(villager), 'pass', version)
+        }
+      } finally {
+        await t.close()
+      }
+    }
+  })
 })
 
 describe('the swing the server asks for (ClientPacketListener.handleAnimate)', function () {
