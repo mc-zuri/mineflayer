@@ -93,6 +93,18 @@ describe('inventory simulator', () => {
     assert.strictEqual(window.selectedItem.count, window.slots[0].stackSize)
   })
 
+  it('before 1.16 the swap-hands click (SWAP, button 40) does nothing (AbstractContainerMenu.doClick swaps with the hotbar only)', () => {
+    const registry = require('prismarine-registry')('1.10.2')
+    const Item = require('prismarine-item')(registry)
+    const inventory = require('prismarine-windows')(registry).createWindow(0, 'minecraft:inventory', 'Inventory')
+    const simulate = require('../lib/inventory_simulator')(Item, registry)
+    const stone = registry.itemsByName.stone.id
+    inventory.updateSlot(36, new Item(stone, 10))
+    assert.deepStrictEqual(simulate(inventory, { mode: 2, mouseButton: 40, slot: 36, item: inventory.slots[36] }, 0, inventory), [])
+    assert.strictEqual(inventory.slots[36].count, 10)
+    assert.strictEqual(inventory.slots[45], null)
+  })
+
   it('quick-moves stacks across both sides of a container', () => {
     const window = windowWith([0, 64], [26, 32], [27, 32], [62, 64])
 
