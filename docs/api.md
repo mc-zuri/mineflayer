@@ -138,6 +138,7 @@
       - [bot.food](#botfood)
       - [bot.foodSaturation](#botfoodsaturation)
       - [bot.oxygenLevel](#botoxygenlevel)
+      - [bot.riptide](#botriptide)
       - [bot.physics](#botphysics)
       - [bot.fireworkRocketDuration](#botfireworkrocketduration)
       - [bot.simpleClick.leftMouse (slot)](#botsimpleclickleftmouse-slot)
@@ -1075,6 +1076,10 @@ saturation of 5.0. Eating food increases the saturation as well as the food bar.
 #### bot.oxygenLevel
 
 Number in the range [0, 20] representing the number of water-icons known as oxygen level.
+
+#### bot.riptide
+
+The riptide level of a trident the bot just let go of, which pushes it on its next physics tick (0 for none).
 
 #### bot.physics
 

@@ -2992,6 +2992,39 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // TridentItem.releaseUsing: a riptide trident let go of after 10 ticks of use, in water or rain, pushes the bot
+      it('lets go of a riptide trident used for 10 ticks', function (done) {
+        if (!registry.itemsByName.trident) return this.skip()
+        server.on('playerJoin', async (client) => {
+          await bot.test.pluginsLoaded
+          const loggedIn = once(bot, 'login')
+          await client.write('login', bot.test.generateLoginPacket())
+          await loggedIn
+          bot._client.write = () => {}
+          bot.quickBarSlot = 0
+          bot.isRaining = true
+          const trident = new Item(registry.itemsByName.trident.id, 1)
+          trident.enchants = [{ name: 'riptide', lvl: 2 }]
+          bot.inventory.updateSlot(bot.QUICK_BAR_START, trident)
+          const useFor = (ticks) => {
+            bot.riptide = 0
+            bot.activateItem()
+            for (let i = 0; i < ticks; i++) bot.emit('physicsTick')
+            bot.deactivateItem()
+            return bot.riptide
+          }
+          try {
+            assert.strictEqual(useFor(9), 0)
+            assert.strictEqual(useFor(10), 2)
+            done()
+          } catch (err) {
+            done(err)
+          } finally {
+            bot.isRaining = false
+          }
+        })
+      })
+
       // MultiPlayerGameMode.useItem: from 1.17 to 1.20.6 the position and look as they are, before the use
       it('sends the position and look before using an item on 1.17 to 1.20.6', function (done) {
         if (bot.registry.version['<']('1.17') || bot.registry.version['>=']('1.21')) return this.skip()

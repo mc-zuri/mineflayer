@@ -198,6 +198,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
   food: number
   foodSaturation: number
   oxygenLevel: number
+  riptide: number
   physics: PhysicsOptions
   physicsEnabled: boolean
   abilities: Abilities
