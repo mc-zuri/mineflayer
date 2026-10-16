@@ -2377,6 +2377,35 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // 1.11 to 1.13: the rocket's boosted entity is a plain id, where 0 is none (isAttachedToEntity), so a rocket
+      // attached to nothing does not boost a bot whose entity id is 0
+      it('is not boosted by a rocket attached to nothing', function (done) {
+        if (!bot.registry.supportFeature('fireworkMetadataVarInt7')) return this.skip()
+        server.on('playerJoin', async (client) => {
+          try {
+            const login = bot.test.generateLoginPacket()
+            login.entityId = 0
+            client.write('login', login)
+            await once(bot, 'login')
+            // the firework rocket's object type
+            client.write('spawn_entity', { entityId: 57, objectUUID: '1-2-3-5', type: 76, x: 1, y: 2, z: 3, pitch: 0, yaw: 0, objectData: 0, velocity: { x: 0, y: 0, z: 0 } })
+            await once(bot, 'entitySpawn')
+            let boosted = false
+            bot.once('usedFirework', () => { boosted = true })
+            client.write('entity_metadata', { entityId: 57, metadata: [{ key: 7, type: 1, value: 0 }] })
+            await once(bot._client, 'entity_metadata')
+            assert.strictEqual(boosted, false)
+            bot.entity.id = 9
+            client.write('entity_metadata', { entityId: 57, metadata: [{ key: 7, type: 1, value: 9 }] })
+            await once(bot._client, 'entity_metadata')
+            assert.strictEqual(boosted, true)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // ClientPacketListener.handleSetEntityMotion: the motion in 1/8000 of a block per tick, from 1.21.9 (LpVec3) in
       // blocks per tick
       it('takes the motion the server sets for the bot', (done) => {
