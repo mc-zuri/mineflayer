@@ -4186,6 +4186,10 @@ for (const supportedVersion of mineflayer.testedVersions) {
           await sleep(50)
           assert.strictEqual(await usesWith(client, 'golden_apple', 20), true)
           assert.strictEqual(await usesWith(client, 'bow', 20), true)
+          // suspicious stew is always edible from 1.17 (1.14 - 1.16: only when hungry)
+          if (registry.itemsByName.suspicious_stew) {
+            assert.strictEqual(await usesWith(client, 'suspicious_stew', 20), registry.version['>=']('1.17'))
+          }
           done()
         })
       })
