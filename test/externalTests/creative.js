@@ -8,22 +8,14 @@ module.exports = () => async (bot) => {
   const item1 = new Item(1, 1, 0)
   const item2 = new Item(2, 1, 0)
 
-  const promise = bot.creative.setInventorySlot(SLOT, item2)
-
-  try {
-    bot.creative.setInventorySlot(SLOT, item1)
-  } catch (err) {
-    assert.ok(err instanceof Error, 'The error has not been passed')
-    assert.ok(bot.inventory.slots[SLOT] == null)
-  }
-
-  // setting a slot once works
-  await promise
+  // a slot set again before the server answered is sent again (as the client sends every change): both calls resolve
+  // and the slot holds the last item
+  await Promise.all([bot.creative.setInventorySlot(SLOT, item2), bot.creative.setInventorySlot(SLOT, item1)])
   assert.ok(bot.inventory.slots[SLOT] != null)
-  assert.ok(bot.inventory.slots[SLOT].type === item2.type)
+  assert.ok(bot.inventory.slots[SLOT].type === item1.type)
   // set the same item in the same slot again to ensure we don't hang
   const returnValue = await Promise.race([
-    bot.creative.setInventorySlot(SLOT, item2),
+    bot.creative.setInventorySlot(SLOT, item1),
     (async () => {
       await wait(5000) // after 5 seconds just fail the test
       return 'Setting the same item in the same slot took too long'

@@ -276,6 +276,27 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('a creative slot set again before the server answered is sent again, as the creative screen sends every change', async () => {
+    for (const version of ['1.20.4', '1.21.4']) {
+      const t = await fakeServerBot(version, { gameMode: 'creative', blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        const diamond = new Item(t.registry.itemsByName.diamond.id, 64)
+        // (the server answers each a while after: a set_slot of the item, before 1.21.3)
+        if (!t.bot.supportFeature('noAckOnCreateSetSlotPacket')) {
+          t.client.on('set_creative_slot', ({ slot, item }) => setTimeout(() => t.client.write('set_slot', { windowId: 0, stateId: 1, slot, item }), 100))
+        }
+        const first = t.bot.creative.setInventorySlot(36, diamond)
+        const second = t.bot.creative.setInventorySlot(36, null)
+        await Promise.all([first, second])
+        assert.deepStrictEqual(t.written.filter(p => p.name === 'set_creative_slot').map(p => p.data.item.itemCount ?? p.data.item.present), [64, version === '1.20.4' ? false : 0], version)
+        assert.strictEqual(t.bot.inventory.slots[36], null, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('bot.setAnvilItemName names the item in the open anvil screen (ServerboundRenameItemPacket, AnvilMenu.setItemName)', async () => {
     for (const version of ['1.12.2', '1.16.5', '1.20.4']) {
       const t = await clickingBot(version)

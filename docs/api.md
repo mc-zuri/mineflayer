@@ -2352,6 +2352,9 @@ Gives the bot the specified item in the specified inventory slot.
 
 If this method changes anything, you can be notified via `bot.inventory.on("updateSlot")`.
 
+Calling it again for the same slot before the server answered sends the new item too, as the vanilla client sends
+every change; the earlier call then resolves without waiting for the server.
+
 #### bot.creative.clearSlot(slot)
 
 This function returns a `Promise`, with `void` as its argument when gets fired when the server clears the slot.
