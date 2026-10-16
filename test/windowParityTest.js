@@ -106,11 +106,12 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
   })
 
   it('before 1.17 a click carries the stack the menu returns from it (AbstractContainerMenu.clicked)', async () => {
-    for (const version of ['1.8.8', '1.12.2']) {
+    for (const version of ['1.8.8', '1.10.2', '1.12.2']) {
       const t = await clickingBot(version)
       try {
         const dirt = t.registry.itemsByName.dirt.id
-        // a quick move that takes the whole stack: 1.8 returns the stack moved, 1.9+ nothing (no same item left)
+        // a quick move that takes the whole stack: before 1.12 the stack moved (Container.slotClick keeps what
+        // transferStackInSlot returned), from 1.12 nothing (no same item left in the slot)
         t.bot.inventory.updateSlot(36, t.item('dirt', 5))
         await t.click(36, 0, 1)
         // a pick up: the slot's stack as it was
@@ -119,7 +120,7 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
         // a double click (PICKUP_ALL): nothing
         await t.click(38, 0, 6)
         const items = t.clicks().map(c => c.item.blockId === -1 ? null : [c.item.blockId, c.item.itemCount])
-        assert.deepStrictEqual(items, [version === '1.8.8' ? [dirt, 5] : null, [dirt, 3], null], version)
+        assert.deepStrictEqual(items, [version !== '1.12.2' ? [dirt, 5] : null, [dirt, 3], null], version)
       } finally {
         await t.close()
       }
