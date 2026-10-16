@@ -2601,8 +2601,50 @@ for (const supportedVersion of mineflayer.testedVersions) {
             assert.strictEqual(bot.usingHeldItem, false)
             bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName.stone.id, 1))
             bot.activateItem()
-            assert.deepStrictEqual(writes, [bot.supportFeature('useItemWithOwnPacket') ? 'use_item' : 'block_place'])
+            const sendsPosition = bot.registry.version['>=']('1.17') && bot.registry.version['<']('1.21')
+            assert.deepStrictEqual(writes, [...(sendsPosition ? ['position_look'] : []), bot.supportFeature('useItemWithOwnPacket') ? 'use_item' : 'block_place'])
             assert.strictEqual(bot.usingHeldItem, true)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
+      // MultiPlayerGameMode.useItem: from 1.17 to 1.20.6 the position and look as they are, before the use
+      it('sends the position and look before using an item on 1.17 to 1.20.6', function (done) {
+        if (bot.registry.version['<']('1.17') || bot.registry.version['>=']('1.21')) return this.skip()
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 80,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 90,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+              teleportId: 0
+            })
+            await once(bot, 'forcedMove')
+            await bot.look(bot.entity.yaw, -Math.PI / 4, true)
+            bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName.stone.id, 1))
+            bot.quickBarSlot = 0
+            const writes = []
+            const write = bot._client.write.bind(bot._client)
+            bot._client.write = (name, params) => { writes.push({ name, params }); return write(name, params) }
+            const { x, y, z } = bot.entity.position
+            bot.activateItem()
+            bot._client.write = write
+            assert.deepStrictEqual(writes.map(w => w.name), ['position_look', bot.supportFeature('useItemWithOwnPacket') ? 'use_item' : 'block_place'])
+            const sent = writes[0].params
+            assert.deepStrictEqual([sent.x, sent.y, sent.z, sent.yaw, sent.pitch], [x, y, z, 90, 45])
             done()
           } catch (err) {
             done(err)
@@ -3009,7 +3051,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           bot.activateItem()
 
           try {
-            assert.deepStrictEqual(writes, [
+            // (1.19 to 1.20.6 also send the position before a use, which has no sequence)
+            assert.deepStrictEqual(writes.filter(([name]) => name !== 'position_look'), [
               ['use_item', 1],
               ['block_dig', 0],
               ['block_place', 2],
@@ -3054,7 +3097,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
             await placed
             bot.activateItem()
 
-            assert.deepStrictEqual(writes.filter(([name]) => name !== 'arm_animation'), [
+            assert.deepStrictEqual(writes.filter(([name]) => name !== 'arm_animation' && name !== 'position_look'), [
               ['use_item', 1],
               ['block_dig', 0],
               ['block_place', 2],
