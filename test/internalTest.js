@@ -381,6 +381,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
               x: 1.5,
               y: 80,
               z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
               pitch: 0,
               yaw: 0,
               teleportId: 1,
@@ -398,14 +401,18 @@ for (const supportedVersion of mineflayer.testedVersions) {
             assert.deepStrictEqual(afterAbsolute.position, vec3(1.5, 80, 1.5), 'Position should be set absolutely')
 
             // --- Test 2: Relative Position ---
+            // (from 1.21.2 the velocity has flags of its own)
             const relativePositionPacket = {
               x: 1.0,
               y: -2.0,
               z: 0.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
               pitch: 0,
               yaw: 0,
               teleportId: 2,
-              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: true, y: true, z: true, yaw: false, pitch: false } : 7
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: true, y: true, z: true, yaw: false, pitch: false, dx: true, dy: true, dz: true } : 7
             }
 
             // Set a known velocity *before* the relative update
@@ -421,6 +428,50 @@ for (const supportedVersion of mineflayer.testedVersions) {
             assert.notStrictEqual(afterRelative.velocity.y, 0, 'Velocity should be preserved after a relative teleport')
             assert.deepStrictEqual(afterRelative.position, expectedPosition, 'Position should be updated relatively')
 
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+      // From 1.21.2 a teleport sets the velocity it carries, adds the player's along the axes it flags (dx, dy, dz),
+      // turned first by the teleport's turn when it flags yawDelta (PositionMoveRotation.calculateAbsolute)
+      it('sets the velocity a teleport carries', function (done) {
+        if (!bot.registry.version['>=']('1.21.2')) return this.skip()
+        // the velocity just before and just after the bot handles the teleport
+        const teleport = (client, teleportId, yaw, dy, flags) => new Promise(resolve => {
+          let before
+          bot._client.prependOnceListener('position', () => { before = bot.entity.velocity.clone() })
+          bot._client.once('position', () => resolve([before, bot.entity.velocity.clone()]))
+          client.write('position', {
+            x: 1.5,
+            y: 80,
+            z: 1.5,
+            dx: teleportId === 0 ? 0.1 : 0,
+            dy,
+            dz: teleportId === 0 ? 0.3 : 0,
+            pitch: 0,
+            yaw,
+            teleportId,
+            flags: { x: false, y: false, z: false, yaw: false, pitch: false, dx: false, dy: false, dz: false, yawDelta: false, ...flags }
+          })
+        })
+        server.on('playerJoin', async (client) => {
+          try {
+            await client.write('login', bot.test.generateLoginPacket())
+            await client.write('map_chunk', generateChunkPacket(bot.test.buildChunk()))
+            await once(bot, 'chunkColumnLoad')
+
+            let [before, after] = await teleport(client, 0, 0, 0.2, {})
+            assert.deepStrictEqual(after, vec3(0.1, 0.2, 0.3))
+            for (let i = 0; i < 2; i++) await once(bot, 'physicsTick')
+
+            ;[before, after] = await teleport(client, 1, 0, -0.05, { dx: true, dy: true, dz: true })
+            assert.deepStrictEqual(after, vec3(before.x + 0, before.y - 0.05, before.z + 0))
+
+            // facing south, the player turns to face west: what it moved south it moves west, what it moved east south
+            ;[before, after] = await teleport(client, 2, 90, 0, { dx: true, dy: true, dz: true, yawDelta: true })
+            assert.deepStrictEqual(after, vec3(-before.z + 0, before.y + 0, before.x + 0))
             done()
           } catch (err) {
             done(err)
@@ -532,6 +583,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
             x: 1.5,
             y: 80,
             z: 1.5,
+            dx: 0,
+            dy: 0,
+            dz: 0,
             pitch: 0,
             yaw: 0,
             flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
