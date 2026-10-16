@@ -3255,7 +3255,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
               const replies = writes
                 .filter(w => ['pong', 'teleport_confirm', 'position_look'].includes(w.name))
                 .map(w => (w.name === 'pong' ? `pong ${w.params.id}` : w.name))
-              assert.deepStrictEqual(replies, ['pong 1', 'teleport_confirm', 'position_look', 'pong 2'])
+              // 1.21.2 and 1.21.3 send the position before confirming the teleport
+              const confirmedLast = bot.registry.version['>=']('1.21.2') && bot.registry.version['<']('1.21.4')
+              assert.deepStrictEqual(replies, ['pong 1', ...(confirmedLast ? ['position_look', 'teleport_confirm'] : ['teleport_confirm', 'position_look']), 'pong 2'])
             } finally {
               bot._client.write = write
             }
