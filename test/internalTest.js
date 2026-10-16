@@ -1846,6 +1846,50 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // LivingEntity.aiStep: a dead player goes on moving with no input (isImmobile). LivingEntity.tickDeath: up to 1.16
+      // the client removes it 20 ticks after death, from 1.17 only the server does
+      it('keeps a dead bot moving with no input, up to 1.16 for 20 ticks', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 1, 1), registry.blocksByName.stone.id)
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 200,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+              teleportId: 0
+            })
+            await once(bot, 'forcedMove')
+            bot.setControlState('forward', true)
+            client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+            await once(bot, 'death')
+            const start = bot.entity.position.clone()
+            let ticks = 0
+            const onTick = () => { ticks++ }
+            bot.on('physicsTick', onTick)
+            await sleep(1500)
+            bot.removeListener('physicsTick', onTick)
+            bot.setControlState('forward', false)
+            assert.ok(bot.entity.position.y < start.y, 'it falls')
+            assert.strictEqual(bot.entity.position.z, start.z, 'with no input')
+            if (bot.registry.version['<']('1.17')) assert.ok(ticks <= 20, `removed after 20 ticks, ticked ${ticks}`)
+            else assert.ok(ticks > 20, `still ticking, ticked ${ticks}`)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // LocalPlayer.aiStep: a flyer that lands stops flying and sends its abilities
       it('ends flight on landing and tells the server', (done) => {
         server.on('playerJoin', async (client) => {
