@@ -2272,6 +2272,26 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // ClientPacketListener.handleSetEntityMotion: the motion in 1/8000 of a block per tick, from 1.21.9 (LpVec3) in
+      // blocks per tick
+      it('takes the motion the server sets for the bot', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            await once(bot, 'login')
+            const blocksPerTick = bot.registry.supportFeature('entityVelocityIsLpVec3')
+            client.write('entity_velocity', { entityId: bot.entity.id, velocity: blocksPerTick ? { x: 0.4, y: 0.36, z: 0 } : { x: 3200, y: 2880, z: 0 } })
+            await once(bot._client, 'entity_velocity')
+            assert.ok(Math.abs(bot.entity.velocity.x - 0.4) < 1e-3, `x is ${bot.entity.velocity.x}`)
+            assert.ok(Math.abs(bot.entity.velocity.y - 0.36) < 1e-3, `y is ${bot.entity.velocity.y}`)
+            assert.strictEqual(bot.entity.velocity.z, 0)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('metadata', (done) => {
         server.on('playerJoin', (client) => {
           bot.on('entitySpawn', (entity) => {
