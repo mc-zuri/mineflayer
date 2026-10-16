@@ -870,6 +870,38 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // A teleport answered while riding leaves the bot a passenger, which sends its look, not a position; from 1.21.2
+      // the teleport also leaves it where its vehicle puts it (ClientPacketListener.handleMovePlayer)
+      it('stays a passenger through a teleport', function (done) {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), 41) // an empty chunk does not load on every version
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            const teleport = { x: 1.5, y: 80, z: 1.5, dx: 0, dy: 0, dz: 0, pitch: 0, yaw: 0, teleportId: 1, flags: bot.supportFeature('positionPacketHasBitflags') ? {} : 0 }
+            client.write('position', teleport)
+            await once(bot, 'forcedMove')
+            // as the entities plugin does when the server seats the bot
+            bot.vehicle = { id: 1 }
+            bot.emit('mount')
+            await sleep(100)
+            const sent = []
+            client.on('packet', (data, meta) => { if (!['keep_alive', 'tick_end', 'player_input', 'steer_vehicle', 'teleport_confirm'].includes(meta.name)) sent.push(meta.name) })
+            client.write('position', { ...teleport, y: 90, teleportId: 2 })
+            await sleep(200)
+            const answer = sent.indexOf('position_look')
+            assert.ok(answer >= 0, 'the teleport is answered')
+            assert.ok(sent.slice(answer + 1).length > 0 && sent.slice(answer + 1).every(name => name === 'look'), `a passenger's looks after the answer: ${sent}`)
+            assert.strictEqual(bot.entity.position.y, bot.registry.version['>=']('1.21.2') ? 80 : 90)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('sends a rider\'s look and keys every tick', function (done) {
         server.on('playerJoin', async (client) => {
           try {
