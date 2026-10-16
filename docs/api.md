@@ -95,6 +95,7 @@
       - [bot.entities](#botentities)
       - [bot.username](#botusername)
       - [bot.spawnPoint](#botspawnpoint)
+      - [bot.worldBorder](#botworldborder)
       - [bot.heldItem](#bothelditem)
       - [bot.usingHeldItem](#botusinghelditem)
       - [bot.game.levelType](#botgameleveltype)
@@ -875,6 +876,11 @@ Use this to find out your own name.
 #### bot.spawnPoint
 
 Coordinates to the main spawn point, where all compasses point to.
+
+#### bot.worldBorder
+
+The world border the server set, which the physics keep the bot inside: `{ centerX, centerZ, size }`, `size` being
+the diameter it has reached while it moves. `null` until the server sets one (the default border).
 
 #### bot.heldItem
 

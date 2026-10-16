@@ -2058,6 +2058,48 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // WorldBorder: the border the server sets, and a moving one's size by the wall clock
+      it('keeps the world border the server sets', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            await once(bot, 'login')
+            assert.strictEqual(bot.worldBorder, null)
+            const own = bot.registry.version['>=']('1.17')
+            const initialize = (oldDiameter, newDiameter, speed) => own
+              ? client.write('initialize_world_border', { x: 8, z: -8, oldDiameter, newDiameter, speed, portalTeleportBoundary: 29999984, warningBlocks: 5, warningTime: 15 })
+              : client.write('world_border', { action: 3, x: 8, z: -8, old_radius: oldDiameter, new_radius: newDiameter, speed, portalBoundary: 29999984, warning_time: 15, warning_blocks: 5 })
+            initialize(10, 10, 0)
+            await once(bot._client, own ? 'initialize_world_border' : 'world_border')
+            assert.deepStrictEqual([bot.worldBorder.centerX, bot.worldBorder.centerZ, bot.worldBorder.size], [8, -8, 10])
+            initialize(10, 20, 100000)
+            await once(bot._client, own ? 'initialize_world_border' : 'world_border')
+            assert.ok(bot.worldBorder.size >= 10 && bot.worldBorder.size < 10.5, `moving from 10, at ${bot.worldBorder.size}`)
+            if (bot.registry.version['>=']('1.21.11')) {
+              // from 1.21.11 the border moves a tick at a time: 10 of 20 ticks take it half way
+              const chunk = bot.test.buildChunk()
+              chunk.setBlockType(vec3(1, 65, 1), 41)
+              client.write('map_chunk', generateChunkPacket(chunk))
+              await once(bot, 'chunkColumnLoad')
+              client.write('position', { x: 1.5, y: 80, z: 1.5, dx: 0, dy: 0, dz: 0, pitch: 0, yaw: 0, teleportId: 1, flags: {} })
+              await once(bot, 'forcedMove')
+              // (the size each tick sees, before the level's tick moves the border on)
+              const sizes = []
+              initialize(10, 20, 20)
+              await once(bot._client, 'initialize_world_border')
+              const seen = () => sizes.push(bot.worldBorder.size)
+              bot.on('physicsTick', seen)
+              while (sizes.length < 11) await once(bot, 'physicsTick')
+              bot.removeListener('physicsTick', seen)
+              assert.deepStrictEqual([sizes[0], sizes[10]], [10, 15])
+            }
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('player displayName', (done) => {
         server.on('playerJoin', (client) => {
           bot.on('entitySpawn', (entity) => {
