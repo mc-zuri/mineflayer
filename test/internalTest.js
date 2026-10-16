@@ -1786,6 +1786,52 @@ for (const supportedVersion of mineflayer.testedVersions) {
           })
         })
       })
+
+      // LocalPlayer.aiStep: a flyer that lands stops flying and sends its abilities
+      it('ends flight on landing and tells the server', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), registry.blocksByName.stone.id)
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('abilities', { flags: 2 | 4 | 8, flyingSpeed: 0.05, walkingSpeed: 0.1 })
+            await once(bot, 'abilities')
+            client.write('position', {
+              x: 1.5,
+              y: 67,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+              teleportId: 0
+            })
+            await once(bot, 'forcedMove')
+            for (let i = 0; i < 3; i++) await new Promise(resolve => bot.once('physicsTick', resolve))
+            assert.strictEqual(bot.entity.flying, true, 'hovering')
+            const [sent] = await new Promise(resolve => {
+              client.once('abilities', (...args) => resolve(args))
+              bot.setControlState('sneak', true) // down to the ground
+            })
+            bot.setControlState('sneak', false)
+            assert.strictEqual(sent.flags, bot.registry.version['<']('1.16') ? 4 | 8 : 0)
+            if (bot.registry.version['<']('1.16')) {
+              assert.strictEqual(sent.flyingSpeed, Math.fround(0.05))
+              assert.strictEqual(sent.walkingSpeed, Math.fround(0.1))
+            }
+            assert.ok(bot.entity.onGround)
+            assert.strictEqual(bot.entity.flying, false)
+            assert.strictEqual(bot.abilities.flying, false)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
     })
 
     describe('entities', () => {
