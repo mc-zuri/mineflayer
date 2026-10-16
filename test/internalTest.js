@@ -2804,6 +2804,37 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // LivingEntity.updatingUsingItem: from 1.14 the server changing the held item's count or data keeps the use,
+      // another item ends it; up to 1.13 any update of the held item ends it
+      it('keeps using an item the server updates, until it is another item', (done) => {
+        const keeps = registry.version['>=']('1.14')
+        server.on('playerJoin', async (client) => {
+          await bot.test.pluginsLoaded
+          const loggedIn = once(bot, 'login')
+          await client.write('login', bot.test.generateLoginPacket())
+          await loggedIn
+          bot._client.write = () => {}
+          bot.quickBarSlot = 0
+          try {
+            bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName.potion.id, 2))
+            bot.activateItem()
+            bot.usingHeldItem = true
+            bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName.potion.id, 1))
+            assert.strictEqual(bot.usingHeldItem, keeps, 'the same item, another count')
+            bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName.stone.id, 1))
+            assert.strictEqual(bot.usingHeldItem, false, 'another item')
+            bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName.potion.id, 1))
+            bot.activateItem()
+            bot.usingHeldItem = true
+            bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName.potion.id, 1))
+            assert.strictEqual(bot.usingHeldItem, keeps, 'the same item after a change')
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // MultiPlayerGameMode.useItem: from 1.17 to 1.20.6 the position and look as they are, before the use
       it('sends the position and look before using an item on 1.17 to 1.20.6', function (done) {
         if (bot.registry.version['<']('1.17') || bot.registry.version['>=']('1.21')) return this.skip()
