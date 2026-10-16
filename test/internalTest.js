@@ -1276,6 +1276,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
             await sleep(100)
             assert.ok(answers.length > 0, 'the teleport was answered')
             assert.ok(Math.abs(answers[0] - 290) < 1e-3, `the answer's yaw is ${answers[0]}`)
+            // the entity keeps the same yaw for the physics (bot.entity.yRot)
+            assert.ok(Math.abs(bot.entity.yRot - 290) < 1e-3, `the entity's yRot is ${bot.entity.yRot}`)
             done()
           } catch (err) {
             done(err)
