@@ -882,7 +882,8 @@ The item in the bot's hand, represented as a [prismarine-item](https://github.co
 
 #### bot.usingHeldItem
 
-Whether the bot is using the item that it's holding, for example eating food or using a shield.
+Whether the bot is using the item that it's holding, for example eating food or using a shield. Only an item used for
+a time is in use: `bot.activateItem()` with a snowball or a fishing rod uses it at once.
 
 #### bot.game.levelType
 

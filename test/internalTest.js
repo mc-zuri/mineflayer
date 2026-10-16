@@ -2757,7 +2757,50 @@ for (const supportedVersion of mineflayer.testedVersions) {
             bot.activateItem()
             const sendsPosition = bot.registry.version['>=']('1.17') && bot.registry.version['<']('1.21')
             assert.deepStrictEqual(writes, [...(sendsPosition ? ['position_look'] : []), bot.supportFeature('useItemWithOwnPacket') ? 'use_item' : 'block_place'])
-            assert.strictEqual(bot.usingHeldItem, true)
+            assert.strictEqual(bot.usingHeldItem, false, 'stone is not used for a time')
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
+      // Item.use: only an item used for a time (LivingEntity.startUsingItem) keeps the player using it
+      it('uses only an item used for a time', (done) => {
+        server.on('playerJoin', async (client) => {
+          await bot.test.pluginsLoaded
+          const loggedIn = once(bot, 'login')
+          await client.write('login', bot.test.generateLoginPacket())
+          await loggedIn
+          bot._client.write = () => {}
+          bot.quickBarSlot = 0
+          // in survival (a creative player's bow shoots without arrows; some versions' login packet is creative)
+          bot.game.gameMode = 'survival'
+          const usingWith = (name, food = 20, arrows = false, metadata = 0) => {
+            bot.food = food
+            bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName[name].id, 1, metadata))
+            bot.inventory.updateSlot(bot.QUICK_BAR_START + 1, arrows ? new Item(registry.itemsByName.arrow.id, 1) : null)
+            bot.activateItem()
+            const using = bot.usingHeldItem
+            bot.usingHeldItem = false
+            return using
+          }
+          try {
+            assert.strictEqual(usingWith('stone'), false)
+            assert.strictEqual(usingWith('snowball'), false)
+            assert.strictEqual(usingWith('potion'), true)
+            assert.strictEqual(usingWith('bow'), false, 'a bow with no arrows')
+            assert.strictEqual(usingWith('bow', 20, true), true)
+            assert.strictEqual(usingWith('apple', 20), false, 'an apple when full')
+            assert.strictEqual(usingWith('apple', 10), true)
+            // up to 1.8 a splash potion is a potion with data bit 16384, thrown at once
+            if (registry.version['<']('1.9')) assert.strictEqual(usingWith('potion', 20, false, 16384), false, 'a splash potion')
+            // the client starts using a bundle from 1.21.4, a spear from 1.21.11
+            if (registry.itemsByName.bundle && registry.version['>=']('1.21.2')) assert.strictEqual(usingWith('bundle'), registry.version['>=']('1.21.4'), 'a bundle')
+            if (registry.itemsByName.wooden_spear) assert.strictEqual(usingWith('wooden_spear'), true, 'a spear')
+            // a spectator uses no item
+            bot.game.gameMode = 'spectator'
+            assert.strictEqual(usingWith('potion'), false, 'a spectator')
             done()
           } catch (err) {
             done(err)
