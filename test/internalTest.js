@@ -2532,10 +2532,16 @@ for (const supportedVersion of mineflayer.testedVersions) {
             client.write('login', bot.test.generateLoginPacket())
             await once(bot, 'login')
             const blocksPerTick = bot.registry.supportFeature('entityVelocityIsLpVec3')
-            client.write('entity_velocity', { entityId: bot.entity.id, velocity: blocksPerTick ? { x: 0.4, y: 0.36, z: 0 } : { x: 3200, y: 2880, z: 0 } })
+            client.write('entity_velocity', { entityId: bot.entity.id, velocity: blocksPerTick ? { x: 0.4, y: 0.36, z: 0 } : { x: -1759, y: 323, z: 0 } })
             await once(bot._client, 'entity_velocity')
-            assert.ok(Math.abs(bot.entity.velocity.x - 0.4) < 1e-3, `x is ${bot.entity.velocity.x}`)
-            assert.ok(Math.abs(bot.entity.velocity.y - 0.36) < 1e-3, `y is ${bot.entity.velocity.y}`)
+            if (blocksPerTick) {
+              assert.ok(Math.abs(bot.entity.velocity.x - 0.4) < 1e-3, `x is ${bot.entity.velocity.x}`)
+              assert.ok(Math.abs(bot.entity.velocity.y - 0.36) < 1e-3, `y is ${bot.entity.velocity.y}`)
+            } else {
+              // (divided by 8000, as the client does: -1759 * (1 / 8000) is a double further off)
+              assert.strictEqual(bot.entity.velocity.x, -1759 / 8000)
+              assert.strictEqual(bot.entity.velocity.y, 323 / 8000)
+            }
             assert.strictEqual(bot.entity.velocity.z, 0)
             done()
           } catch (err) {
