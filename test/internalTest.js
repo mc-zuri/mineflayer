@@ -2878,6 +2878,38 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // Player.handleEntityEvent: only the player's own event 9 completes its use
+      it('keeps using an item through other entity events', (done) => {
+        server.on('playerJoin', async (client) => {
+          await bot.test.pluginsLoaded
+          const loggedIn = once(bot, 'login')
+          await client.write('login', bot.test.generateLoginPacket())
+          await loggedIn
+          const write = bot._client.write.bind(bot._client)
+          bot._client.write = (name, params) => { if (name !== 'use_item' && name !== 'block_place' && name !== 'position_look') write(name, params) }
+          bot.quickBarSlot = 0
+          bot.inventory.updateSlot(bot.QUICK_BAR_START, new Item(registry.itemsByName.potion.id, 1))
+          try {
+            bot.activateItem()
+            const twoEvents = new Promise(resolve => {
+              let n = 0
+              const count = () => { if (++n === 2) { bot._client.removeListener('entity_status', count); resolve() } }
+              bot._client.on('entity_status', count)
+            })
+            client.write('entity_status', { entityId: bot.entity.id + 1, entityStatus: 9 })
+            client.write('entity_status', { entityId: bot.entity.id, entityStatus: 2 })
+            await twoEvents
+            assert.strictEqual(bot.usingHeldItem, true)
+            client.write('entity_status', { entityId: bot.entity.id, entityStatus: 9 })
+            await once(bot._client, 'entity_status')
+            assert.strictEqual(bot.usingHeldItem, false)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // MultiPlayerGameMode.useItem: from 1.17 to 1.20.6 the position and look as they are, before the use
       it('sends the position and look before using an item on 1.17 to 1.20.6', function (done) {
         if (bot.registry.version['<']('1.17') || bot.registry.version['>=']('1.21')) return this.skip()
