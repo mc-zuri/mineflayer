@@ -1787,6 +1787,47 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // LocalPlayer.aiStep: a second press of jump within 6 ticks toggles flight, and the client sends its abilities
+      it('starts flying on a double press of jump and tells the server', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), registry.blocksByName.stone.id)
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('abilities', { flags: 4 | 8, flyingSpeed: 0.05, walkingSpeed: 0.1 })
+            await once(bot, 'abilities')
+            client.write('position', {
+              x: 1.5,
+              y: 66,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+              teleportId: 0
+            })
+            await once(bot, 'forcedMove')
+            for (let i = 0; i < 3; i++) await new Promise(resolve => bot.once('physicsTick', resolve))
+            const sent = new Promise(resolve => client.once('abilities', resolve))
+            for (const jump of [true, false, true]) {
+              bot.setControlState('jump', jump)
+              await new Promise(resolve => bot.once('physicsTick', resolve))
+            }
+            bot.setControlState('jump', false)
+            const packet = await sent
+            assert.strictEqual(packet.flags, bot.registry.version['<']('1.16') ? 2 | 4 | 8 : 2)
+            assert.strictEqual(bot.abilities.flying, true)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // LocalPlayer.aiStep: a flyer that lands stops flying and sends its abilities
       it('ends flight on landing and tells the server', (done) => {
         server.on('playerJoin', async (client) => {

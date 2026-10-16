@@ -910,8 +910,9 @@ world height
 
 #### bot.abilities
 
-What the server last allowed the player in the abilities packet. Flight also ends when the bot lands (not as a
-spectator), which the bot tells the server as the client does.
+What the server last allowed the player in the abilities packet. When the player may fly, a second press of the jump
+control within 6 ticks toggles flight, and flight ends when the bot lands (not as a spectator); the bot tells the server,
+as the client does.
 
 ```js
 {
