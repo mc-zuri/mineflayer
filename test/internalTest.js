@@ -3353,6 +3353,55 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // the teleport turns the player as it arrives: a look forced before the next tick is the one that tick sends
+      it('keeps a look forced between a teleport and its answer', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), registry.blocksByName.stone.id)
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            const teleport = {
+              x: 1.5,
+              y: 66,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+              teleportId: 0
+            }
+            client.write('position', teleport)
+            await once(bot, 'forcedMove')
+            for (let i = 0; i < 5; i++) await new Promise(resolve => bot.once('physicsTick', resolve))
+
+            const yaws = []
+            const write = bot._client.write.bind(bot._client)
+            bot._client.write = (name, params) => {
+              if (['look', 'position_look'].includes(name)) yaws.push(params.yaw)
+              return write(name, params)
+            }
+            try {
+              await new Promise(resolve => bot.once('physicsTick', resolve))
+              bot._client.emit('position', { ...teleport, yaw: 30, teleportId: 1 })
+              bot.look(require('../lib/conversions').fromNotchianYaw(90), 0, true)
+              await once(bot, 'forcedMove')
+              await new Promise(resolve => bot.once('physicsTick', resolve))
+              assert.strictEqual(yaws[0], 30, 'the answer carries the teleport\'s rotation')
+              assert.ok(Math.abs(yaws[1] - 90) < 1e-3, `the tick sends the forced look, not ${yaws[1]}`)
+            } finally {
+              bot._client.write = write
+            }
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('drops a teleport queued before a respawn but still answers pings', function (done) {
         server.on('playerJoin', async (client) => {
           try {
