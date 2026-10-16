@@ -201,6 +201,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
   riptide: number
   physics: PhysicsOptions
   physicsEnabled: boolean
+  movingPistons: Array<{ position: Vec3, direction: string, extending: boolean, source: boolean, progress: number, boxes: number[][] }>
   abilities: Abilities
   time: Time
   quickBarSlot: number

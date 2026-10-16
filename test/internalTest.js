@@ -1924,6 +1924,42 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // PistonBaseBlock.triggerEvent: a piston extending into the bot pushes it out of the way, after its tick
+      it('is pushed by an extending piston', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            for (let x = 0; x < 6; x++) chunk.setBlockType(vec3(x, 64, 1), registry.blocksByName.stone.id)
+            chunk.setBlockType(vec3(0, 65, 1), registry.blocksByName.piston.id)
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', {
+              x: 1.5,
+              y: 65,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 0,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+              teleportId: 0
+            })
+            await once(bot, 'forcedMove')
+            client.write('block_action', { location: { x: 0, y: 65, z: 1 }, byte1: 0, byte2: 5, blockId: registry.blocksByName.piston.id })
+            await once(bot, 'pistonMove')
+            assert.deepStrictEqual(bot.movingPistons.map(piston => [piston.position.toString(), piston.direction]), [[vec3(1, 65, 1).toString(), 'east']])
+            for (let i = 0; i < 3; i++) await once(bot, 'physicsTick')
+            assert.ok(bot.entity.position.x > 2.2, `pushed east, at ${bot.entity.position.x}`)
+            assert.deepStrictEqual(bot.movingPistons, [])
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // LivingEntity.aiStep: a dead player goes on moving with no input (isImmobile). LivingEntity.tickDeath: up to 1.16
       // the client removes it 20 ticks after death, from 1.17 only the server does
       it('keeps a dead bot moving with no input, up to 1.16 for 20 ticks', (done) => {

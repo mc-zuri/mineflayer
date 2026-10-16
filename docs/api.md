@@ -109,6 +109,7 @@
       - [bot.game.height](#botgameheight)
       - [bot.abilities](#botabilities)
       - [bot.physicsEnabled](#botphysicsenabled)
+      - [bot.movingPistons](#botmovingpistons)
       - [bot.player](#botplayer)
       - [bot.players](#botplayers)
       - [bot.tablist](#bottablist)
@@ -938,6 +939,11 @@ as the client does.
 #### bot.physicsEnabled
 
 Enable physics, default true.
+
+#### bot.movingPistons
+
+The piston heads moving near the bot, which push it: `{ position, direction, extending, source, progress, boxes }`
+for each, `progress` going from 0 to 1 a half at a tick.
 
 #### bot.player
 
