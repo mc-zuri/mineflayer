@@ -3304,6 +3304,55 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // the respawned player is a new LocalPlayer that has sent nothing: its first tick sends its position and look,
+      // even where the old player last sent the same ones
+      it('sends the position and look again after a respawn', (done) => {
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            chunk.setBlockType(vec3(1, 65, 1), registry.blocksByName.stone.id)
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            const teleport = {
+              x: 1.5,
+              y: 66,
+              z: 1.5,
+              dx: 0,
+              dy: 0,
+              dz: 0,
+              pitch: 0,
+              yaw: 90,
+              flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+              teleportId: 0
+            }
+            client.write('position', teleport)
+            await once(bot, 'forcedMove')
+            for (let i = 0; i < 5; i++) await new Promise(resolve => bot.once('physicsTick', resolve))
+            assert.ok(bot.entity.onGround, 'standing before the respawn')
+
+            const writes = []
+            const write = bot._client.write.bind(bot._client)
+            bot._client.write = (name, params) => {
+              if (['position', 'look', 'position_look', 'flying'].includes(name)) writes.push({ name, yaw: params.yaw })
+              return write(name, params)
+            }
+            try {
+              bot.emit('respawn') // as the respawn packet does
+              bot._client.emit('position', { ...teleport, teleportId: 1 })
+              await once(bot, 'forcedMove')
+              for (let i = 0; i < 3; i++) await new Promise(resolve => bot.once('physicsTick', resolve))
+              assert.deepStrictEqual(writes.slice(0, 2), [{ name: 'position_look', yaw: 90 }, { name: 'position_look', yaw: 90 }])
+            } finally {
+              bot._client.write = write
+            }
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('drops a teleport queued before a respawn but still answers pings', function (done) {
         server.on('playerJoin', async (client) => {
           try {
