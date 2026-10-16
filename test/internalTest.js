@@ -1957,6 +1957,29 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // LocalPlayer.onGameModeChanged: from 1.20 the player made a spectator stops falling
+      it('stops the bot falling when the server makes it a spectator', function (done) {
+        if (!registry.supportFeature('playerInfoActionIsBitfield')) return this.skip()
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            await once(bot, 'login')
+            client.write('player_info', {
+              action: { add_player: true, update_game_mode: true },
+              data: [{ uuid: bot._client.uuid, player: { name: bot.username, properties: [] }, gamemode: 0 }]
+            })
+            await once(bot, 'playerJoined')
+            bot.entity.velocity.y = -0.5
+            client.write('player_info', { action: { update_game_mode: true }, data: [{ uuid: bot._client.uuid, gamemode: 3 }] })
+            await once(bot._client, 'player_info')
+            assert.strictEqual(bot.entity.velocity.y, bot.registry.version['>=']('1.20') ? 0 : -0.5)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       it('player displayName', (done) => {
         server.on('playerJoin', (client) => {
           bot.on('entitySpawn', (entity) => {
