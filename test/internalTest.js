@@ -1900,6 +1900,61 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // The client puts a sleeping player on its bed: up to 1.13 on the use_bed packet (EntityPlayer.trySleep, 0.4 towards
+      // the head, motion stopped), from 1.14 on the sleeping position in its entity data (LivingEntity.setPosToBed). The
+      // sleeping player has no input, and from 1.14 looks straight ahead after its tick.
+      it('puts the sleeping bot on its bed', (done) => {
+        const bedPos = vec3(3, 66, 1)
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            const chunk = bot.test.buildChunk()
+            if (bot.registry.version['<']('1.13')) {
+              chunk.setBlockType(bedPos, registry.blocksByName.bed.id)
+              chunk.setBlockData(bedPos, 8 | 3) // the head, facing east
+            } else {
+              const Block = require('prismarine-block')(registry)
+              chunk.setBlockStateId(bedPos, Block.fromProperties('red_bed', { facing: 'east', part: 'head', occupied: true }, 0).stateId)
+            }
+            client.write('map_chunk', generateChunkPacket(chunk))
+            await once(bot, 'chunkColumnLoad')
+            client.write('position', { x: 1.5, y: 66, z: 1.5, dx: 0, dy: 0, dz: 0, pitch: 0, yaw: 0, flags: bot.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0, teleportId: 0 })
+            await once(bot, 'forcedMove')
+            bot.setControlState('forward', true)
+            if (bot.registry.version['<']('1.14')) {
+              client.write('bed', { entityId: bot.entity.id, location: bedPos })
+              await once(bot._client, 'bed')
+              assert.deepStrictEqual(bot.entity.position, vec3(3.9000000953674316, 66.6875, 1.5))
+              assert.deepStrictEqual(bot.entity.velocity, vec3(0, 0, 0))
+            } else {
+              const named = bot.registry.supportFeature('mcDataHasEntityMetadata')
+              const keys = bot.registry.entitiesByName.player.metadataKeys
+              const sleepingPosKey = keys ? keys.indexOf('sleeping_pos') : bot.registry.version['<']('1.15') ? 12 : bot.registry.version['<']('1.17') ? 13 : 14
+              client.write('entity_metadata', {
+                entityId: bot.entity.id,
+                metadata: [
+                  { key: 6, type: named ? 'pose' : 18, value: 2 },
+                  { key: sleepingPosKey, type: named ? 'optional_block_pos' : 10, value: bedPos }
+                ]
+              })
+              await once(bot._client, 'entity_metadata')
+              assert.deepStrictEqual(bot.entity.position, vec3(3.5, 66.6875, 1.5))
+            }
+            assert.strictEqual(bot.isSleeping, true)
+            assert.strictEqual(bot.entity.pose, 'sleeping')
+            // (up to 1.13 its motion was stopped, so it falls from the second tick)
+            bot.entity.pitch = 0.5
+            for (let i = 0; i < 2; i++) await once(bot, 'physicsTick')
+            assert.strictEqual(bot.entity.position.x, bot.registry.version['<']('1.14') ? 3.9000000953674316 : 3.5)
+            assert.ok(bot.entity.position.y < 66.6875, 'it falls onto the bed')
+            assert.strictEqual(bot.entity.pitch, bot.registry.version['<']('1.14') ? 0.5 : 0)
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // ClientPacketListener.handleMovePlayer moves the player and leaves it on the ground or off it; a new player (at
       // login and respawn) starts off it
       it('keeps the bot on the ground through a teleport', (done) => {
