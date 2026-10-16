@@ -1828,6 +1828,24 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // Entity.onSyncedDataUpdated: from 1.14 the bot takes the pose the server sets in its entity data
+      it('takes the pose the server sets for the bot', function (done) {
+        if (bot.registry.version['<']('1.14')) return this.skip()
+        server.on('playerJoin', async (client) => {
+          try {
+            client.write('login', bot.test.generateLoginPacket())
+            await once(bot, 'login')
+            const poseType = bot.registry.supportFeature('mcDataHasEntityMetadata') ? 'pose' : bot.supportFeature('entityMetadataHasLong') ? 19 : 18
+            client.write('entity_metadata', { entityId: bot.entity.id, metadata: [{ key: 6, type: poseType, value: 5 }] })
+            await once(bot._client, 'entity_metadata')
+            assert.strictEqual(bot.entity.pose, 'crouching')
+            done()
+          } catch (err) {
+            done(err)
+          }
+        })
+      })
+
       // LocalPlayer.aiStep: a flyer that lands stops flying and sends its abilities
       it('ends flight on landing and tells the server', (done) => {
         server.on('playerJoin', async (client) => {
