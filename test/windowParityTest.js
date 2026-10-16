@@ -258,6 +258,24 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('from 1.12 the result of a trade taken by a quick move carries its stack when the payment pays for it again (AbstractContainerMenu.clicked)', async () => {
+    for (const emeralds of [1, 3]) {
+      const t = await merchantBot()
+      try {
+        await t.offers()
+        const window = t.bot.currentWindow
+        window.updateSlot(0, t.item('emerald', emeralds))
+        window.updateSlot(2, t.item('bread', 1))
+        await t.click(2, 0, 1)
+        // the result there again after the first trade: the quick move goes on, and the click carries the result
+        const [click] = t.clicks()
+        assert.deepStrictEqual(click.item.present ? [click.item.itemId, click.item.itemCount] : null, emeralds > 1 ? [t.registry.itemsByName.bread.id, 1] : null, `${emeralds}`)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('bot.setAnvilItemName names the item in the open anvil screen (ServerboundRenameItemPacket, AnvilMenu.setItemName)', async () => {
     for (const version of ['1.12.2', '1.16.5', '1.20.4']) {
       const t = await clickingBot(version)
