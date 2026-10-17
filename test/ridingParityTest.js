@@ -140,6 +140,44 @@ describe('riding (vanilla\'s mounts and seats)', function () {
   })
 
   describe('seats (EntityType.passengerAttachments)', () => {
+    it('a chest boat seats its rider 0.15 forward from 1.20.2 (AbstractChestBoat.getSinglePassengerXOffset)', async () => {
+      for (const version of ['1.20.4', '26.1']) {
+        const t = await riding(version, 'oak_chest_boat')
+        try {
+          t.ticks(2)
+          const at = offset(t.bot, t.vehicle)
+          assert.ok(Math.abs(Math.hypot(at.x, at.z) - f32(0.15)) < 1e-6, `${version}: ${at}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+
+    it('a llama seats its rider at (0, 1.37, -0.3) from 1.20.5', async () => {
+      for (const [version, back] of [['1.20.4', 0], ['26.1', 0.3]]) {
+        const t = await riding(version, 'llama')
+        try {
+          t.ticks(2)
+          const at = offset(t.bot, t.vehicle)
+          assert.ok(Math.abs(Math.hypot(at.x, at.z) - back) < 1e-6, `${version}: ${at}`)
+          if (back) assert.ok(Math.abs(at.y - (1.37 - 0.6)) < 1e-9, `${version}: ${at}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+
+    it('a nautilus seats its rider 1.1375 above it', async () => {
+      const t = await riding('26.1', 'nautilus')
+      try {
+        t.ticks(2)
+        const at = offset(t.bot, t.vehicle)
+        assert.ok(Math.abs(at.y - (f32(1.1375) - 0.6)) < 1e-9, String(at))
+        assert.strictEqual(Math.hypot(at.x, at.z), 0)
+      } finally {
+        await t.close()
+      }
+    })
   })
 
   describe('the cushion (26.3)', () => {
