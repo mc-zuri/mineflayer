@@ -86,3 +86,20 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 })
+
+describe('the swing the server asks for (ClientPacketListener.handleAnimate)', function () {
+  this.timeout(10 * 1000)
+  it('the server\'s swing of the player\'s own arm is swung back before 26.3 (ClientPacketListener.handleAnimate)', async () => {
+    const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      t.client.write('animation', { entityId: t.bot.entity.id, animation: 0 })
+      t.client.write('animation', { entityId: t.bot.entity.id, animation: 3 })
+      // another entity's swing is not the player's
+      t.client.write('animation', { entityId: 99, animation: 0 })
+      await settle()
+      assert.deepStrictEqual(t.written.filter(p => p.name === 'arm_animation').map(p => p.data.hand), [0, 1])
+    } finally {
+      await t.close()
+    }
+  })
+})
