@@ -874,4 +874,27 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AI: the sprinting rider's air speed, Player.aiStep's flyingSpeed before 1.19.4: 0.02F plus the double
+  // 0.005999999865889549D cast back to a float (0.025999999F), but 0.02F + 0.006F in floats on 1.18.2 - 1.19.3
+  // (0.026000000536441803: c_ride_donkey_sprint_turn t2 - t30 on 1.18.2 - 1.19.3)
+  describe('the sprinting rider\'s air speed (Player.aiStep: flyingSpeed)', () => {
+    it('is 0.02F + 0.006F in floats on 1.18.2 - 1.19.3, 0.025999999F before', async () => {
+      const f32 = Math.fround
+      for (const [version, speed] of [['1.17.1', f32(0.025999999)], ['1.18.2', f32(f32(0.02) + f32(0.006))], ['1.19.3', f32(f32(0.02) + f32(0.006))]]) {
+        const t = await riding(version, 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x06 } })
+        try {
+          t.bot.setControlState('forward', true)
+          t.bot.setControlState('sprint', true)
+          t.ticks(2)
+          await settle()
+          // (south: its input 0.98F at that speed, then the air's 0.91F)
+          const { x, z } = t.bot.entity.velocity
+          assert.ok(Math.abs(x) < 1e-12 && Math.abs(z - f32(0.98) * speed * f32(0.91)) < 1e-11, `${version}: ${x}, ${z}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
