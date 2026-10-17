@@ -133,6 +133,20 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
 
 describe('the swing the server asks for (ClientPacketListener.handleAnimate)', function () {
   this.timeout(10 * 1000)
+  it('before 1.11 a cow is called Cow: it is milked all the same (EntityCow.processInteract)', async () => {
+    const t = await fakeServerBot('1.8.8', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.bucket.id, 1))
+      t.bot.lookAt = async () => {}
+      const cow = addEntity(t.bot, 7, { name: 'Cow', type: 'mob', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.3 })
+      assert.strictEqual(await t.bot.activateEntity(cow), 'success')
+      assert.strictEqual(t.bot.heldItem?.name, 'milk_bucket')
+    } finally {
+      await t.close()
+    }
+  })
+
   it('a cow milked with a bucket fills it on the client at once (ItemUtils.createFilledResult)', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
