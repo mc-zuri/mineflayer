@@ -1060,4 +1060,34 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AP: before 1.21.2 the mount the client controls takes its packet position where it starts each tick
+  // (LivingEntity.aiStep: setPacketCoordinates), the tick its 1.16 rider stops riding too (its vehicle ticks first,
+  // still controlled): the server's next move goes from there (m_c_mount_click_strider t97 on 1.16.5)
+  describe('the packet position of the mount its 1.16 rider leaves (LivingEntity.aiStep: setPacketCoordinates)', () => {
+    it('is where the mount started the tick its rider left it', async () => {
+      const t = await riding('1.16.5', 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x06 } })
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(3)
+        t.bot.setControlState('sneak', true)
+        t.ticks(1)
+        await settle()
+        // (south: its rider looks at yaw 0)
+        const from = t.vehicle.position.z
+        // (the rider stops riding in the horse's tick, which moves it on)
+        t.ticks(1)
+        await settle()
+        assert.strictEqual(t.bot.vehicle, null, 'dismounted')
+        t.client.write('rel_entity_move', { entityId: 100, dX: 0, dY: 0, dZ: 4096, onGround: true })
+        await settle()
+        t.ticks(4)
+        await settle()
+        // (from its packet position on the 1/4096 grid, ClientboundMoveEntityPacket.updateEntityPosition)
+        assert.ok(Math.abs(t.vehicle.position.z - (Math.floor(from * 4096) / 4096 + 1)) < 1e-9, `${t.vehicle.position.z - from}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
