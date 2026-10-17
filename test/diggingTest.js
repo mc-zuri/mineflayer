@@ -108,6 +108,33 @@ describe('digging (MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock)
     }
   })
 
+  it('before 1.14 a broken block the server puts back is started anew after the delay; from 1.14 dug on (PlayerControllerMP.onPlayerDestroyBlock)', async () => {
+    for (const [version, restarts] of [['1.8.8', true], ['1.13.2', true], ['1.14.4', false]]) {
+      const t = await standing(version)
+      try {
+        const block = t.bot.blockAt(new Vec3(1, 64, 0))
+        const done = t.bot.dig(block, 'ignore', 'auto', 1)
+        t.ticks(Math.ceil(t.bot.digTime(block) / 50 - 1e-9))
+        await done
+        // the server puts it back (its break refused)
+        const Block = require('prismarine-block')(t.registry)
+        const dirt = t.registry.version['>=']('1.13') ? Block.fromProperties('dirt', {}, 0).stateId : t.registry.blocksByName.dirt.id << 4
+        t.client.write('block_change', { location: { x: 1, y: 64, z: 0 }, type: dirt })
+        await settle()
+        assert.strictEqual(t.bot.blockAt(block.position).name, 'dirt', version)
+        t.written.length = 0
+        const again = t.bot.dig(t.bot.blockAt(block.position), 'ignore', 'auto', 1, { held: true }).catch(err => err)
+        t.ticks(6)
+        await settle()
+        assert.deepStrictEqual(digs(t).map(d => d.status), restarts ? [0] : [], version)
+        t.bot.stopDigging()
+        await again
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('from 1.19 a break is a prediction until the server acknowledges it (BlockStatePredictionHandler)', async () => {
     const t = await standing('1.20.4')
     try {
