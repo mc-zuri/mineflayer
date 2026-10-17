@@ -468,6 +468,8 @@ export interface Bot extends TypedEmitter<BotEvents> {
   waitForChunksToLoad: () => Promise<void>
 
   entityAtCursor: (maxDistance?: number) => Entity | null
+
+  raycastHitResult: (blockRange?: number, entityRange?: number) => { type: 'entity', entity: Entity, intersect: Vec3 } | { type: 'block', block: Block, face: number, intersect: Vec3 } | { type: 'miss', intersect: Vec3 }
   nearestEntity: (filter?: (entity: Entity) => boolean) => Entity | null
 
   waitForTicks: (ticks: number, tickBegin?: boolean) => Promise<void>
