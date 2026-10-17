@@ -312,6 +312,48 @@ describe('the swing the server asks for (ClientPacketListener.handleAnimate)', f
     }
   })
 
+  it('before 1.19.4 a mob\'s data is read where the version puts it: a sheep\'s wool, a baby, an item frame\'s item (SynchedEntityData)', async () => {
+    for (const [version, wool, baby, frameItem] of [['1.15.2', 16, 15, 7], ['1.17.1', 17, 16, 8], ['1.12.2', 13, 12, 6], ['1.9.4', 12, 11, 5]]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.lookAt = async () => {}
+        const sheep = addEntity(t.bot, 7, { name: 'sheep', type: 'animal', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.3 })
+        sheep.metadata[wool] = 0x10
+        assert.deepStrictEqual([sheep.metadata[wool], require('../lib/entityData').entityDataKeys(t.registry, 'sheep')[wool]], [0x10, 'wool'], version)
+        // a baby cow gives no milk
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.bucket.id, 1))
+        const cow = addEntity(t.bot, 8, { name: 'cow', type: 'animal', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.4 })
+        cow.metadata[baby] = true
+        assert.strictEqual(await t.bot.activateEntity(cow), 'pass', `${version} baby`)
+        if (t.registry.version['>=']('1.15')) {
+          // sheared: shears pass on 1.15
+          t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.shears.id, 1))
+          if (version === '1.15.2') assert.strictEqual(await t.bot.activateEntity(sheep), 'pass', `${version} sheared`)
+          // a framed item turns at the empty hand's click
+          t.bot.inventory.updateSlot(36, null)
+          const frame = addEntity(t.bot, 9, { name: 'item_frame', type: 'other', position: new Vec3(2.96875, 65.5, 0.5), width: 0.5, height: 0.5 })
+          frame.metadata[frameItem] = Item.toNotch(new Item(t.registry.itemsByName.stick.id, 1))
+          assert.strictEqual(await t.bot.activateEntity(frame), 'success', `${version} frame`)
+        }
+      } finally {
+        await t.close()
+      }
+    }
+    // 1.8: an age below 0
+    const t = await fakeServerBot('1.8.8', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      t.bot.lookAt = async () => {}
+      t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.bucket.id, 1))
+      const cow = addEntity(t.bot, 8, { name: 'Cow', type: 'mob', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.3 })
+      cow.metadata[12] = -1
+      assert.strictEqual(await t.bot.activateEntity(cow), 'pass', '1.8.8 baby')
+    } finally {
+      await t.close()
+    }
+  })
+
   it('the server\'s swing of the player\'s own arm is swung back before 26.3 (ClientPacketListener.handleAnimate)', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
