@@ -956,4 +956,35 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AL: from 1.21.2 a position sync of the mount while its rider does not steer it (its saddle off for a moment) eases
+  // it there, turning to the rotation sent; steered again, the mount goes on interpolating and its vehicle_move reports
+  // the interpolation's rotation (ClientPacketListener.handleEntityPositionSync: !isLocalInstanceAuthoritative,
+  // moveOrInterpolateTo; ServerboundMoveVehiclePacket.fromEntity) (m_c_open_horse_riding t55 on 1.21.5)
+  describe('a position sync of the mount it does not steer for a moment (handleEntityPositionSync)', () => {
+    it('is the interpolation its vehicle_move reports once it is steered again', async () => {
+      for (const version of ['1.21.4', '1.21.5']) {
+        const t = await riding(version, 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x06; if (registry.version['>=']('1.21.5')) saddle(v, registry) } })
+        try {
+          t.ticks(1)
+          await settle()
+          // (off: unsaddled on 1.21.5, its flags before)
+          if (t.registry.version['>=']('1.21.5')) t.client.write('entity_equipment', { entityId: 100, equipments: [{ slot: 7, item: { itemCount: 0 } }] })
+          else t.client.write('entity_metadata', { entityId: 100, metadata: [{ key: horseFlags(t.registry), type: 'byte', value: 0x02 }] })
+          t.client.write('sync_entity_position', { entityId: 100, x: 3.5, y: 65, z: 1.5, dx: 0, dy: 0, dz: 0, yaw: -90, pitch: 0, onGround: true })
+          if (t.registry.version['>=']('1.21.5')) t.client.write('entity_equipment', { entityId: 100, equipments: [{ slot: 7, item: { itemCount: 1, itemId: t.registry.itemsByName.saddle.id, addedComponentCount: 0, removedComponentCount: 0, components: [], removeComponents: [] } }] })
+          else t.client.write('entity_metadata', { entityId: 100, metadata: [{ key: horseFlags(t.registry), type: 'byte', value: 0x06 }] })
+          await settle()
+          t.written.length = 0
+          t.ticks(1)
+          await settle()
+          const [move] = packets(t, 'vehicle_move')
+          // (the rotation it heads to from 1.21.5, InterpolationHandler; before, its own)
+          assert.strictEqual(move?.yaw, version === '1.21.5' ? -90 : 0, `${version}: ${JSON.stringify(move)}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
