@@ -294,5 +294,27 @@ describe('riding (vanilla\'s mounts and seats)', function () {
   })
 
   describe('what a passenger sends (LocalPlayer.sendChanges)', () => {
+    it('a passenger leaves its last position, ground and look as it sent them on foot', async () => {
+      for (const version of ['1.20.4', '26.1']) {
+        const t = await riding(version, 'pig')
+        try {
+          // a ride of more than the 20 ticks of the position reminder, looking another way
+          t.bot.entity.yawDegrees = new Number(90) // eslint-disable-line no-new-wrappers
+          t.ticks(25)
+          const dismounted = once(t.bot, 'dismount')
+          t.client.write('set_passengers', { entityId: 100, passengers: [] })
+          await dismounted
+          // back where it last sent itself on foot, looking as it did
+          await t.teleport({ x: 0.5, y: 65, z: 0.5 }, 2)
+          await settle()
+          t.written.length = 0
+          t.ticks(1)
+          await settle()
+          assert.deepStrictEqual(t.names(/^(position|position_look|look|flying)$/), [], version)
+        } finally {
+          await t.close()
+        }
+      }
+    })
   })
 })
