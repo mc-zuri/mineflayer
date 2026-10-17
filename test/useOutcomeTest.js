@@ -193,12 +193,12 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(use.useItemOn(bell, UP, new Vec3(0.5, 0.8, 0.5)).result, 'pass')
     })
 
-    it('a shelf: a held item swings to 26.2 (26.3 says CONSUME), an empty hand passes', () => {
-      for (const [version, expected] of [['26.1', 'success'], ['26.3', 'consume']]) {
+    it('a shelf: a held item swings to 26.2 (26.3 says CONSUME), an empty hand passes from 1.21.11 (swings before)', () => {
+      for (const [version, expected, empty] of [['1.21.9', 'success', 'success'], ['26.1', 'success', 'pass'], ['26.3', 'consume', 'pass']]) {
         const bot = fakeBot(version)
         const shelf = bot.set(new Vec3(2, 101, 0), 'oak_shelf', { facing: 'west' })
         const use = createUsePrediction(bot)
-        assert.strictEqual(use.useItemOn(shelf, WEST, center).result, 'pass', version)
+        assert.strictEqual(use.useItemOn(shelf, WEST, center).result, empty, version)
         bot.hold('stick')
         assert.strictEqual(use.useItemOn(shelf, WEST, center).result, expected, version)
       }
