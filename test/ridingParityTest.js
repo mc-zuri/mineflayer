@@ -239,6 +239,58 @@ describe('riding (vanilla\'s mounts and seats)', function () {
   })
 
   describe('the mount\'s synced data (onSyncedDataUpdated)', () => {
+    it('a dash the server syncs holds the nautilus\'s jump for its cooldown (AbstractNautilus DASH)', async () => {
+      const t = await riding('26.1', 'nautilus', { setup: (v, { registry }) => saddle(v, registry) })
+      const jump = () => {
+        t.bot.setControlState('jump', true)
+        t.ticks(3)
+        t.bot.setControlState('jump', false)
+        t.ticks(2)
+      }
+      try {
+        jump()
+        await settle()
+        assert.strictEqual(ridingJumps(t.written), 1)
+        // the dash's cooldown runs out
+        t.ticks(60)
+        const dash = t.registry.entitiesByName.nautilus.metadataKeys.indexOf('dash')
+        const synced = once(t.bot._client, 'entity_metadata')
+        t.client.write('entity_metadata', { entityId: 100, metadata: [{ key: dash, type: 'boolean', value: true }] })
+        await synced
+        jump()
+        await settle()
+        assert.strictEqual(ridingJumps(t.written), 1)
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('a strider without AI keeps the suffocating the server synced (Mob NO_AI, Strider.setSuffocating)', async () => {
+      // the same strider on stone (no lava: it would suffocate), once without AI and not suffocating, once with its AI
+      const walked = async (noAi) => {
+        const t = await riding('26.1', 'strider', {
+          setup: (v, { bot, registry }) => {
+            const keys = registry.entitiesByName.strider.metadataKeys
+            v.metadata[keys.indexOf('mob_flags')] = noAi ? 1 : 0
+            v.metadata[keys.indexOf('suffocating')] = false
+            v.attributes = { 'minecraft:movement_speed': { value: 0.175, modifiers: [] } }
+            bot.inventory.updateSlot(bot.QUICK_BAR_START + bot.quickBarSlot, item(registry, 'warped_fungus_on_a_stick'))
+          }
+        })
+        try {
+          const start = t.vehicle.position.clone()
+          t.bot.setControlState('forward', true)
+          t.ticks(6)
+          return t.vehicle.position.distanceTo(start)
+        } finally {
+          await t.close()
+        }
+      }
+      const withoutAi = await walked(true)
+      const withAi = await walked(false)
+      assert.ok(withAi > 0, 'the strider did not move')
+      assert.ok(withoutAi > withAi, `${withoutAi} ${withAi}`)
+    })
   })
 
   describe('what a passenger sends (LocalPlayer.sendChanges)', () => {
