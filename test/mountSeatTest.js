@@ -121,6 +121,15 @@ describe('mount seats (Entity.positionRider)', function () {
     })
   })
 
+  describe('[Y] the boat of 1.8 (EntityBoat.updateRiderPosition)', () => {
+    it('[Y] 1.8 seats a boat\'s rider 0.4 along its yaw, at -0.3 then the player\'s -0.35', async () => {
+      const { at } = await seated('1.8.8', 'Boat')
+      // (yaw 0: notchian 180, cos -1 along x)
+      assert.ok(Math.abs(at.y - (-0.3 + -0.35)) < 1e-9, String(at.y))
+      assert.ok(Math.abs(Math.hypot(at.x, at.z) - 0.4) < 1e-9, String(at))
+    })
+  })
+
   describe('[P] a rider is off the ground (Entity.rideTick)', () => {
     it('[P] while riding the rider was not on the ground after its last tick either: its first tick on foot is in the air', async () => {
       const t = await fakeServerBot('1.20.4', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })

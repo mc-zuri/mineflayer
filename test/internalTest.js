@@ -2188,7 +2188,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
 
       // m_horse on 1.8.8: before 1.9 the client takes the server's moves of the horse it rides too, easing toward them
-      // over 3 steps (EntityLivingBase.setPositionAndRotation2); the recorded horse goes 0.8333, 1.1667, 1.5 after a /tp
+      // over 3 steps (EntityLivingBase.setPositionAndRotation2); the recorded horse goes 0.8333, 1.1667, 1.5 after a /tp.
+      // The client moves no ridden mob then (the server alone moves it): the packet position is the server's at once,
+      // and the horse is shown easing toward it
       it('a 1.8 bot eases the saddled horse it rides toward the server’s teleport (m_horse)', async function () {
         if (registry.version['>=']('1.9')) return this.skip()
         const { manual, client, vehicle, runTicks } = await ridingManualBot('EntityHorse')
@@ -2196,6 +2198,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           vehicle.metadata = []
           vehicle.metadata[16] = 0x02 | 0x04 // tame, saddled (1.8: an int at 16)
           vehicle.position.set(0.5, pos.y + 1, 1.5)
+          // (shown there too, as a spawn there would leave it)
+          manual.entityInterpolation.spawn(vehicle)
           vehicle.velocity.set(0, -0.0784000015258789, 0)
           runTicks(1)
           const moved = once(manual._client, 'entity_teleport')
@@ -2204,8 +2208,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const shown = []
           for (let t = 0; t < 3; t++) {
             runTicks(1)
-            shown.push(vehicle.position.x)
+            shown.push(vehicle.interpolatedPosition.x)
           }
+          assert.strictEqual(vehicle.position.x, 1.5)
           assert.deepStrictEqual(shown, [0.8333333333333333, 1.1666666666666665, 1.5])
         } finally {
           manual.end()
@@ -2717,7 +2722,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
-      it('a rider sits where it steered its pig, not where the server last showed it (v_pig_carrot_on_a_stick t2)', async () => {
+      it('a rider sits where it steered its pig, not where the server last showed it (v_pig_carrot_on_a_stick t2)', async function () {
+        // (1.8's client moves no ridden mob: EntityPig moves where !worldObj.isRemote only)
+        if (!registry.isNewerOrEqualTo('1.9')) return this.skip()
         const { manual, vehicle, runTicks } = await ridingManualBot('pig')
         try {
           manual.quickBarSlot = 0

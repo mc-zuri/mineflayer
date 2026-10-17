@@ -98,4 +98,38 @@ describe('mounts the rider steers, and what goes with them', function () {
       assert.ok(boosted > plain + 0.05, `${boosted} after a boost, ${plain} without`)
     })
   })
+
+  describe('[Y] 1.8: the client moves no ridden mob, and steers no boat (EntityHorse / EntityPig on the server only)', () => {
+    it('[Y] 1.8.8: a saddled horse does not go on the rider\'s forward key', async () => {
+      const t = await riding('1.8.8', 'EntityHorse', { setup: (v, t) => { t.saddle(v); t.attribute(v, 0.225) } })
+      try {
+        const start = t.vehicle.position.clone()
+        t.bot.setControlState('forward', true)
+        t.ticks(5)
+        assert.ok(t.vehicle.position.distanceTo(start) < 1e-9, `moved to ${t.vehicle.position}`)
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('[Y] 1.8.8: the rider of a boat sends no steer_boat (ServerboundPaddleBoatPacket came with 1.9)', async () => {
+      const t = await riding('1.8.8', 'Boat')
+      try {
+        // (what the bot writes: 1.8's protocol has no such packet for the server to read)
+        const writes = []
+        const write = t.bot._client.write.bind(t.bot._client)
+        t.bot._client.write = (name, params) => {
+          writes.push(name)
+          return write(name, params)
+        }
+        t.bot.setControlState('forward', true)
+        t.ticks(3)
+        await settle()
+        assert.ok(writes.includes('steer_vehicle'))
+        assert.ok(!writes.includes('steer_boat'))
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })

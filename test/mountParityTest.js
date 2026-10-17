@@ -322,4 +322,19 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // Y: 1.8's boat is the server's to move and seats its rider 0.4 along its yaw, at -0.3 with the player's -0.35
   // (EntityBoat.updateRiderPosition); there is no paddle packet before 1.9
+  describe('the 1.8 boat (EntityBoat)', () => {
+    it('a boat facing north seats its rider 0.4 west, 0.65 down, and is not paddled (1.8.8)', async () => {
+      const t = await riding('1.8.8', 'Boat')
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(2)
+        await settle()
+        const seat = offset(t.bot, t.vehicle)
+        assert.ok(Math.abs(seat.x + 0.4) < 1e-9 && Math.abs(seat.y + 0.65) < 1e-9 && Math.abs(seat.z) < 1e-9, `seat ${seat}`)
+        assert.ok(!t.names().includes('steer_boat'), 'no steer_boat')
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
