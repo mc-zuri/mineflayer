@@ -588,4 +588,32 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // Z: 1.8's boat its player rides is moved by that player's client too (EntityBoat.onUpdate, isBoatEmpty false from
+  // NetHandlerPlayClient.handleEntityAttach): pushed by the walk input of its rider's tick before; the server's moves
+  // of it within a block are not taken
+  describe('the 1.8 boat its player rides (EntityBoat.onUpdate)', () => {
+    it('the boat on the ground goes 0.07 * 0.98F * 0.05F, halved, along its rider\'s yaw (1.8.8)', async () => {
+      const t = await riding('1.8.8', 'Boat')
+      try {
+        t.bot.setControlState('forward', true)
+        // (the first tick's boat has no input yet: its rider's tick comes after it)
+        t.ticks(1)
+        await settle()
+        assert.strictEqual(t.vehicle.position.z, 1.5)
+        t.ticks(1)
+        await settle()
+        // (the rider faces south, yaw 0: the boat goes toward +z)
+        const push = 0.07 * Math.fround(0.98) * Math.fround(0.05) * 0.5
+        assert.ok(Math.abs(t.vehicle.position.z - (1.5 + push)) < 1e-12, `z ${t.vehicle.position.z}`)
+        // a server move of half a block is not taken
+        const at = t.vehicle.position.z
+        t.client.write('rel_entity_move', { entityId: 100, dX: 0, dY: 0, dZ: 16, onGround: true })
+        await settle()
+        assert.strictEqual(t.vehicle.position.z, at)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
