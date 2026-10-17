@@ -141,4 +141,49 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       }
     }
   })
+
+  it('a mount\'s screen takes in its saddle and armor slots what the mount wears (Slot.mayPlace)', async () => {
+    const t = await clickingBot('1.20.4')
+    try {
+      const Entity = require('prismarine-entity')(t.registry)
+      const open = async (id, name) => {
+        const mount = new Entity(id)
+        mount.name = name
+        t.bot.entities[id] = mount
+        t.client.write('open_horse_window', { windowId: id, nbSlots: 2, entityId: id })
+        await sleep(50)
+        return t.bot.currentWindow
+      }
+      const horse = await open(50, 'horse')
+      assert.strictEqual(horse.mayPlace(0, t.item('saddle')), true)
+      assert.strictEqual(horse.mayPlace(0, t.item('dirt')), false)
+      assert.strictEqual(horse.mayPlace(1, t.item('iron_horse_armor')), true)
+      assert.strictEqual(horse.mayPlace(1, t.item('white_carpet')), false)
+      const llama = await open(51, 'llama')
+      assert.strictEqual(llama.mayPlace(0, t.item('saddle')), false)
+      assert.strictEqual(llama.mayPlace(1, t.item('white_carpet')), true)
+      const donkey = await open(52, 'donkey')
+      assert.strictEqual(donkey.mayPlace(1, t.item('iron_horse_armor')), false)
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('from 1.21.5 the saddle slot of a mount\'s screen is the saddle the mount wears (EquipmentSlot.SADDLE)', async () => {
+    const t = await clickingBot('1.21.5')
+    try {
+      const Entity = require('prismarine-entity')(t.registry)
+      const horse = new Entity(50)
+      horse.name = 'horse'
+      t.bot.entities[50] = horse
+      t.client.write('open_horse_window', { windowId: 3, nbSlots: 2, entityId: 50 })
+      await sleep(50)
+      t.bot.currentWindow.updateSlot(0, t.item('saddle'))
+      assert.strictEqual(horse.equipment[7]?.name, 'saddle')
+      t.bot.currentWindow.updateSlot(0, null)
+      assert.ok(!horse.equipment[7])
+    } finally {
+      await t.close()
+    }
+  })
 })
