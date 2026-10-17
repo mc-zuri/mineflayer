@@ -409,6 +409,21 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
   })
 
   // S: a mob the player pushed was pushed back (Entity.push): the push goes into its next tick, steered too
+  describe('the push a mount took (Entity.push)', () => {
+    it('a camel the bot pushed and then mounted goes on with the push (1.21.1)', async () => {
+      const t = await riding('1.21.1', 'camel', {
+        at: new Vec3(1.2, 65, 0.5),
+        before: (v, t) => { v.metadata[t.registry.entitiesByName.camel.metadataKeys.indexOf('flags')] = 0x04; t.ticks(1) }
+      })
+      try {
+        t.ticks(1)
+        await settle()
+        assert.ok(t.vehicle.position.x > 1.2, `the camel at ${t.vehicle.position.x}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // T: before 1.20.2 a camel seats its rider at its riding offset (its height less 0.6F) with the player's -0.35, 0.5
   // along its body's rotation (Camel.positionRider)

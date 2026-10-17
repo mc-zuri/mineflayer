@@ -231,6 +231,19 @@ describe('mounts the rider steers, and what goes with them', function () {
     })
   })
 
+  describe('[S] a mob the player pushed keeps that push (Entity.push)', () => {
+    it('[S] a pig the standing player overlaps is pushed away, the push kept in entity.lastPush', async () => {
+      const t = await riding('1.20.4', 'pig', { mount: false, at: new Vec3(0.9, 65, 0.5) })
+      try {
+        t.ticks(1)
+        assert.ok(t.vehicle.lastPush, 'no push kept')
+        assert.ok(t.vehicle.lastPush.x > 0, `pushed by ${t.vehicle.lastPush.x}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[-0 pitch] a vehicle_move never says pitch -0 (the float the vehicle holds)', () => {
     it('[-0 pitch] a mount of no steering rule the rider moves sends pitch 0, not -0', async () => {
       const t = await riding('1.20.4', 'chicken')
