@@ -65,4 +65,22 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       await t.close()
     }
   })
+
+  it('before 1.17 each menu numbers its own clicks from 1 (AbstractContainerMenu transaction ids)', async () => {
+    const t = await clickingBot('1.12.2')
+    try {
+      await t.click(36, 0, 0)
+      await t.click(36, 0, 0)
+      // a crafting table's menu opened: its clicks count from 1
+      t.bot.currentWindow = t.windows.createWindow(1, 'minecraft:crafting_table', 'Crafting')
+      await t.click(1, 0, 0)
+      await t.click(1, 0, 0)
+      // closed: the player's inventory menu goes on with its own count
+      t.bot.currentWindow = null
+      await t.click(36, 0, 0)
+      assert.deepStrictEqual(t.clicks().map(c => [c.windowId, c.action]), [[0, 1], [0, 2], [1, 1], [1, 2], [0, 3]])
+    } finally {
+      await t.close()
+    }
+  })
 })
