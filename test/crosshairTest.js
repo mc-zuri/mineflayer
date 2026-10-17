@@ -85,6 +85,14 @@ describe('the crosshair (GameRenderer.pick)', () => {
     }
   })
 
+  it('before 1.13 grass is the grass block: its top is met, not a plant\'s outline', () => {
+    // the ray meets y 101 at x 3.9, over the grass block's east edge: a plant's outline (0.8125 high, to 0.875) it misses
+    const bot = fakeBot('1.12.2', 25.5)
+    bot.world.setBlockStateId(new Vec3(3, 100, 0), bot.registry.blocksByName.grass.id << 4)
+    const hit = bot.raycastHitResult(4.5, 3)
+    assert.deepStrictEqual([hit.block.name, hit.face, hit.block.position.x], ['grass', 1, 3])
+  })
+
   it('an entity hit beyond the entity range is a miss where it was (LocalPlayer.filterHitResult)', () => {
     const bot = fakeBot('1.20.4', 0)
     bot.entities[3] = { id: 3, name: 'pig', type: 'animal', position: new Vec3(4.0, 102, 0.5), width: 0.9, height: 0.9, isValid: true }
