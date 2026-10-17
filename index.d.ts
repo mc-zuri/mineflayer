@@ -368,6 +368,10 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   deactivateItem: () => void
 
+  dropHeldItem: (all?: boolean) => void
+
+  swapHands: () => void
+
   useOn: (targetEntity: Entity) => void
 
   attack: (entity: Entity) => void

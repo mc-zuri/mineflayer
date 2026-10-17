@@ -406,6 +406,14 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       }
     })
 
+    it('the drop key swings the arm from 1.15 to 26.2', async () => {
+      hold('stone', 4)
+      bot.dropHeldItem(false)
+      await settle()
+      const swing = registry.version['>=']('1.15') && swings
+      assert.strictEqual(names().includes('arm_animation'), swing)
+    })
+
     it('a torch placed against a block stands in the world at once, on the wall it was put against', async () => {
       if (!registry.version['>=']('1.13')) return
       bot.lookAt = async () => {}
