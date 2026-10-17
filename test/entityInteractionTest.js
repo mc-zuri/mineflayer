@@ -87,6 +87,19 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('before 1.11 a boat takes a sneaking click too (EntityBoat.processInitialInteract: true)', async () => {
+    for (const [version, name, result] of [['1.8.8', 'Boat', 'success'], ['1.10.2', 'Boat', 'success'], ['1.12.2', 'boat', 'pass']]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const boat = addEntity(t.bot, 7, { name, type: 'other', position: new Vec3(0.5, 65, 2.5), width: 1.375, height: 0.5625 })
+        t.bot.setControlState('sneak', true)
+        assert.strictEqual(t.bot.mount(boat), result, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('from 26.1 one interaction says where on the entity it is; an armor stand takes the click at INTERACT_AT', async () => {
     const t = await fakeServerBot('26.1', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
