@@ -222,6 +222,20 @@ describe('riding (vanilla\'s mounts and seats)', function () {
   })
 
   describe('a rearing horse (AbstractHorse.standAnim)', () => {
+    it('a horse the rider does not steer rears its rider up as its flags say it stands', async () => {
+      const t = await riding('1.20.4', 'horse')
+      try {
+        t.ticks(1)
+        const sitting = offset(t.bot, t.vehicle)
+        // its flags (at 17 on 1.20.4): standing, bit 32; tame, not saddled
+        t.vehicle.metadata[17] = 0x02 | 0x20
+        t.ticks(3)
+        const rearing = offset(t.bot, t.vehicle)
+        assert.ok(Math.abs(rearing.y - sitting.y) > 1e-3 || Math.abs(rearing.z - sitting.z) > 1e-3, `${sitting} ${rearing}`)
+      } finally {
+        await t.close()
+      }
+    })
   })
 
   describe('the mount\'s synced data (onSyncedDataUpdated)', () => {
