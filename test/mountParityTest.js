@@ -897,4 +897,32 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AJ: from 1.19.3 the rider of a mount it steers tells its sprint after the vehicle's move (LocalPlayer.tick:
+  // sendIsSprintingIfNeeded); before, it does not while it rides, and from 1.19.4 it cannot sprint on a horse
+  // (c_ride_donkey_sprint_turn t1 and t31 on 1.19.3)
+  describe('the rider\'s sprint on a mount it steers (LocalPlayer.tick: sendIsSprintingIfNeeded)', () => {
+    it('is told after the vehicle move from 1.19.3', async () => {
+      for (const [version, told] of [['1.19.2', false], ['1.19.3', true], ['1.19.4', false]]) {
+        const t = await riding(version, 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x06 } })
+        try {
+          t.bot.setControlState('forward', true)
+          t.bot.setControlState('sprint', true)
+          t.ticks(1)
+          await settle()
+          const names = t.written.map(p => p.name).filter(n => n === 'vehicle_move' || n === 'entity_action')
+          assert.deepStrictEqual(names, told ? ['vehicle_move', 'entity_action'] : ['vehicle_move'], version)
+          if (told) assert.strictEqual(packets(t, 'entity_action')[0].actionId, 'start_sprinting', version)
+          t.written.length = 0
+          t.bot.setControlState('forward', false)
+          t.ticks(1)
+          await settle()
+          const stopped = packets(t, 'entity_action').map(p => p.actionId)
+          assert.deepStrictEqual(stopped, told ? ['stop_sprinting'] : [], version)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
