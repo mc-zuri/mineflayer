@@ -414,8 +414,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
         server.on('playerJoin', (client) => {
           bot.once('login', async () => {
             bot.entity.position.set(0, 50, 0)
-            bot.blockAt = () => ({})
-            loadPlayerChunk()
+            // (a world of air: before 1.19 the rider moves the unsaddled horse too, AbstractHorse.canBeSteered)
+            stubPassableWorld()
             const oldPos = bot.entity.position.clone()
             const moves = []
             bot.on('move', previousPosition => moves.push(previousPosition))

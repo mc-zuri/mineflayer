@@ -99,6 +99,23 @@ describe('mounts the rider steers, and what goes with them', function () {
     })
   })
 
+  describe('[J] before 1.19 an unsaddled horse is its rider\'s (AbstractHorse.canBeSteered)', () => {
+    it('[J] 1.16.5: the rider moves its unsaddled horse (it falls), which jumps only saddled', async () => {
+      const t = await riding('1.16.5', 'horse', { at: new Vec3(3.5, 66, 1.5), setup: (v, t) => { t.attribute(v, 0.225); v.onGround = false } })
+      try {
+        t.bot.setControlState('jump', true)
+        t.ticks(3)
+        t.bot.setControlState('jump', false)
+        t.ticks(2)
+        await settle()
+        assert.ok(t.vehicle.position.y < 66, `the horse stayed at ${t.vehicle.position.y}`)
+        assert.strictEqual(t.written.filter(p => p.name === 'entity_action' && /riding_jump/i.test(String(p.data.actionId))).length, 0)
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[Y] 1.8: the client moves no ridden mob, and steers no boat (EntityHorse / EntityPig on the server only)', () => {
     it('[Y] 1.8.8: a saddled horse does not go on the rider\'s forward key', async () => {
       const t = await riding('1.8.8', 'EntityHorse', { setup: (v, t) => { t.saddle(v); t.attribute(v, 0.225) } })

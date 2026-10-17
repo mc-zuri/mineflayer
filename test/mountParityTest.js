@@ -140,6 +140,24 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // J: before 1.19 a horse is its first passenger's to move, saddled or not (AbstractHorse.canBeSteered): unsaddled it
   // goes on its own input, none, and its rider's client tells the server where it is
+  describe('the unsaddled horse before 1.19 (AbstractHorse.canBeSteered)', () => {
+    it('the rider of an unsaddled horse moves it by its own input, none: it falls straight down, told to the server (1.14.4)', async () => {
+      const t = await riding('1.14.4', 'horse', { at: new Vec3(3.5, 66, 1.5) })
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(3)
+        await settle()
+        const moves = packets(t, 'vehicle_move')
+        assert.ok(moves.length > 0, 'vehicle moves')
+        const last = moves[moves.length - 1]
+        // (a block above the ground, in the air)
+        assert.ok(last.y < 66, `at ${JSON.stringify(last)}`)
+        assert.ok(Math.abs(last.z - 1.5) < 1e-9 && Math.abs(last.x - 3.5) < 1e-9, `at ${JSON.stringify(last)}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // K: before 1.20.5 a llama seats its rider 0.3 behind its middle along its body's rotation, at 0.67 of its height
   // (0.6 from 1.18) with the player's -0.35 (Llama.positionRider)

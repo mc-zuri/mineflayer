@@ -2404,8 +2404,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
         const { manual, client, vehicle, runTicks } = await ridingManualBot()
         try {
           if (!manual.registry.isNewerOrEqualTo('1.9')) return this.skip()
-          // from 1.19 its rider controls a horse only while it is saddled (AbstractHorse.getControllingPassenger)
-          if (manual.registry.version['>=']('1.19')) tameHorse(manual, vehicle, true)
+          // saddled: only then does the horse turn with its rider (AbstractHorse.travel; from 1.19 its rider controls it only
+          // then, AbstractHorse.getControllingPassenger)
+          tameHorse(manual, vehicle, true)
           manual.entity.yawDegrees = new JavaFloat(270)
           manual.entity.pitchDegrees = new JavaFloat(15)
           manual.entity.yaw = conv.fromNotchianYaw(270)
@@ -2527,7 +2528,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
       function tameHorse (manual, vehicle, saddled) {
         const v = manual.registry.version
         vehicle.metadata = []
-        vehicle.metadata[v['<']('1.14') ? 13 : v['<']('1.15') ? 15 : v['<']('1.17') ? 16 : 17] = saddled && v['<']('1.21.5') ? 6 : 2
+        vehicle.metadata[v['<']('1.10') ? 12 : v['<']('1.14') ? 13 : v['<']('1.15') ? 15 : v['<']('1.17') ? 16 : 17] = saddled && v['<']('1.21.5') ? 6 : 2
         if (saddled && v['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
       }
 
