@@ -794,6 +794,17 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       }
     })
 
+    it('a bucket of fish is not eaten (26.3 gives it food, but no consumable: BucketItem.use)', async () => {
+      if (!registry.itemsByName.cod_bucket) return
+      hold('cod_bucket', 1)
+      // (a hungry player, who would eat a food)
+      bot.food = 10
+      bot.activateItem()
+      await settle()
+      assert.strictEqual(bot.usingHeldItem, false)
+      assert.ok(!names().includes('block_dig'))
+    })
+
     it('the drop key swings the arm from 1.15 to 26.2', async () => {
       hold('stone', 4)
       bot.dropHeldItem(false)
