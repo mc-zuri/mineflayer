@@ -401,6 +401,20 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.deepStrictEqual(names(), swings ? [use, 'arm_animation'] : [use])
     })
 
+    it('a torch placed against a block stands in the world at once, on the wall it was put against', async () => {
+      if (!registry.version['>=']('1.13')) return
+      bot.lookAt = async () => {}
+      hold('torch', 4)
+      const stone = bot.blockAt(new Vec3(1, 64, 0))
+      assert.strictEqual(await bot.activateBlock(stone, new Vec3(0, 1, 0), new Vec3(0.5, 1, 0.5)), 'success')
+      assert.strictEqual(bot.blockAt(new Vec3(1, 65, 0)).name, 'torch')
+      // (against the side of the jukebox, which takes no torch: a wall torch facing away from it)
+      assert.strictEqual(await bot.activateBlock(bot.blockAt(new Vec3(5, 65, 0)), new Vec3(-1, 0, 0), new Vec3(0, 0.5, 0.5)), 'success')
+      const wall = bot.blockAt(new Vec3(4, 65, 0))
+      assert.strictEqual(wall.name, 'wall_torch')
+      assert.strictEqual(wall.getProperties().facing, 'west')
+    })
+
     it('an item on cooldown is not used: no release follows', async () => {
       if (!registry.itemsByName.goat_horn) return
       hold('goat_horn', 1)
