@@ -5,6 +5,7 @@
 const assert = require('assert')
 const { Vec3 } = require('vec3')
 const { createEntityInterpolation } = require('../lib/entityInterpolation')
+const { horseFlagsIndex } = require('../lib/horse')
 const { fakeServerBot } = require('./common/fakeServer')
 const { once, sleep } = require('../lib/promise_utils')
 
@@ -52,6 +53,12 @@ describe('entity interpolation and horse flags', function () {
       assert.strictEqual(zombie.interpolatedPosition.x, 3.5)
     } finally {
       await t.close()
+    }
+  })
+
+  it('a horse\'s flags are at 18 from 26.1, whose ageable mobs gained AGE_LOCKED', () => {
+    for (const [version, index] of [['1.8.8', 16], ['1.12.2', 13], ['1.20.4', 17], ['1.21.11', 17], ['26.1', 18], ['26.3', 18]]) {
+      assert.strictEqual(horseFlagsIndex(require('prismarine-registry')(version)), index, version)
     }
   })
 })

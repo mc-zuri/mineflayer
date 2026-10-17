@@ -2238,7 +2238,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         if (!version['>=']('1.9')) return this.skip() // (set_passengers)
         const { manual, client, vehicle, runTicks } = await ridingManualBot('horse')
         try {
-          const index = version['<']('1.10') ? 12 : version['<']('1.14') ? 13 : version['<']('1.15') ? 15 : version['<']('1.17') ? 16 : 17
+          const index = version['<']('1.10') ? 12 : version['<']('1.14') ? 13 : version['<']('1.15') ? 15 : version['<']('1.17') ? 16 : version['<']('26.1') ? 17 : 18
           vehicle.metadata = []
           if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
           else vehicle.metadata[index] = 0x02 | 0x04
@@ -2263,7 +2263,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         if (!version['>=']('1.9')) return this.skip() // (set_passengers)
         const { manual, client, vehicle, runTicks } = await ridingManualBot('horse')
         try {
-          const index = version['<']('1.10') ? 12 : version['<']('1.14') ? 13 : version['<']('1.15') ? 15 : version['<']('1.17') ? 16 : 17
+          const index = version['<']('1.10') ? 12 : version['<']('1.14') ? 13 : version['<']('1.15') ? 15 : version['<']('1.17') ? 16 : version['<']('26.1') ? 17 : 18
           vehicle.metadata = []
           if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
           else vehicle.metadata[index] = 0x02 | 0x04
