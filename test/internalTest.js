@@ -1417,6 +1417,33 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it("a 1.21.4+ bot respawned from its death waits for the level before the server's health update (LevelLoadStatusManager.tick: LocalPlayer.isAlive)", async function () {
+        if (version['<']('1.21.4')) return this.skip()
+        let loaded = true
+        const { manual, client, written, runTicks } = await standingManualBot({ levelLoaded: () => loaded })
+        try {
+          const died = once(manual, 'death')
+          client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+          await died
+          runTicks(25)
+          // the new player is alive (its own max health) though the server's health update has not come yet
+          loaded = false
+          const loadStarts = once(manual._client, 'game_state_change')
+          client.write('respawn', respawnPacket())
+          await loadStarts
+          await teleport(manual, client)
+          written.length = 0
+          runTicks(5)
+          assert.deepStrictEqual([...new Set(written.map(p => p.name))], ['tick_end'])
+          loaded = true
+          written.length = 0
+          runTicks(1)
+          assert.deepStrictEqual(written.map(p => p.name).slice(0, 2), ['player_loaded', 'position'])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot put to sleep lies on the bed and looks ahead (LivingEntity.setPosToBed)', async function () {
         if (version['<']('1.19.3')) return this.skip() // the metadata keys the test writes are 1.19.3+'s
         const { manual, client, runTicks } = await standingManualBot()
@@ -1510,7 +1537,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
       it('a respawned bot lives again before its health update (Player.resetPos)', async function () {
         const respawn = respawnPacket()
         if (!respawn) return this.skip()
-        const { manual, client, written, runTicks } = await standingManualBot()
+        // (1.21.4+: its level counts as loaded)
+        const { manual, client, written, runTicks } = await standingManualBot({ levelLoaded: () => true })
         try {
           const died = once(manual, 'death')
           client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
