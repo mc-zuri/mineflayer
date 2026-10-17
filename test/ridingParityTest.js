@@ -205,6 +205,20 @@ describe('riding (vanilla\'s mounts and seats)', function () {
   })
 
   describe('in the water', () => {
+    it('a rider sitting in water swims there from 1.13 (LivingEntity.travelInWater)', async () => {
+      for (const version of ['1.16.5', '26.1']) {
+        const water = []
+        for (let x = 2; x < 6; x++) for (const y of [65, 66, 67]) water.push([x, y, 1, 'water', { level: 0 }])
+        const t = await riding(version, 'pig', { blocks: ground(water) })
+        try {
+          t.ticks(3)
+          // (no input: 0.8 of nothing, then the water's pull of a sixteenth of the gravity)
+          assert.ok(Math.abs(t.bot.entity.velocity.y - -0.005) < 1e-9, `${version}: ${t.bot.entity.velocity}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
   })
 
   describe('a rearing horse (AbstractHorse.standAnim)', () => {
