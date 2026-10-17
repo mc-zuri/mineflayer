@@ -1219,6 +1219,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
       it('a block use swings with a packet before 26.3, from 26.3 the server swings for it (Minecraft.startUseItem)', async () => {
         const { manual, written, runTicks } = await standingManualBot()
         try {
+          // a block that acts on a click (CraftingTableBlock.useWithoutItem: SUCCESS), which the client predicts and swings
+          // for; a click that passes (the gold block's, with an empty hand) swings nothing
+          manual._updateBlockState(pos, registry.blocksByName.crafting_table.defaultState ?? registry.blocksByName.crafting_table.id << 4)
           written.length = 0
           // the bot turns to the block over its ticks, then uses it
           const use = { done: false }
