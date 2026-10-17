@@ -296,6 +296,20 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // L: before 1.13 the player that climbs on a horse turns to the horse's rotation on its own client too
   // (AbstractHorse.mountTo)
+  describe('climbing on a horse before 1.13 (AbstractHorse.mountTo)', () => {
+    it('the bot that mounts a horse looks the way the horse does (1.12.2)', async () => {
+      const t = await fakeServerBot('1.12.2', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+      try {
+        const horse = entityAt(t, 100, 'horse', new Vec3(1.5, 65, 0.5), Math.PI / 2)
+        horse.metadata[horseFlags(t.registry)] = 0x02
+        t.bot.mount(horse)
+        await settle()
+        assert.ok(Math.abs(t.bot.entity.yaw - horse.yaw) < 1e-6, `yaw ${t.bot.entity.yaw}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // M: a strider seats its rider at its y plus its riding offset, then plus the player's own (Entity.positionRider adds
   // them in turn)

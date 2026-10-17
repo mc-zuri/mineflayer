@@ -182,6 +182,22 @@ describe('mount seats (Entity.positionRider)', function () {
     })
   })
 
+  describe('[L] before 1.13 a horse turns its new rider to it (AbstractHorse.mountTo)', () => {
+    it('[L] before 1.13 an empty hand climbing a horse turns the player to the horse\'s rotation', async () => {
+      const t = await fakeServerBot('1.12.2', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+      try {
+        const Entity = require('prismarine-entity')('1.12.2')
+        const horse = new Entity(7)
+        Object.assign(horse, { name: 'horse', type: 'animal', position: new Vec3(0.5, 65, 2.5), width: 1.3964844, height: 1.6, yaw: conv.fromNotchianYaw(90), pitch: 0, metadata: [], isValid: true })
+        t.bot.entities[7] = horse
+        assert.strictEqual(t.bot.mount(horse), 'success')
+        assert.strictEqual(Number(t.bot.entity.yawDegrees), 90)
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[P] a rider is off the ground (Entity.rideTick)', () => {
     it('[P] while riding the rider was not on the ground after its last tick either: its first tick on foot is in the air', async () => {
       const t = await fakeServerBot('1.20.4', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
