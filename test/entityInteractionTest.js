@@ -161,6 +161,32 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('an item frame and a leash knot stand where the client puts them in their block, and are met by their own boxes (BlockAttachedEntity.setPos)', async () => {
+    const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone'], [3, 65, 0, 'stone'], [3, 66, 0, 'stone']] })
+    try {
+      const write = (entityId, name, x, y, z, objectData) => t.client.write('spawn_entity', {
+        entityId, objectUUID: `00112233-4455-6677-8899-aabbccddee${entityId}`, type: t.registry.entitiesByName[name].id, x, y, z, pitch: 0, yaw: 0, headPitch: 0, objectData, velocity: { x: 0, y: 0, z: 0 }
+      })
+      // a frame on the west face of the stone at x=3 (in the block at x=2, facing west: 4), a knot on a fence at 0, 65, 3
+      write(20, 'item_frame', 2, 65, 0, 4)
+      write(21, 'leash_knot', 0, 65, 3, 0)
+      await settle()
+      const frame = t.bot.entities[20]
+      assert.deepStrictEqual(frame.position.toArray(), [2.96875, 65.5, 0.5])
+      assert.deepStrictEqual(t.bot.entities[21].position.toArray(), [0.5, 65.375, 3.5])
+      // looking along x at the frame's middle: met on its west face, 1/32 before its centre
+      t.bot.entity.position.set(0.5, 65, 0.5)
+      t.bot.entity.yawDegrees = 270
+      t.bot.entity.pitchDegrees = Math.atan2(1.62 - 0.5, 2.46875) * 180 / Math.PI
+      const hit = t.bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.type, 'entity')
+      assert.strictEqual(hit.entity, frame)
+      assert.ok(Math.abs(hit.intersect.x - 2.9375) < 1e-9, hit.intersect.x)
+    } finally {
+      await t.close()
+    }
+  })
+
   it('a villager takes the use and opens its trades (Villager before 1.11), a spawn egg passes before 1.11', async () => {
     for (const [version, name] of [['1.8.8', 'Villager'], ['1.10.2', 'Villager'], ['1.20.4', 'villager']]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
