@@ -407,6 +407,27 @@ describe('the swing the server asks for (ClientPacketListener.handleAnimate)', f
     }
   })
 
+  it('before 1.14 shears on a sheep with wool wear on the client too (EntitySheep.processInteract: ItemStack.damageItem)', async () => {
+    for (const [version, name, worn] of [['1.8.8', 'Sheep', 1], ['1.13.2', 'sheep', 1], ['1.14.4', 'sheep', 0]]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.lookAt = async () => {}
+        const sheep = addEntity(t.bot, 7, { name, type: 'animal', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.3 })
+        sheep.metadata[require('../lib/entityData').entityDataKeys(t.registry, name).indexOf('wool')] = 0
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.shears.id, 1))
+        assert.strictEqual(await t.bot.activateEntity(sheep), 'pass', version)
+        assert.strictEqual(t.bot.heldItem.durabilityUsed, worn, version)
+        // a sheared one: nothing
+        sheep.metadata[require('../lib/entityData').entityDataKeys(t.registry, name).indexOf('wool')] = 0x10
+        await t.bot.activateEntity(sheep)
+        assert.strictEqual(t.bot.heldItem.durabilityUsed, worn, `${version} sheared`)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('before 1.19.4 a mob\'s data is read where the version puts it: a sheep\'s wool, a baby, an item frame\'s item (SynchedEntityData)', async () => {
     for (const [version, wool, baby, frameItem] of [['1.15.2', 16, 15, 7], ['1.17.1', 17, 16, 8], ['1.12.2', 13, 12, 6], ['1.9.4', 12, 11, 5]]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
