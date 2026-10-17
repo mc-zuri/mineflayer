@@ -133,6 +133,30 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
 
 describe('the swing the server asks for (ClientPacketListener.handleAnimate)', function () {
   this.timeout(10 * 1000)
+  it('a cow milked with a bucket fills it on the client at once (ItemUtils.createFilledResult)', async () => {
+    const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      const hold = async (count) => {
+        t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: Item.toNotch(new Item(t.registry.itemsByName.bucket.id, count)) })
+        await settle()
+      }
+      t.client.write('held_item_slot', { slot: 0 })
+      // (the view held: a look turns only with the ticks)
+      t.bot.lookAt = async () => {}
+      const cow = addEntity(t.bot, 7, { name: 'cow', type: 'animal', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.4 })
+      await hold(1)
+      assert.strictEqual(await t.bot.activateEntity(cow), 'success')
+      assert.deepStrictEqual([t.bot.heldItem?.name, t.bot.heldItem?.count], ['milk_bucket', 1])
+      // (of a stack, one bucket)
+      await hold(3)
+      await t.bot.activateEntity(cow)
+      assert.deepStrictEqual([t.bot.heldItem?.name, t.bot.heldItem?.count], ['bucket', 2])
+    } finally {
+      await t.close()
+    }
+  })
+
   it('the server\'s swing of the player\'s own arm is swung back before 26.3 (ClientPacketListener.handleAnimate)', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
