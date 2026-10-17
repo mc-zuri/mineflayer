@@ -103,3 +103,22 @@ describe('the swing the server asks for (ClientPacketListener.handleAnimate)', f
     }
   })
 })
+
+describe('the inventory of a vehicle (HasCustomInventoryScreen)', function () {
+  this.timeout(10 * 1000)
+  it('the inventory key on a chest boat asks the server for its inventory (HasCustomInventoryScreen)', async () => {
+    const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const boat = addEntity(t.bot, 100, { name: 'chest_boat', type: 'other', position: new Vec3(0.5, 65, 0.5), width: 1.375, height: 0.5625 })
+      t.client.write('set_passengers', { entityId: 100, passengers: [t.bot.entity.id] })
+      await settle()
+      assert.strictEqual(t.bot.vehicle, boat)
+      t.bot.lookAt = async () => {}
+      t.bot.openEntity(boat).catch(() => {})
+      await settle()
+      assert.deepStrictEqual(t.names(/^(entity_action|use_entity)$/), ['entity_action'])
+    } finally {
+      await t.close()
+    }
+  })
+})
