@@ -144,6 +144,7 @@
       - [bot.simpleClick.rightMouse (slot)](#botsimpleclickrightmouse-slot)
       - [bot.simpleClick.shiftMouse (slot)](#botsimpleclickshiftmouse-slot)
       - [bot.simpleClick.shiftDoubleClick (slot)](#botsimpleclickshiftdoubleclick-slot)
+      - [bot.worldBorder](#botworldborder)
       - [bot.time.doDaylightCycle](#bottimedodaylightcycle)
       - [bot.time.bigTime](#bottimebigtime)
       - [bot.time.time](#bottimetime)
@@ -1100,6 +1101,12 @@ Quick-moves the stack in `slot` between the two sides of the current window.
 
 With an item on the cursor, quick-moves every stack matching `slot` from the
 same side of the current window.
+
+#### bot.worldBorder
+
+The world border as the server sets it: `centerX`, `centerZ`, `size` (its diameter, moving while the server makes it
+grow or shrink), `minX`, `maxX`, `minZ`, `maxZ`, `warningBlocks`, `warningTime`, and `isWithinBounds(x, z)`. A block
+outside it is neither used nor dug, as the vanilla client does.
 
 #### bot.time.doDaylightCycle
 

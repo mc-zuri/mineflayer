@@ -729,6 +729,24 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.deepStrictEqual(names(), ['block_place'])
     })
 
+    it('a block outside the world border is neither used nor dug: nothing is sent, the attack swings (WorldBorder)', async () => {
+      bot.lookAt = async () => {}
+      // a border of 10 around x -3.5: the chest at x 3 is outside it, the stone at x 1 inside
+      if (registry.version['>=']('1.17')) {
+        client.write('initialize_world_border', { x: -3.5, z: 0.5, oldDiameter: 10, newDiameter: 10, speed: 0, portalTeleportBoundary: 29999984, warningBlocks: 5, warningTime: 15 })
+      } else {
+        client.write('world_border', { action: 3, x: -3.5, z: 0.5, old_radius: 10, new_radius: 10, speed: 0, portalBoundary: 29999984, warning_time: 15, warning_blocks: 5 })
+      }
+      await settle()
+      assert.deepStrictEqual([bot.worldBorder.minX, bot.worldBorder.maxX, bot.worldBorder.isWithinBounds(1, 0), bot.worldBorder.isWithinBounds(3, 0)], [-8.5, 1.5, true, false])
+      const outside = bot.blockAt(new Vec3(3, 64, 0))
+      assert.strictEqual(await bot.activateBlock(outside, new Vec3(0, 1, 0), new Vec3(0.5, 1, 0.5)), 'fail')
+      bot.dig(outside, 'ignore', 'auto', 1).catch(() => {})
+      await settle()
+      assert.deepStrictEqual(names(), registry.version['>=']('26.3') ? ['punch'] : ['arm_animation'])
+      bot.stopDigging()
+    })
+
     it('a slice of cake a hungry player eats is gone from the world at once (CakeBlock.eat on the client too)', async () => {
       bot.lookAt = async () => {}
       bot.food = 10

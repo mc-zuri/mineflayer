@@ -225,6 +225,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
   physicsEnabled: boolean
   entityPhysicsEnabled: boolean
   time: Time
+  worldBorder: WorldBorder
   quickBarSlot: number
   inventory: Window<StorageEvents>
   targetDigBlock: Block
@@ -624,6 +625,19 @@ export interface Time {
   moonPhase: number
   bigAge: BigInt
   age: number
+}
+
+export interface WorldBorder {
+  centerX: number
+  centerZ: number
+  size: number
+  minX: number
+  maxX: number
+  minZ: number
+  maxZ: number
+  warningBlocks: number
+  warningTime: number
+  isWithinBounds: (x: number, z: number) => boolean
 }
 
 export interface ControlStateStatus {
