@@ -147,6 +147,20 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       }
     })
 
+    it('a cauldron before 1.17: an empty hand swings before 1.15, a block item in its water is consumed from 1.15', () => {
+      for (const [version, empty, cobblestone] of [['1.13.2', 'success', 'success'], ['1.15.2', 'pass', 'consume'], ['1.16.5', 'pass', 'consume']]) {
+        const bot = fakeBot(version)
+        const cauldron = bot.set(new Vec3(2, 101, 0), 'cauldron', { level: 2 })
+        const use = createUsePrediction(bot)
+        assert.strictEqual(use.useItemOn(cauldron, UP, center).result, empty, `${version} empty hand`)
+        // (before 1.15 the cobblestone is placed on the cauldron)
+        bot.hold('cobblestone')
+        assert.strictEqual(use.useItemOn(cauldron, UP, center).result, cobblestone, `${version} cobblestone`)
+        bot.hold('stick')
+        assert.strictEqual(use.useItemOn(cauldron, UP, center).result, 'pass', `${version} stick`)
+      }
+    })
+
     it('an empty jukebox and an uncharged respawn anchor pass, a disc goes in', () => {
       const bot = fakeBot('26.1')
       const jukebox = bot.set(new Vec3(2, 101, 0), 'jukebox', { has_record: false })
