@@ -104,4 +104,19 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       }
     }
   })
+
+  it('from 1.17 a click lists its changed slots in the order of vanilla\'s Int2ObjectOpenHashMap', async () => {
+    const t = await clickingBot('1.20.4')
+    try {
+      for (const slot of [9, 10, 11, 12, 13, 30]) t.bot.inventory.updateSlot(slot, t.item('dirt', 60))
+      t.bot.inventory.updateSlot(36, t.item('dirt', 64))
+      // a quick move of the hotbar's stack: onto 9 - 13 and 30, the rest into 14
+      await t.click(36, 0, 1)
+      const [click] = t.clicks()
+      // (fastutil's iteration: the table of 32 from its last bucket down, keys placed by HashCommon.mix)
+      assert.deepStrictEqual(click.changedSlots.map(c => c.location), [14, 12, 13, 9, 11, 10, 30, 36])
+    } finally {
+      await t.close()
+    }
+  })
 })
