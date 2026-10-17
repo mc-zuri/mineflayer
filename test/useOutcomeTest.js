@@ -449,5 +449,18 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       bot.activateItem()
       assert.strictEqual(bot.usingHeldItem, false)
     })
+
+    it('a dig goes on (and swings) in a tick the player itself does not tick', async () => {
+      const block = bot.blockAt(new Vec3(1, 64, 0))
+      const digging = bot.dig(block, 'ignore', 'auto', 1).catch(err => err)
+      await settle()
+      const before = names().filter(name => name === 'arm_animation' || name === 'punch').length
+      bot.emit('clientTickWithoutPlayer')
+      await settle()
+      const after = names().filter(name => name === 'arm_animation' || name === 'punch').length
+      assert.strictEqual(after, before + 1)
+      bot.stopDigging()
+      await digging
+    })
   })
 }
