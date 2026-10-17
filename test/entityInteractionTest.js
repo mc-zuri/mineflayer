@@ -112,6 +112,24 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('the use of an entity by a spectator is sent and passes; the use of an item sends nothing (MultiPlayerGameMode)', async () => {
+    for (const version of ['1.12.2', '1.21.8']) {
+      const t = await fakeServerBot(version, { spawn, gameMode: 'spectator', blocks: [[0, 64, 0, 'stone']] })
+      try {
+        t.bot.lookAt = async () => {}
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.snowball.id, 4))
+        const cow = addEntity(t.bot, 9, { name: 'cow', type: 'animal', position: new Vec3(0.5, 65, 2.5), width: 0.9, height: 1.4 })
+        assert.strictEqual(await t.bot.activateEntity(cow), 'pass', version)
+        assert.strictEqual(t.bot.activateItem(), 'pass', version)
+        await settle()
+        assert.deepStrictEqual(t.names(/use_entity|use_item|block_place|arm_animation/), ['use_entity', 'use_entity'], version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('a villager takes the use and opens its trades (Villager before 1.11), a spawn egg passes before 1.11', async () => {
     for (const [version, name] of [['1.8.8', 'Villager'], ['1.10.2', 'Villager'], ['1.20.4', 'villager']]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
