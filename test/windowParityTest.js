@@ -276,6 +276,26 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('the server sets the stack on the cursor (setCarried): set_slot -1 -1, set_cursor_item from 1.21.2, window_items from 1.17', async () => {
+    for (const version of ['1.16.5', '1.20.4', '1.21.4']) {
+      const t = await clickingBot(version)
+      try {
+        const notch = (name, count) => t.Item.toNotch(t.item(name, count))
+        if (t.bot.registry.version['>=']('1.21.2')) t.client.write('set_cursor_item', { contents: notch('dirt', 3) })
+        else t.client.write('set_slot', { windowId: -1, stateId: 1, slot: -1, item: notch('dirt', 3) })
+        await sleep(50)
+        assert.deepStrictEqual([t.bot.inventory.selectedItem?.name, t.bot.inventory.selectedItem?.count], ['dirt', 3], version)
+        if (t.bot.registry.version['>=']('1.17')) {
+          t.client.write('window_items', { windowId: 0, stateId: 2, items: new Array(46).fill(t.Item.toNotch(null)), carriedItem: notch('stone', 5) })
+          await sleep(50)
+          assert.deepStrictEqual([t.bot.inventory.selectedItem?.name, t.bot.inventory.selectedItem?.count], ['stone', 5], version)
+        }
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('a creative slot set again before the server answered is sent again, as the creative screen sends every change', async () => {
     for (const version of ['1.20.4', '1.21.4']) {
       const t = await fakeServerBot(version, { gameMode: 'creative', blocks: [[0, 64, 0, 'stone']] })
