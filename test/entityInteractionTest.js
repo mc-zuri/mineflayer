@@ -210,6 +210,19 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('before 1.15 an empty item frame takes the click of an empty hand too (ItemFrame.interact: true)', async () => {
+    for (const [version, result] of [['1.12.2', 'success'], ['1.14.4', 'success'], ['1.15.2', 'pass']]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        t.bot.lookAt = async () => {}
+        const frame = addEntity(t.bot, 8, { name: 'item_frame', type: 'other', position: new Vec3(2.96875, 65.5, 0.5), width: 0.5, height: 0.5 })
+        assert.strictEqual(await t.bot.activateEntity(frame), result, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('a villager takes the use and opens its trades (Villager before 1.11), a spawn egg passes before 1.11', async () => {
     for (const [version, name] of [['1.8.8', 'Villager'], ['1.10.2', 'Villager'], ['1.20.4', 'villager']]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
