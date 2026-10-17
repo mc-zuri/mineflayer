@@ -105,6 +105,23 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(createUsePrediction(bot).useItem(), 'consume')
     })
 
+    it('before 1.20.5 the block\'s own use is asked for the off hand too: a full player\'s cake with an empty off hand', () => {
+      for (const [version, expected] of [['1.12.2', 'success'], ['1.20.4', 'consume'], ['1.20.6', 'pass']]) {
+        const bot = fakeBot(version)
+        const cake = bot.set(new Vec3(2, 101, 0), 'cake')
+        const use = createUsePrediction(bot)
+        bot.hold('stick')
+        assert.strictEqual(use.useItemOn(cake, UP, center).result, 'pass', version)
+        assert.strictEqual(use.useItemOn(cake, UP, center, true).result, expected, version)
+        // (a lectern without a book: an empty off hand passes, one with an item is consumed, as the main hand)
+        if (version === '1.12.2') continue
+        const lectern = bot.set(new Vec3(2, 101, 1), 'lectern', { facing: 'north', has_book: false, powered: false })
+        assert.strictEqual(use.useItemOn(lectern, UP, center, true).result, 'pass', version)
+        bot.inventory.slots[45] = bot.item('stick')
+        assert.strictEqual(use.useItemOn(lectern, UP, center, true).result, version === '1.20.6' ? 'pass' : 'consume', version)
+      }
+    })
+
     it('an empty jukebox and an uncharged respawn anchor pass, a disc goes in', () => {
       const bot = fakeBot('26.1')
       const jukebox = bot.set(new Vec3(2, 101, 0), 'jukebox', { has_record: false })
