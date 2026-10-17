@@ -149,6 +149,42 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       bot.hold(null)
       assert.strictEqual(use.useItemOn(chest, WEST, center).result, 'success')
     })
+
+    it('before 1.20.5 a book goes on a lectern, before 1.21 a disc in a jukebox, from the item, a sneaking player too', () => {
+      // (WritableBookItem / WrittenBookItem.useOn: LecternBlock.tryPlaceBook; RecordItem.useOn)
+      for (const [version, book, disc] of [['1.20.4', 'success', 'success'], ['1.20.6', 'pass', 'success'], ['1.21.1', 'pass', 'pass']]) {
+        const bot = fakeBot(version)
+        const lectern = bot.set(new Vec3(2, 101, 0), 'lectern', { facing: 'north', has_book: false })
+        const jukebox = bot.set(new Vec3(2, 101, 1), 'jukebox', { has_record: false })
+        const use = createUsePrediction(bot)
+        bot.setControlState('sneak', true)
+        bot.hold('writable_book')
+        assert.strictEqual(use.useItemOn(lectern, UP, center).result, book, version)
+        bot.hold('music_disc_13')
+        assert.strictEqual(use.useItemOn(jukebox, WEST, center).result, disc, version)
+      }
+    })
+
+    it('a sneaking player\'s disc goes in a jukebox before 1.21, its book on a lectern from 1.14 to 1.20.4 (the item\'s useOn)', () => {
+      for (const [version, disc, discIn, bookOn] of [['1.12.2', 'record_13', 'success', null], ['1.16.5', 'music_disc_13', 'success', 'success'],
+        ['1.20.6', 'music_disc_13', 'success', 'pass'], ['1.21.1', 'music_disc_13', 'pass', 'pass']]) {
+        const bot = fakeBot(version)
+        const jukebox = bot.set(new Vec3(2, 101, 0), 'jukebox', { has_record: false })
+        const use = createUsePrediction(bot)
+        bot.setControlState('sneak', true)
+        bot.hold(disc)
+        assert.strictEqual(use.useItemOn(jukebox, WEST, center).result, discIn, `${version} disc`)
+        // (one with a disc already: the disc passes on)
+        const full = bot.set(new Vec3(2, 101, 1), 'jukebox', { has_record: true })
+        assert.strictEqual(use.useItemOn(full, WEST, center).result, 'pass', `${version} full jukebox`)
+        if (!bookOn) continue
+        const lectern = bot.set(new Vec3(2, 101, 0), 'lectern', { facing: 'north', has_book: false, powered: false })
+        bot.hold('writable_book')
+        assert.strictEqual(use.useItemOn(lectern, UP, center).result, bookOn, `${version} book`)
+        bot.hold('stick')
+        assert.strictEqual(use.useItemOn(lectern, UP, center).result, 'pass', `${version} stick`)
+      }
+    })
   })
 
   describe('the item on a block (Item.useOn) and in the air (Item.use)', () => {
