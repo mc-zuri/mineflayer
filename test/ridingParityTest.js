@@ -30,7 +30,9 @@ async function riding (version, name, { at = new Vec3(3.5, 65, 1.5), blocks = gr
     bot.physicsTick()
   }
   const mounted = once(bot, 'mount')
-  client.write('set_passengers', { entityId: 100, passengers: [bot.entity.id] })
+  // (1.8 seats a rider with attach_entity, not a leash)
+  if (registry.version['<']('1.9')) client.write('attach_entity', { entityId: bot.entity.id, vehicleId: 100, leash: false })
+  else client.write('set_passengers', { entityId: 100, passengers: [bot.entity.id] })
   await mounted
   const vehicle = bot.entities[100]
   const type = registry.entitiesByName[name]
@@ -261,6 +263,41 @@ describe('riding (vanilla\'s mounts and seats)', function () {
         jump()
         await settle()
         assert.strictEqual(ridingJumps(t.written), 1)
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('before 1.19.4 a ridden mob\'s data is read where the version puts it: its no-AI flag, 1.19.3\'s camel\'s dash (Mob, Camel)', async () => {
+      // (1.8's DataWatcher: the no-AI byte at 15, the age at 12, not a baby flag; its ridden mobs are the server's)
+      const { entityDataKeys } = require('../lib/entityData')
+      const legacy = entityDataKeys(require('prismarine-registry')('1.8.8'), 'Pig')
+      assert.deepStrictEqual([legacy[12], legacy[15], legacy[16]], ['age', 'mob_flags', 'saddle'])
+      for (const noAi of [true, false]) {
+        const t = await riding('1.12.2', 'pig', {
+          setup: (v, { bot, registry }) => {
+            v.metadata[11] = noAi ? 1 : 0
+            v.metadata[13] = true
+            bot.inventory.updateSlot(bot.QUICK_BAR_START + bot.quickBarSlot, item(registry, 'carrot_on_a_stick'))
+          }
+        })
+        try {
+          t.bot.setControlState('forward', true)
+          t.ticks(2)
+          assert.strictEqual(t.bot._riddenMobPhysics.getCtx()?.state.noAi, noAi, `1.12.2 ${noAi}`)
+        } finally {
+          await t.close()
+        }
+      }
+      // 1.19.3's camel: its dash (19) after AbstractHorse's flags (17, saddled) and owner
+      const t = await riding('1.19.3', 'camel', { setup: (v) => { v.metadata[17] = 0x04 } })
+      try {
+        t.ticks(1)
+        assert.ok(t.bot._riddenMobPhysics.getCtx(), 'the camel is not steered')
+        const synced = once(t.bot._client, 'entity_metadata')
+        t.client.write('entity_metadata', { entityId: 100, metadata: [{ key: 19, type: 7, value: true }] })
+        await synced
+        assert.strictEqual(t.bot._riddenMobPhysics.getCtx().state.dashing, true)
       } finally {
         await t.close()
       }
