@@ -5,6 +5,7 @@
 const assert = require('assert')
 const { sleep } = require('../lib/promise_utils')
 const { fakeServerBot } = require('./common/fakeServer')
+const { Vec3 } = require('vec3')
 
 // A bot of the version against a fake server that confirms every click before 1.17 (ClientboundContainerAckPacket)
 async function clickingBot (version) {
@@ -342,6 +343,19 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       } finally {
         await t.close()
       }
+    }
+  })
+
+  it('bot.setCommandBlock sends the update of the command block screen in creative, the player list entry unknown', async () => {
+    const t = await fakeServerBot('1.20.4', { gameMode: 'creative', blocks: [[0, 64, 0, 'stone'], [2, 64, 0, 'command_block']] })
+    try {
+      t.bot.player = undefined
+      t.bot.setCommandBlock(new Vec3(2, 64, 0), 'say hi', { trackOutput: true })
+      await sleep(50)
+      const [update] = t.written.filter(p => p.name === 'update_command_block').map(p => p.data)
+      assert.deepStrictEqual([update.command, update.mode, update.flags], ['say hi', 2, 1])
+    } finally {
+      await t.close()
     }
   })
 
