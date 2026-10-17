@@ -56,6 +56,23 @@ async function riding (version, name, { at = new Vec3(3.5, 65, 1.5), mount = tru
 describe('mounts the rider steers, and what goes with them', function () {
   this.timeout(20 * 1000)
 
+  describe('[C] the sneak key the rider lets go of asks no more to dismount (LocalPlayer.tick: the live shift key)', () => {
+    it('[C] a sneak pressed and let go before the tick sends no shift', async () => {
+      const t = await riding('1.20.4', 'minecart')
+      try {
+        t.bot.setControlState('sneak', true)
+        t.bot.setControlState('sneak', false)
+        t.ticks(1)
+        await settle()
+        const steers = t.written.filter(p => p.name === 'steer_vehicle')
+        assert.ok(steers.length > 0)
+        for (const { data } of steers) assert.strictEqual(Number(data.jump) & 0x02, 0)
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[G] before 1.19.4 a ridden mob\'s synced data is read by its index (no names in minecraft-data)', () => {
     it('[G] 1.16.5: a pig\'s boost time synced by index boosts the pig the rider steers', async () => {
       const ride = async (boost) => {

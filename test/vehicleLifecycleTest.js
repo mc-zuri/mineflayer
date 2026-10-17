@@ -541,7 +541,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
     }
 
     if (usesLegacySteerVehicle) {
-      it('setControlState sneak asks to dismount with the next input, on press only (LocalPlayer.tick)', (done) => {
+      it('setControlState sneak asks to dismount with the next input while held (LocalPlayer.tick)', (done) => {
         server.on('playerJoin', (client) => {
           loginBot(client)
           const vehicleId = 42
@@ -550,13 +550,16 @@ for (const supportedVersion of mineflayer.testedVersions) {
 
           const writes = captureWrites()
           bot.setControlState('sneak', true)
-          bot.setControlState('sneak', false)
           // no packet of its own: the next input carries the dismount bit
           assert.strictEqual(writes.filter(w => w.name === 'steer_vehicle').length, 0)
           bot.moveVehicle(0, 0, false)
+          // let go before the next input, that input no longer asks (the shift key as it is that tick)
+          bot.setControlState('sneak', false)
+          bot.moveVehicle(0, 0, false)
           const inputs = writes.filter(w => w.name === 'steer_vehicle')
-          assert.strictEqual(inputs.length, 1)
+          assert.strictEqual(inputs.length, 2)
           assert.strictEqual(inputs[0].data.jump, 0x02)
+          assert.strictEqual(inputs[1].data.jump, 0)
           done()
         })
       })

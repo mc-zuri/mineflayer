@@ -46,6 +46,7 @@ function entityAt ({ bot, registry }, id, name, at, yaw = 0) {
 }
 
 const item = (registry, name) => new (require('prismarine-item')(registry))(registry.itemsByName[name].id, 1)
+const packets = (t, name) => t.written.filter(p => p.name === name).map(p => p.data)
 
 describe('mount parity (vanilla\'s client, version by version)', function () {
   this.timeout(30 * 1000)
@@ -59,6 +60,22 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // C: before 1.21.2 the shift of a passenger's input is the shift key as it is that tick (LocalPlayer.tick's
   // ServerboundPlayerInputPacket): let go, the next input no longer asks to dismount
+  describe('the passenger\'s shift key (ServerboundPlayerInputPacket)', () => {
+    it('the shift goes with the sneak key held, not after it is let go (1.20.4)', async () => {
+      const t = await riding('1.20.4', 'pig')
+      try {
+        t.bot.setControlState('sneak', true)
+        t.ticks(1)
+        t.bot.setControlState('sneak', false)
+        t.ticks(1)
+        await settle()
+        const shifts = packets(t, 'steer_vehicle').map(p => (p.jump & 0x02) !== 0)
+        assert.deepStrictEqual(shifts.slice(-2), [true, false])
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // the rider's offset from its vehicle's position
   const offset = (bot, vehicle) => bot.entity.position.minus(vehicle.position)
