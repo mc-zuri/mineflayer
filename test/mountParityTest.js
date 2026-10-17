@@ -315,6 +315,21 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // T: before 1.20.2 a camel seats its rider at its riding offset (its height less 0.6F) with the player's -0.35, 0.5
   // along its body's rotation (Camel.positionRider)
+  describe('the camel\'s seat before 1.20.2 (Camel.positionRider)', () => {
+    it('a standing camel seats its driver 1.425 up, 0.5 along its rotation (1.20.1)', async () => {
+      const t = await riding('1.20.1', 'camel')
+      try {
+        t.ticks(1)
+        await settle()
+        const f32 = Math.fround
+        const seat = offset(t.bot, t.vehicle)
+        assert.ok(Math.abs(seat.y - f32(f32(f32(2.375) - f32(0.6)) + -0.35)) < 1e-9, `y ${seat.y}`)
+        assert.ok(Math.abs(Math.hypot(seat.x, seat.z) - 0.5) < 1e-4, `x ${seat.x}, z ${seat.z}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // U: before 1.21.2 a mount its rider takes control of stops interpolating where the client showed it
   // (Entity.isControlledByLocalInstance): its steering starts there, not at the server's last move

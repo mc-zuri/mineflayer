@@ -84,6 +84,14 @@ describe('mount seats (Entity.positionRider)', function () {
     })
   })
 
+  describe('[T] the camel before 1.20.2 (Camel.positionRider)', () => {
+    it('[T] before 1.20.2 a camel seats its rider at the float sum of its height less 0.6F and the player\'s -0.35', async () => {
+      const { at } = await seated('1.20.1', 'camel')
+      assert.strictEqual(at.y, f32(f32(f32(2.375) - f32(0.6)) + -0.35))
+      assert.ok(Math.abs(Math.hypot(at.x, at.z) - 0.5) < 1e-6, String(at))
+    })
+  })
+
   describe('[M] the strider adds its riding offset, then the player\'s own (Entity.positionRider)', () => {
     it('[M] a strider seats its rider at its y plus its riding offset, then plus the player\'s', async () => {
       const at = new Vec3(3.5, 65.1, 1.5)
