@@ -150,6 +150,25 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(use.useItemOn(chest, WEST, center).result, 'success')
     })
 
+    it('a decorated pot has no use before 1.20.3, and is used without a swing until 1.21.2 (DecoratedPotBlock)', () => {
+      for (const [version, expected] of [['1.20.1', 'pass'], ['1.20.4', 'consume'], ['1.21.1', 'consume'], ['1.21.4', 'success']]) {
+        const bot = fakeBot(version)
+        const pot = bot.set(new Vec3(2, 101, 0), 'decorated_pot', { facing: 'north' })
+        assert.strictEqual(createUsePrediction(bot).useItemOn(pot, UP, center).result, expected, version)
+      }
+    })
+
+    it('a decorated pot: nothing before 1.20.3, CONSUME on the client to 1.21.1 whatever the hand holds, a swing since', () => {
+      for (const [version, expected] of [['1.20.1', 'pass'], ['1.20.4', 'consume'], ['1.21.1', 'consume'], ['1.21.4', 'success']]) {
+        const bot = fakeBot(version)
+        const pot = bot.set(new Vec3(2, 101, 0), 'decorated_pot', { facing: 'north', cracked: false, waterlogged: false })
+        const use = createUsePrediction(bot)
+        assert.strictEqual(use.useItemOn(pot, WEST, center).result, expected, `${version} empty hand`)
+        bot.hold('stick')
+        assert.strictEqual(use.useItemOn(pot, WEST, center).result, expected, `${version} stick`)
+      }
+    })
+
     it('before 1.20.5 a book goes on a lectern, before 1.21 a disc in a jukebox, from the item, a sneaking player too', () => {
       // (WritableBookItem / WrittenBookItem.useOn: LecternBlock.tryPlaceBook; RecordItem.useOn)
       for (const [version, book, disc] of [['1.20.4', 'success', 'success'], ['1.20.6', 'pass', 'success'], ['1.21.1', 'pass', 'pass']]) {
