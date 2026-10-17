@@ -67,6 +67,15 @@ const center = new Vec3(0.5, 0.5, 0.5)
 
 describe('use outcome (InteractionResult as the client predicts it)', () => {
   describe('a block\'s own use (useItemOn / useWithoutItem)', () => {
+    it('a cake the client eats is marked eaten (its bite predicted), one it does not eat not', () => {
+      const bot = fakeBot('26.1', { food: 10 })
+      const cake = bot.set(new Vec3(2, 101, 0), 'cake')
+      const use = createUsePrediction(bot)
+      assert.deepStrictEqual(use.useItemOn(cake, UP, center), { result: 'success', eat: true })
+      bot.food = 20
+      assert.deepStrictEqual(use.useItemOn(cake, UP, center), { result: 'consume' })
+    })
+
     it('a cake is eaten by a hungry player, passes for a full one and takes no swing with an empty hand (1.15+)', () => {
       const bot = fakeBot('26.1', { food: 10 })
       const cake = bot.set(new Vec3(2, 101, 0), 'cake')
@@ -642,6 +651,7 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       for (let x = 0; x < 8; x++) set(x, 64, 0, 'stone')
       set(3, 65, 0, registry.blocksByName.chest ? 'chest' : 'stone', { facing: 'west' })
       set(5, 65, 0, 'jukebox', registry.version['>=']('1.13') ? { has_record: false } : {})
+      set(7, 65, 0, 'cake')
       const lights = chunk.dumpLight?.()
       client.write('map_chunk', {
         x: 0,
@@ -693,6 +703,18 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.strictEqual(await bot.activateBlock(jukebox, new Vec3(-1, 0, 0), new Vec3(0, 0.5, 0.5)), 'pass')
       await settle()
       assert.deepStrictEqual(names(), ['block_place'])
+    })
+
+    it('a slice of cake a hungry player eats is gone from the world at once (CakeBlock.eat on the client too)', async () => {
+      bot.lookAt = async () => {}
+      bot.food = 10
+      const cake = bot.blockAt(new Vec3(7, 65, 0))
+      assert.strictEqual(await bot.activateBlock(cake, new Vec3(0, 1, 0), new Vec3(0.5, 0.5, 0.5)), 'success')
+      assert.strictEqual(Number(bot.blockAt(new Vec3(7, 65, 0)).getProperties().bites), 1)
+      // (a full player eats nothing: the cake stays as it is)
+      bot.food = 20
+      await bot.activateBlock(bot.blockAt(new Vec3(7, 65, 0)), new Vec3(0, 1, 0), new Vec3(0.5, 0.5, 0.5))
+      assert.strictEqual(Number(bot.blockAt(new Vec3(7, 65, 0)).getProperties().bites), 1)
     })
 
     it('a block placed into the player takes no swing (before 1.13 is not even sent: ItemBlock.canPlaceBlockOnSide)', async () => {
