@@ -400,5 +400,16 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       const use = registry.version['<']('1.9') ? 'block_place' : 'use_item'
       assert.deepStrictEqual(names(), swings ? [use, 'arm_animation'] : [use])
     })
+
+    it('an item on cooldown is not used: no release follows', async () => {
+      if (!registry.itemsByName.goat_horn) return
+      hold('goat_horn', 1)
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, true)
+      bot.deactivateItem()
+      bot._itemCooldowns.goat_horn = performance.now() + 1000
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, false)
+    })
   })
 }
