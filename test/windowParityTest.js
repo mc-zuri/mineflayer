@@ -317,6 +317,34 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('bot.writeBook and bot.signBook send the book as the editor saves it (ServerboundEditBookPacket)', async () => {
+    for (const version of ['1.14.4', '1.16.5', '1.20.4']) {
+      const t = await clickingBot(version)
+      try {
+        t.bot.inventory.updateSlot(36, t.item('writable_book'))
+        t.bot.setQuickBarSlot(0)
+        t.bot.writeBook(36, ['First page', 'Second page']).catch(() => {})
+        await sleep(50)
+        t.bot.signBook(36, ['First page'], 'Dev', 'My Book').catch(() => {})
+        await sleep(50)
+        const [write, sign] = t.written.filter(p => p.name === 'edit_book').map(p => p.data)
+        if (t.registry.version['>=']('1.17.1')) {
+          // the book's slot, its pages, the title signed
+          assert.deepStrictEqual([write.hand, write.pages, write.title], [0, ['First page', 'Second page'], undefined], version)
+          assert.deepStrictEqual([sign.hand, sign.pages, sign.title], [0, ['First page'], 'My Book'], version)
+        } else {
+          // the book as edited, signing, the main hand; its tags pages, author, title until 1.14, the other way round after
+          const tags = item => Object.keys(item.nbtData.value)
+          assert.deepStrictEqual([write.signing, write.hand, tags(write.new_book)], [false, 0, ['pages']], version)
+          assert.deepStrictEqual([sign.signing, tags(sign.new_book)], [true, version === '1.14.4' ? ['pages', 'author', 'title'] : ['title', 'author', 'pages']], version)
+          assert.strictEqual(sign.new_book.nbtData.value.author.value, 'Dev', version)
+        }
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('bot.setAnvilItemName names the item in the open anvil screen (ServerboundRenameItemPacket, AnvilMenu.setItemName)', async () => {
     for (const version of ['1.12.2', '1.16.5', '1.20.4']) {
       const t = await clickingBot(version)
