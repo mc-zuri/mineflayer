@@ -240,6 +240,21 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // I: 1.16's rider whose shift key was down after its tick stops riding on its own client (Player.rideTick's
   // wantsToStopRiding), before the server says so
+  describe('the 1.16 rider\'s own dismount (Player.rideTick)', () => {
+    it('a rider that sneaked leaves its vehicle on the next tick on 1.16.5, not on 1.15.2', async () => {
+      for (const [version, leaves] of [['1.15.2', false], ['1.16.5', true]]) {
+        const t = await riding(version, 'pig')
+        try {
+          t.bot.setControlState('sneak', true)
+          t.ticks(2)
+          await settle()
+          assert.strictEqual(t.bot.vehicle == null, leaves, `${version}: left its vehicle`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 
   // J: before 1.19 a horse is its first passenger's to move, saddled or not (AbstractHorse.canBeSteered): unsaddled it
   // goes on its own input, none, and its rider's client tells the server where it is

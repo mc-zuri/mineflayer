@@ -196,6 +196,21 @@ describe('mounts the rider steers, and what goes with them', function () {
     })
   })
 
+  describe('[I] 1.16: a rider whose shift was down after its tick stops riding on its own (Player.rideTick)', () => {
+    it('[I] 1.16.5 gets off before the server says so, 1.17.1 waits for it', async () => {
+      for (const [version, off] of [['1.16.5', true], ['1.17.1', false]]) {
+        const t = await riding(version, 'minecart')
+        try {
+          t.bot.setControlState('sneak', true)
+          t.ticks(2)
+          assert.strictEqual(t.bot.vehicle == null, off, version)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
+
   describe('[J] before 1.19 an unsaddled horse is its rider\'s (AbstractHorse.canBeSteered)', () => {
     it('[J] 1.16.5: the rider moves its unsaddled horse (it falls), which jumps only saddled', async () => {
       const t = await riding('1.16.5', 'horse', { at: new Vec3(3.5, 66, 1.5), setup: (v, t) => { t.attribute(v, 0.225); v.onGround = false } })
