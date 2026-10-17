@@ -1136,9 +1136,10 @@ for (const supportedVersion of mineflayer.testedVersions) {
           }
           await used
           await sleep(100)
+          // (before 26.1 the right click is INTERACT_AT, then INTERACT as the entity did not take it: Minecraft.startUseItem)
           const expected = registry.supportFeature('attackUsesOwnPacket')
             ? [['attack', 97], ['use_entity', 97, { x: 0, y: 0, z: 0 }], ['use_entity', 97, { x: 0, y: 1, z: 0 }]]
-            : [['use_entity', 97, 1], ['use_entity', 97, 0], ['use_entity', 97, 2]]
+            : [['use_entity', 97, 1], ['use_entity', 97, 0], ['use_entity', 97, 2], ['use_entity', 97, 0]]
           assert.deepStrictEqual(sent, expected)
         } finally {
           manual.end()

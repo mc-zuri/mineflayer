@@ -312,8 +312,8 @@
       - [bot.placeBlock(referenceBlock, faceVector)](#botplaceblockreferenceblock-facevector)
       - [bot.placeEntity(referenceBlock, faceVector)](#botplaceentityreferenceblock-facevector)
       - [bot.activateBlock(block, direction?: Vec3, cursorPos?: Vec3)](#botactivateblockblock-direction-vec3-cursorpos-vec3)
-      - [bot.activateEntity(entity)](#botactivateentityentity)
-      - [bot.activateEntityAt(entity, position)](#botactivateentityatentity-position)
+      - [bot.activateEntity(entity, offHand=false)](#botactivateentityentity-offhandfalse)
+      - [bot.activateEntityAt(entity, position, offHand=false)](#botactivateentityatentity-position-offhandfalse)
       - [bot.consume()](#botconsume)
       - [bot.fish()](#botfish)
       - [bot.activateItem(offHand=false)](#botactivateitemoffhandfalse)
@@ -321,7 +321,7 @@
       - [bot.useOn(targetEntity)](#botuseontargetentity)
       - [bot.attack(entity, swing = true)](#botattackentity-swing--true)
       - [bot.swingArm([hand], showHand)](#botswingarmhand-showhand)
-      - [bot.mount(entity)](#botmountentity)
+      - [bot.mount(entity, offHand=false)](#botmountentity-offhandfalse)
       - [bot.dismount()](#botdismount)
       - [bot.moveVehicle(left,forward)](#botmovevehicleleftforward)
       - [bot.setQuickBarSlot(slot)](#botsetquickbarslotslot)
@@ -2062,22 +2062,24 @@ Punch a note block, open a door, etc.
 - `direction` Optional defaults to `new Vec3(0, 1, 0)` (up). A vector off the direction the container block should be interacted with. Does nothing when a container entity is targeted.
 - `cursorPos` Optional defaults to `new Vec3(0.5, 0.5, 0.5)` (block center). The curos position when opening the block instance. This is send with the activate block packet. Does nothing when a container entity is targeted.
 
-#### bot.activateEntity(entity)
+#### bot.activateEntity(entity, offHand=false)
 
-This function returns a `Promise`, with `void` as its argument upon completion.
+This function returns a `Promise`, with what the vanilla client would predict the use comes to as its argument upon completion: `'success'` or `'consume'` (the use ends there) or `'pass'` (the vanilla client goes on to use the held item, then the off hand).
 
-Activate an entity, useful for villager for example.
+Activate (right click) an entity where the crosshair meets it, useful for villager for example. Sends what the vanilla client sends: before 26.1 an interact-at then an interact, and the arm swing of a use the client predicts succeeds.
 
 - `entity` - the entity to activate
+- `offHand` - use the off hand
 
-#### bot.activateEntityAt(entity, position)
+#### bot.activateEntityAt(entity, position, offHand=false)
 
-This function returns a `Promise`, with `void` as its argument upon completion.
+This function returns a `Promise`, with the prediction `bot.activateEntity` gives as its argument upon completion.
 
 Activate an entity at the given position, useful for armor stands.
 
 - `entity` - the entity to activate
 - `position` - the world position to click at
+- `offHand` - use the off hand
 
 #### bot.consume()
 
@@ -2121,9 +2123,9 @@ Play an arm swing animation.
 - `hand` can take `left` or `right` which is the arm that is animated. Default: `right`
 - `showHand` is a boolean whether to add the hand to the packet, Default: `true`
 
-#### bot.mount(entity)
+#### bot.mount(entity, offHand=false)
 
-Mount a vehicle. To get back out, use `bot.dismount`.
+Mount a vehicle: a right click on it where the crosshair meets it, as `bot.activateEntity` makes it (returns its prediction). To get back out, use `bot.dismount`.
 
 #### bot.dismount()
 

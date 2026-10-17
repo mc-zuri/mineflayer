@@ -38,3 +38,51 @@ describe('leashes (ClientboundSetEntityLinkPacket)', function () {
     }
   })
 })
+
+describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)', function () {
+  this.timeout(10 * 1000)
+  const uses = t => t.written.filter(p => p.name === 'use_entity').map(p => p.data)
+
+  it('before 26.1 a mount is INTERACT_AT where the crosshair meets it, then INTERACT, and a swing from 1.15', async () => {
+    for (const version of ['1.12.2', '1.20.4']) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const boat = addEntity(t.bot, 7, { name: 'boat', type: 'other', position: new Vec3(0.5, 65, 2.5), width: 1.375, height: 0.5625 })
+        assert.strictEqual(t.bot.mount(boat), 'success')
+        await settle()
+        const [at, interact] = uses(t)
+        assert.deepStrictEqual([at.mouse, interact.mouse, uses(t).length], [2, 0, 2], version)
+        // (the point on the boat's box, relative to its position)
+        assert.ok(Math.abs(at.y) <= 0.5625 + 1e-6 && Math.abs(at.z) <= 0.6875 + 1e-6, version)
+        assert.strictEqual(t.names(/arm_animation/).length, t.registry.version['>=']('1.15') ? 1 : 0, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
+  it('from 26.1 one interaction says where on the entity it is; an armor stand takes the click at INTERACT_AT', async () => {
+    const t = await fakeServerBot('26.1', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const boat = addEntity(t.bot, 7, { name: 'oak_boat', type: 'other', position: new Vec3(0.5, 65, 2.5), width: 1.375, height: 0.5625 })
+      assert.strictEqual(t.bot.mount(boat), 'success')
+      await settle()
+      assert.strictEqual(uses(t).length, 1)
+      assert.ok(uses(t)[0].location.y > 0)
+      assert.strictEqual(t.names(/arm_animation/).length, 1)
+    } finally {
+      await t.close()
+    }
+    const old = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      old.bot.lookAt = async () => {}
+      const stand = addEntity(old.bot, 8, { name: 'armor_stand', type: 'living', position: new Vec3(0.5, 65, 2.5), width: 0.5, height: 1.975 })
+      assert.strictEqual(await old.bot.activateEntity(stand), 'consume')
+      await settle()
+      assert.deepStrictEqual(uses(old).map(u => u.mouse), [2])
+      assert.deepStrictEqual(old.names(/arm_animation/), [])
+    } finally {
+      await old.close()
+    }
+  })
+})

@@ -358,9 +358,9 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   activateBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3, offHand?: boolean) => Promise<void>
 
-  activateEntity: (entity: Entity) => Promise<void>
+  activateEntity: (entity: Entity, offHand?: boolean) => Promise<'success' | 'consume' | 'pass'>
 
-  activateEntityAt: (entity: Entity, position: Vec3) => Promise<void>
+  activateEntityAt: (entity: Entity, position: Vec3, offHand?: boolean) => Promise<'success' | 'consume' | 'pass'>
 
   consume: () => Promise<void>
 
@@ -382,7 +382,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   vehicle: Entity | null
 
-  mount: (entity: Entity) => void
+  mount: (entity: Entity, offHand?: boolean) => 'success' | 'consume' | 'pass'
 
   dismount: () => void
 
