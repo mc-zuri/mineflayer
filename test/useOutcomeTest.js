@@ -171,6 +171,18 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       }
     })
 
+    it('before 1.9 a cauldron answers any use (a swing), an iron door before 1.11; since they pass a stick', () => {
+      for (const [version, expected, doorExpected] of [['1.8.8', 'success', 'success'], ['1.10.2', 'pass', 'success'], ['1.11.2', 'pass', 'pass']]) {
+        const bot = fakeBot(version)
+        const use = createUsePrediction(bot)
+        const door = bot.set(new Vec3(2, 101, 0), 'iron_door', {})
+        const cauldron = bot.set(new Vec3(2, 101, 1), 'cauldron', {})
+        bot.hold('stick')
+        assert.strictEqual(use.useItemOn(door, WEST, center).result, doorExpected, `${version} iron door`)
+        assert.strictEqual(use.useItemOn(cauldron, UP, center).result, expected, `${version} cauldron`)
+      }
+    })
+
     it('an empty jukebox and an uncharged respawn anchor pass, a disc goes in', () => {
       const bot = fakeBot('26.1')
       const jukebox = bot.set(new Vec3(2, 101, 0), 'jukebox', { has_record: false })
