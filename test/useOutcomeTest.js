@@ -478,6 +478,71 @@ describe('the crosshair (Minecraft.pick, Item.getPlayerPOVHitResult)', () => {
     }
   })
 
+  // minecraft-data's one shape per block (1.8 - 1.11; 1.12 has the shapes of each state) is a closed door on its west
+  // side, a closed bottom trapdoor, a gate across z: rays that only the boxes of the state meet (or miss). 1.12.2: the same
+  // answers from either.
+  it('before 1.13 misses a door turned away and meets an open trapdoor and a gate across x where their states put them', () => {
+    const at = (bot, position, name, metadata) => bot.world.setBlockStateId(position, (bot.registry.blocksByName[name].id << 4) | metadata)
+    for (const version of ['1.8.8', '1.11.2', '1.12.2']) {
+      // a closed door facing north (lower half 3, upper half 8): its box is on the block's north side, out of a ray along x
+      // through the block's middle, which the single shape (the west side) stops
+      let bot = fakeBot(version, { pitch: 30 })
+      rayTrace(bot)
+      at(bot, new Vec3(2, 101, 0), 'wooden_door', 3)
+      at(bot, new Vec3(2, 102, 0), 'wooden_door', 8)
+      let hit = bot.raycastHitResult(4.5, 3)
+      assert.notStrictEqual(hit.block?.name, 'wooden_door', `${version} door`)
+      // an open bottom trapdoor facing east (4 | 3) stands up on the block's west side: met on its west face at x=2,
+      // above the closed slab the single shape is
+      bot = fakeBot(version, { pitch: 30 })
+      rayTrace(bot)
+      at(bot, new Vec3(2, 101, 0), 'trapdoor', 4 | 3)
+      hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.block?.name, 'trapdoor', `${version} trapdoor`)
+      assert.strictEqual(hit.face, WEST, `${version} trapdoor`)
+      assert.strictEqual(hit.intersect.x, 2, `${version} trapdoor`)
+      // a gate facing east (3) runs across x: met 6/16 in, not at the block's west side
+      bot = fakeBot(version, { pitch: 30 })
+      rayTrace(bot)
+      at(bot, new Vec3(2, 101, 0), 'fence_gate', 3)
+      hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.block?.name, 'fence_gate', `${version} gate`)
+      assert.strictEqual(hit.intersect.x, 2.375, `${version} gate`)
+    }
+    // 1.8's redstone wire: the whole flat block, met on its top where the dot is not
+    const bot = fakeBot('1.8.8', { pitch: 45 })
+    rayTrace(bot)
+    at(bot, new Vec3(2, 101, 0), 'redstone_wire', 0)
+    bot.entity.pitchDegrees = Math.atan2(1.62 - 0.0625, 1.6) * 180 / Math.PI
+    const wire = bot.raycastHitResult(4.5, 3)
+    assert.strictEqual(wire.block?.name, 'redstone_wire', '1.8.8 wire')
+    assert.ok(wire.intersect.x - 2 < 3 / 16, `1.8.8 wire ${wire.intersect.x}`)
+  })
+
+  it('before 1.13 meets a door, a trapdoor and a gate by the boxes of their state (one shape per block in the data)', () => {
+    const bot = fakeBot('1.12.2', { pitch: 18 })
+    rayTrace(bot)
+    const at = (position, name, metadata) => bot.world.setBlockStateId(position, (bot.registry.blocksByName[name].id << 4) | metadata)
+    // an open trapdoor on the floor, facing east (metadata 4 | 3): the ray passes over its east side
+    at(new Vec3(2, 101, 0), 'trapdoor', 4 | 3)
+    assert.strictEqual(String(bot.blockAt(new Vec3(2, 101, 0)).getProperties().open), 'true')
+    let hit = bot.raycastHitResult(4.5, 3)
+    assert.ok(!(hit.block?.name === 'trapdoor' && hit.face === UP), JSON.stringify(hit.block?.position))
+    // a closed one is met on its top
+    at(new Vec3(2, 101, 0), 'trapdoor', 3)
+    bot.entity.pitchDegrees = 40
+    hit = bot.raycastHitResult(4.5, 3)
+    assert.strictEqual(hit.block.name, 'trapdoor')
+    assert.strictEqual(hit.face, UP)
+    assert.strictEqual(hit.intersect.y, 101.1875)
+    // a gate facing east: its middle, across x, from its west side 6/16 in
+    at(new Vec3(2, 101, 0), 'fence_gate', 3)
+    bot.entity.pitchDegrees = 30
+    hit = bot.raycastHitResult(4.5, 3)
+    assert.strictEqual(hit.block.name, 'fence_gate')
+    assert.strictEqual(hit.intersect.x, 2.375)
+  })
+
   it('takes a hopper\'s top for a ray into its bowl (its interaction shape, from 1.13)', () => {
     for (const version of ['1.13.2', '26.1']) {
       const bot = fakeBot(version, { pitch: 18 })
