@@ -850,4 +850,28 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AH: the rider of a mount it steers has one tick a client tick, after the mount's (Entity.rideTick): its sprint starts
+  // there, and its air speed is the one its sprint of the tick before left (EntityPlayer.onLivingUpdate's
+  // jumpMovementFactor before 1.19.4), 0.02F at the tick it starts sprinting (c_ride_donkey_sprint_turn t1, 1.9.4 - 1.19.3)
+  describe('the rider\'s own tick on a mount it steers (Entity.rideTick, LocalPlayer.aiStep)', () => {
+    it('a rider starting to sprint on a horse moves at the walking air speed at that tick', async () => {
+      for (const version of ['1.9.4', '1.12.2', '1.17.1', '1.19.2']) {
+        const t = await riding(version, 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x06 } })
+        try {
+          t.bot.setControlState('forward', true)
+          t.bot.setControlState('sprint', true)
+          t.ticks(1)
+          await settle()
+          assert.ok(packets(t, 'vehicle_move').length > 0, `${version}: steered`)
+          assert.strictEqual(t.bot.entity.sprinting, true, `${version}: sprinting`)
+          // (0.02F of the input 0.98F, then the air's 0.91F)
+          const { x, z } = t.bot.entity.velocity
+          assert.ok(Math.abs(Math.hypot(x, z) - 0.02 * 0.98 * 0.91) < 1e-8, `${version}: ${x}, ${z}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
