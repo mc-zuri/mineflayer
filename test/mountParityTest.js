@@ -656,4 +656,31 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AC: 1.21.5 - 1.21.8 a move without a rotation heads the interpolation to the entity's own rotation, ending a turn;
+  // from 1.21.9 it keeps the rotation the interpolation heads to (Entity.moveOrInterpolateTo, InterpolationHandler)
+  describe('a move without a rotation (ClientPacketListener.handleMoveEntity)', () => {
+    it('ends a turn on 1.21.6, not on 1.21.9', async () => {
+      const turned = async (version) => {
+        const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+        try {
+          const pig = entityAt(t, 101, 'pig', new Vec3(3.5, 65, 1.5))
+          // (from its spawn's 180, a quarter turn to 90)
+          t.client.write('entity_look', { entityId: 101, yaw: 64, pitch: 0, onGround: true })
+          await settle()
+          t.ticks(1)
+          await settle()
+          t.client.write('rel_entity_move', { entityId: 101, dX: 0, dY: 0, dZ: 0, onGround: true })
+          await settle()
+          t.ticks(2)
+          await settle()
+          return Number(pig.yawDegrees)
+        } finally {
+          await t.close()
+        }
+      }
+      assert.ok(Math.abs(await turned('1.21.6') - 150) < 1e-3, 'stays at 150 on 1.21.6')
+      assert.ok(Math.abs(await turned('1.21.9') - 150) > 10, 'goes on turning on 1.21.9')
+    })
+  })
 })
