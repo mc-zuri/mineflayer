@@ -45,10 +45,14 @@ function entityAt ({ bot, registry }, id, name, at, yaw = 0) {
   return entity
 }
 
+const item = (registry, name) => new (require('prismarine-item')(registry))(registry.itemsByName[name].id, 1)
+
 describe('mount parity (vanilla\'s client, version by version)', function () {
   this.timeout(30 * 1000)
 
   // A: 1.21.5 counts the saddle in a llama's saddle slot (Mob.isSaddled): its rider steers it as a horse
+  // the item in the bot's hand
+  const holdInHand = (t, name) => t.bot.inventory.updateSlot(t.bot.QUICK_BAR_START + t.bot.quickBarSlot, item(t.registry, name))
 
   // B: a mount still easing to the server's move goes on with it under its rider, and the vehicle move reports where it
   // heads (Entity.lerpTargetX, from 1.21.5 lerpTargetYRot / XRot too: InterpolationHandler)
@@ -147,6 +151,30 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // V: from 1.15 a mob its rider moves keeps its packet position where the client put it (LivingEntity.aiStep's
   // setPacketCoordinates): the server's next relative move adds to it
+  describe('the packet position of a steered mount (setPacketCoordinates)', () => {
+    it('a pig let go of after steering takes the server\'s move from where its last steered tick started (1.15.2)', async () => {
+      const t = await riding('1.15.2', 'pig', { setup: (v, t) => { v.metadata[15] = true; holdInHand(t, 'carrot_on_a_stick') } })
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(4)
+        await settle()
+        // (where the last steered tick starts: its aiStep sets the packet position, floored to 1/4096, then moves it)
+        const steered = t.vehicle.position.z
+        assert.ok(steered > 1.6, `steered to ${steered}`)
+        t.ticks(1)
+        await settle()
+        holdInHand(t, 'stone')
+        t.bot.setControlState('forward', false)
+        t.ticks(1)
+        await settle()
+        t.client.write('rel_entity_move', { entityId: 100, dX: 0, dY: 0, dZ: 4096, onGround: true })
+        await settle()
+        assert.strictEqual(t.vehicle.position.z, (Math.floor(steered * 4096) + 4096) / 4096)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // W: before 1.21.2 a raft is a boat or chest boat of the bamboo type (Boat.Type.BAMBOO): it seats at its raft height
   describe('the chest raft before 1.21.2 (Boat.Type.BAMBOO)', () => {

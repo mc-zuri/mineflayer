@@ -3157,11 +3157,12 @@ for (const supportedVersion of mineflayer.testedVersions) {
           await dismounted
           assert.ok(vehicle.interpolatedPosition.equals(left), `shown at ${vehicle.interpolatedPosition}, left at ${left}`)
 
-          // the next server move adds to the packet position: it kept the server's move before 1.16 and from 1.21.2;
-          // 1.16 - 1.21.1 took the boat's position at the start of each tick the client steered it (Boat.tickLerp)
+          // the next server move adds to the packet position: it kept the server's move before 1.15 and from 1.21.2;
+          // 1.15 - 1.21.1 took the boat's position at the start of each tick the client steered it (Boat.tickLerp's
+          // setPacketCoordinates)
           client.write('rel_entity_move', relMovePacket(100, { onGround: true }))
           await sleep(100)
-          const keepsMoves = !registry.isNewerOrEqualTo('1.16') || registry.isNewerOrEqualTo('1.21.2')
+          const keepsMoves = !registry.isNewerOrEqualTo('1.15') || registry.isNewerOrEqualTo('1.21.2')
           const expected = keepsMoves ? start.x + 1 : lastTickStart.x
           assert.ok(Math.abs(vehicle.position.x - expected) < 1 / 4096, `${vehicle.position.x} !== ${expected}`)
         } finally {

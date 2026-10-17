@@ -29,6 +29,20 @@ describe('the moves of other entities', function () {
     })
   })
 
+  describe('[V] a vehicle the client controls takes its position as its packet position from 1.15 (LivingEntity.aiStep)', () => {
+    it('[V] from 1.15 a controlled vehicle\'s next relative move goes from where the client moved it', () => {
+      const interpolation = createEntityInterpolation(require('prismarine-registry')('1.15.2'))
+      const horse = { id: 7, name: 'horse', type: 'animal', position: new Vec3(0, 64, 0), yaw: 0, pitch: 0 }
+      interpolation.spawn(horse)
+      interpolation.move(horse, 4096, 0, 0, null)
+      // the client moved it to x 5 itself
+      horse.position.set(5, 64, 0)
+      interpolation.control(horse)
+      assert.strictEqual(horse.interpolation.steps, 0)
+      assert.strictEqual(interpolation.move(horse, 4096, 0, 0, null).x, 6)
+    })
+  })
+
   describe('[Q] a position sync leaves the entity\'s motion alone (ClientPacketListener.handleEntityPositionSync)', () => {
     it('[Q] the motion a position sync carries is not the entity\'s', async () => {
       const t = await fakeServerBot('1.21.4', { spawn: { x: 0.5, y: 65, z: 0.5 } })
