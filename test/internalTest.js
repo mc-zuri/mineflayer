@@ -4220,6 +4220,29 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      // Player.getProjectile: a bow without arrows is drawn in creative only (Abilities.instabuild), not by an
+      // invulnerable player in survival
+      it('draws a bow without arrows only in creative', (done) => {
+        const Item = require('prismarine-item')(supportedVersion)
+        server.on('playerJoin', async (client) => {
+          client.write('login', bot.test.generateLoginPacket())
+          client.write('held_item_slot', { slot: 0 })
+          await sleep(100)
+          bot.game.gameMode = 'survival' // (some versions' default login packet is creative's)
+          client.write('abilities', { flags: 1, flyingSpeed: 0.05, walkingSpeed: 0.1 })
+          bot.once('heldItemChanged', () => setImmediate(() => {
+            assert.strictEqual(bot.entity.isInvulnerable, true)
+            bot.activateItem()
+            assert.strictEqual(bot.usingHeldItem, false)
+            bot.game.gameMode = 'creative'
+            bot.activateItem()
+            assert.strictEqual(bot.usingHeldItem, true)
+            done()
+          }))
+          client.write('set_slot', { windowId: 0, stateId: 0, slot: 36, item: Item.toNotch(new Item(registry.itemsByName.bow.id, 1)) })
+        })
+      })
+
       // MultiPlayerGameMode.releaseUsingItem (PlayerControllerMP before 1.13): RELEASE_USE_ITEM, BlockPos.ORIGIN,
       // Direction.DOWN on every version
       it('releases an item facing down', (done) => {
