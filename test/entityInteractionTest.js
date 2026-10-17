@@ -200,6 +200,32 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('before 1.17 a leash knot stands at its block\'s centre, its box from 3/8 to 7/8 of the block all the same (LeashFenceKnotEntity.setPos)', async () => {
+    for (const [version, y] of [['1.16.5', 65.5], ['1.12.2', 65.5], ['1.17.1', 65.375]]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        t.client.write('spawn_entity', {
+          entityId: 21, objectUUID: '00112233-4455-6677-8899-aabbccddee21', type: t.registry.version['>=']('1.14') ? t.registry.entitiesByName.leash_knot.id : 77, x: 2, y: 65, z: 0, pitch: 0, yaw: 0, objectData: 0, velocity: { x: 0, y: 0, z: 0 }
+        })
+        await settle()
+        const knot = t.bot.entities[21]
+        assert.deepStrictEqual(knot.position.toArray(), [2.5, y, 0.5], version)
+        // looking along x at 65.5: met on its west face, 1/8 above its box's bottom... wherever it stands
+        t.bot.entity.position.set(0.5, 65, 0.5)
+        t.bot.entity.yawDegrees = 270
+        t.bot.entity.pitchDegrees = Math.atan2(t.bot.entity.eyeHeight - 0.5, 2 - 0.1875) * 180 / Math.PI
+        const hit = t.bot.raycastHitResult(4.5, 3)
+        assert.strictEqual(hit.entity, knot, version)
+        assert.ok(Math.abs(hit.intersect.y - 65.5) < 1e-3, `${version} ${hit.intersect.y}`)
+        // under the box's bottom (65.375): missed
+        t.bot.entity.pitchDegrees = Math.atan2(t.bot.entity.eyeHeight - 0.3, 2 - 0.1875) * 180 / Math.PI
+        assert.notStrictEqual(t.bot.raycastHitResult(4.5, 3).entity, knot, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('a leash knot takes any click, an item frame one unless both it and the hand are empty (LeashFenceKnotEntity / ItemFrame.interact)', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
