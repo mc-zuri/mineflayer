@@ -97,6 +97,31 @@ describe('a falling block (FallingBlockEntity)', function () {
     }
   })
 
+  it('a tick adds the gravity to the motion the server sent, moves, then drags it (FallingBlockEntity.tick)', async () => {
+    const { performance } = require('perf_hooks')
+    const now = performance.now
+    let clock = now.call(performance)
+    performance.now = () => clock
+    try {
+      for (const version of ['1.9.4', '1.14.4']) {
+        const { bot, entity } = await spawnFallingBlock(version)
+        bot.blockAt = () => null
+        // (1.9 keeps the block it fell from at 5 of its data, where 1.10 put the no gravity flag)
+        if (version === '1.9.4') bot._client.emit('entity_metadata', { entityId: 97, metadata: [{ key: 5, type: 8, value: { x: 2, y: 102, z: 0 } }] })
+        // the server's motion after its own first tick: -0.04 dragged (in 1/8000 of a block)
+        bot._client.emit('entity_velocity', { entityId: 97, velocity: { x: 0, y: -313, z: 0 } })
+        const before = entity.position.y
+        clock += 50
+        bot.emit('physicsTick')
+        const moved = -313 / 8000 - 0.04
+        assert.ok(Math.abs(entity.position.y - (before + moved)) < 1e-9, `${version}: ${entity.position.y}`)
+        assert.ok(Math.abs(entity.velocity.y - moved * 0.98) < 1e-9, `${version}: ${entity.velocity.y}`)
+      }
+    } finally {
+      performance.now = now
+    }
+  })
+
   it('it falls on the client by its names before 1.14 too: 1.9 - 1.10 FallingSand, 1.13 falling_objects', async () => {
     const { performance } = require('perf_hooks')
     const now = performance.now
