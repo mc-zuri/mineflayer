@@ -181,6 +181,27 @@ describe('riding (vanilla\'s mounts and seats)', function () {
   })
 
   describe('the cushion (26.3)', () => {
+    it('a cushion has no controlling passenger: its rider never sends vehicle_move', async () => {
+      const t = await riding('26.3', 'cushion')
+      try {
+        t.ticks(3)
+        await settle()
+        assert.deepStrictEqual(t.names(/vehicle_move/), [])
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('a cushion seats its rider at its height', async () => {
+      const t = await riding('26.3', 'cushion')
+      try {
+        t.ticks(2)
+        const at = offset(t.bot, t.vehicle)
+        assert.ok(Math.abs(at.y - (f32(0.25) - 0.6)) < 1e-9, String(at))
+      } finally {
+        await t.close()
+      }
+    })
   })
 
   describe('in the water', () => {
