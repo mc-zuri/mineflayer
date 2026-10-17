@@ -71,3 +71,29 @@ describe('the rotation of an item use (ServerboundUseItemPacket)', function () {
     }
   })
 })
+
+describe('an item in use (LocalPlayer.isUsingItem)', function () {
+  this.timeout(10 * 1000)
+  it('the server\'s cooldown on it does not stop the use: letting go releases it (RELEASE_USE_ITEM), 1.20.4', async () => {
+    const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      const horn = new Item(t.registry.itemsByName.goat_horn.id, 1)
+      t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: Item.toNotch(horn) })
+      t.client.write('held_item_slot', { slot: 0 })
+      await settle()
+      t.bot.activateItem()
+      assert.strictEqual(t.bot.usingHeldItem, true)
+      // (InstrumentItem.use: the horn's cooldown, which the server sends too)
+      t.client.write('set_cooldown', { itemID: horn.type, cooldownTicks: 140 })
+      await settle()
+      assert.strictEqual(t.bot.usingHeldItem, true)
+      t.written.length = 0
+      t.bot.deactivateItem()
+      await settle()
+      assert.deepStrictEqual(t.written.filter(p => p.name === 'block_dig').map(p => p.data.status), [5])
+    } finally {
+      await t.close()
+    }
+  })
+})
