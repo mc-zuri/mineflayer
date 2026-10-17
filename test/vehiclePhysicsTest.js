@@ -813,8 +813,9 @@ describe('mineflayer_vehicle_physics legacy boat behavior', function () {
         bot._client.emit('set_passengers', { entityId: 100, passengers: [bot.entity.id] })
 
         // the player ticks on whatever it rides, and a passenger sends its look and input, and the move of the vehicle
-        // it controls (LocalPlayer.tick); before 1.19 a pig's controlling passenger is its first passenger, carrot on a
-        // stick or not (Pig.getControllingPassenger)
+        // it controls (LocalPlayer.tick): a pig while its rider holds the carrot on a stick, before 1.19 too (its
+        // canPassengerSteer, the stick rule)
+        bot.inventory.updateSlot(bot.QUICK_BAR_START + bot.quickBarSlot, new (require('prismarine-item')(bot.registry))(bot.registry.itemsByName.carrot_on_a_stick.id, 1))
         const writes = captureWrites(bot)
         await physicsTicks(bot, 1)
 

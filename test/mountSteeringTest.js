@@ -151,6 +151,21 @@ describe('mounts the rider steers, and what goes with them', function () {
     })
   })
 
+  describe('[F] before 1.19 a pig, strider or llama is steered as from 1.19 (canPassengerSteer)', () => {
+    it('[F] 1.16.5: a llama and a pig without the stick are not the rider\'s to move: no vehicle_move', async () => {
+      for (const name of ['llama', 'pig']) {
+        const t = await riding('1.16.5', name)
+        try {
+          t.ticks(3)
+          await settle()
+          assert.deepStrictEqual(t.names(/^vehicle_move$/), [], name)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
+
   describe('[G] before 1.19.4 a ridden mob\'s synced data is read by its index (no names in minecraft-data)', () => {
     it('[G] 1.16.5: a pig\'s boost time synced by index boosts the pig the rider steers', async () => {
       const ride = async (boost) => {

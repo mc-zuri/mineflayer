@@ -192,6 +192,22 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
   })
 
   // F: before 1.19 a pig is its rider's to move only with the carrot on a stick in hand, from 1.11 (Pig.canBeSteered)
+  describe('the pig without its stick before 1.19 (Pig.canBeSteered)', () => {
+    it('a saddled pig its rider holds no stick for is the server\'s to move: no vehicle move (1.12.2)', async () => {
+      const t = await riding('1.12.2', 'pig', { setup: (v, { registry }) => { v.metadata[13] = true } })
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(3)
+        await settle()
+        assert.strictEqual(packets(t, 'vehicle_move').length, 0)
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
+  // G: before 1.19.4 minecraft-data does not name a pig's synced data: its boost time is found by its index, after the
+  // mob's flags and baby (where AbstractHorse's flags are)
   describe('a pig\'s boost before 1.19.4 (Pig.DATA_BOOST_TIME by index)', () => {
     it('the boost the server syncs speeds up the steered pig (1.12.2)', async () => {
       const ride = async (boost) => {
