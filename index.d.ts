@@ -427,6 +427,8 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   setAnvilItemName: (name: string) => void
 
+  clickEnchantment: (choice: number, window?: Window) => void
+
   selectTrade: (index: number) => void
 
   openVillager: (

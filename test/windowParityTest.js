@@ -262,4 +262,16 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       }
     }
   })
+
+  it('bot.clickEnchantment clicks an offer of the open enchanting screen (ServerboundContainerButtonClickPacket)', async () => {
+    const t = await clickingBot('1.16.5')
+    try {
+      t.bot.currentWindow = t.windows.createWindow(7, t.windows.windows['minecraft:enchantment'].type, 'Enchant')
+      t.bot.clickEnchantment(2)
+      await sleep(50)
+      assert.deepStrictEqual(t.written.filter(p => p.name === 'enchant_item').map(p => p.data), [{ windowId: 7, enchantment: 2 }])
+    } finally {
+      await t.close()
+    }
+  })
 })
