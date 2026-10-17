@@ -18,6 +18,12 @@ describe('moving pistons', function () {
     return seen
   }
 
+  // TileEntityPiston.update before 1.11 pushes once more the tick the block ends: each tick hands the engine its
+  // progress, 0, 0.5 and 1, and then it is gone
+  it('ticks a moving block at its end too, then drops it', function () {
+    assert.deepStrictEqual(progresses(extended(), 4), [0, 0.5, 1])
+  })
+
   // the head the server sends with its piston's block event (n_piston_push on 1.11.2 - 1.19.4) replaces the moving
   // block, and its block entity goes (LevelChunk.setBlockState): it pushes no more; the moving block itself keeps it
   it('drops a moving block another block replaces', function () {
