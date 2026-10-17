@@ -4,6 +4,7 @@
 
 const assert = require('assert')
 const { Vec3 } = require('vec3')
+const conv = require('../lib/conversions')
 const { fakeServerBot } = require('./common/fakeServer')
 const { once, sleep } = require('../lib/promise_utils')
 
@@ -50,6 +51,38 @@ async function seated (version, name, options) {
 
 describe('mount seats (Entity.positionRider)', function () {
   this.timeout(20 * 1000)
+
+  describe('[E] the camel seats its driver on its body anchor as it sits (Camel.getBodyAnchorAnimationYOffset)', () => {
+    it('[E] a camel sitting down long ago seats its rider on its sitting body, 0.2F above its sitting height', async () => {
+      const version = '1.20.4'
+      const registry = require('prismarine-registry')(version)
+      const keys = registry.entitiesByName.camel.metadataKeys
+      const t = await riding(version, 'camel', {
+        setup: (camel, { client }) => {
+          camel.metadata[keys.indexOf('pose')] = 10 // SITTING
+          camel.metadata[keys.indexOf('last_pose_change_tick')] = -10 // sat down at tick 10
+          client.write('update_time', { age: [0, 1000], time: [0, 1000] })
+        }
+      })
+      try {
+        await sleep(50)
+        t.ticks(1)
+        const dy = t.bot.entity.position.y - t.vehicle.position.y
+        // its sitting height (2.375F - 1.43F) less 0.375, then 0.2F up from the bottom of its sit, in float; - 0.6F
+        const height = f32(f32(2.375) - f32(1.43))
+        const bottom = f32(f32(1.43) - f32(f32(1.43) - f32(0.2)))
+        assert.strictEqual(dy, f32(height - 0.375 + bottom) + f32(-0.6))
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('[E] a camel the rider does not steer seats it by the camel\'s own yaw (Camel.positionRider)', async () => {
+      // (unsaddled: not its rider's; the camel faces east, yaw -90, the rider south, 0)
+      const { at } = await seated('1.20.4', 'camel', { setup: (camel) => { camel.yaw = conv.fromNotchianYaw(-90) } })
+      assert.ok(Math.abs(at.x - 0.5) < 1e-6 && Math.abs(at.z) < 1e-6, String(at))
+    })
+  })
 
   describe('[M] the strider adds its riding offset, then the player\'s own (Entity.positionRider)', () => {
     it('[M] a strider seats its rider at its y plus its riding offset, then plus the player\'s', async () => {

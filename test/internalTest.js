@@ -2682,6 +2682,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
         if (!require('minecraft-data')(supportedVersion).version['>=']('1.20.2')) return this.skip()
         const { manual, vehicle, runTicks } = await ridingManualBot('camel')
         try {
+          // (its driver: a camel the bot does not steer seats it by its own yaw)
+          saddleCamel(manual, vehicle)
           vehicle.height = 2.375
           // standing on the gold block (the camel the driver steers moves itself, so it must stand)
           vehicle.position.set(pos.x + 0.5, pos.y + 1, pos.z + 0.5)

@@ -120,6 +120,30 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // E: a camel seats its rider by its pose, sat down or standing up over its animation, against the level's time as the
   // client keeps it (Camel.getBodyAnchorAnimationYOffset, ClientLevel.tickTime)
+  describe('the camel\'s seat as it sits (Camel.getBodyAnchorAnimationYOffset)', () => {
+    it('a camel that sat down long ago seats its rider low (1.21.6)', async () => {
+      const t = await riding('1.21.6', 'camel', {
+        setup: (v, { registry }) => {
+          const keys = registry.entitiesByName.camel.metadataKeys
+          v.metadata[keys.indexOf('pose')] = 10
+          // (sat down at tick 1000)
+          v.metadata[keys.indexOf('last_pose_change_tick')] = -1000
+        }
+      })
+      try {
+        t.client.write('update_time', { age: [0, 2000], time: [0, 2000], tickDayTime: true })
+        await settle()
+        t.ticks(1)
+        await settle()
+        // its sitting height 2.375F - 1.43F less 0.375, its sat-down 0.2F, the player's -0.6
+        const f32 = Math.fround
+        const expected = (f32(f32(2.375) - f32(1.43)) - 0.375) + f32(f32(1.43) - f32(f32(1.43) - f32(0.2))) - 0.6
+        assert.ok(Math.abs(offset(t.bot, t.vehicle).y - expected) < 1e-6, `y ${offset(t.bot, t.vehicle).y}, expected ${expected}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // F: before 1.19 a pig is its rider's to move only with the carrot on a stick in hand, from 1.11 (Pig.canBeSteered)
   describe('a pig\'s boost before 1.19.4 (Pig.DATA_BOOST_TIME by index)', () => {
