@@ -74,6 +74,34 @@ describe('the rotation of an item use (ServerboundUseItemPacket)', function () {
 
 describe('an item in use (LocalPlayer.isUsingItem)', function () {
   this.timeout(10 * 1000)
+  it('the server\'s living entity flags start and stop it (LocalPlayer.onSyncedDataUpdated), 1.20.4', async () => {
+    const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: Item.toNotch(new Item(t.registry.itemsByName.goat_horn.id, 1)) })
+      t.client.write('held_item_slot', { slot: 0 })
+      // (DATA_LIVING_ENTITY_FLAGS, at 8 of a player's data: bit 1 an item in use)
+      const flags = async (value) => {
+        t.client.write('entity_metadata', { entityId: t.bot.entity.id, metadata: [{ key: 8, type: 'byte', value }] })
+        await settle()
+      }
+      await flags(1)
+      assert.strictEqual(t.bot.usingHeldItem, true)
+      // the key not held, the next use of the keys releases it
+      t.bot.deactivateItem()
+      await flags(1)
+      assert.strictEqual(t.bot.usingHeldItem, true)
+      await flags(0)
+      assert.strictEqual(t.bot.usingHeldItem, false)
+      // another entity's flags are its own
+      t.client.write('entity_metadata', { entityId: 99, metadata: [{ key: 8, type: 'byte', value: 1 }] })
+      await settle()
+      assert.strictEqual(t.bot.usingHeldItem, false)
+    } finally {
+      await t.close()
+    }
+  })
+
   it('its use complete (entity event 9), a drink leaves its container in the hand and a food one less, 1.20.4', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
