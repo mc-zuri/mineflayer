@@ -456,6 +456,18 @@ describe('the crosshair (Minecraft.pick, Item.getPlayerPOVHitResult)', () => {
     }
   })
 
+  it('takes a hopper\'s top for a ray into its bowl (its interaction shape, from 1.13)', () => {
+    for (const version of ['1.13.2', '26.1']) {
+      const bot = fakeBot(version, { pitch: 18 })
+      rayTrace(bot)
+      bot.set(new Vec3(2, 101, 0), 'hopper', { facing: 'down', enabled: true })
+      const hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.block.name, 'hopper', version)
+      assert.ok(hit.intersect.y < 102, version)
+      assert.strictEqual(hit.face, UP, version)
+    }
+  })
+
   it('picks 26.3\'s cushion', () => {
     const bot = fakeBot('26.3', { pitch: 35 })
     rayTrace(bot)
