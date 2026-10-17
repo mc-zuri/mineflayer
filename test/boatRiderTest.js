@@ -100,4 +100,25 @@ describe('the rider of a boat it steers', function () {
       await t.close()
     }
   })
+  // 1.16's client stops riding by itself (Player.rideTick, the shift key down), in the passenger's tick after its
+  // vehicle's: the boat it steers ticks first and tells its paddles, then the player goes on foot (m_c_mount_click_oak_boat
+  // tick 91 on 1.16.5)
+  it('steers its boat a last time before it stops riding on 1.16', async () => {
+    const t = await inBoat('1.16.5')
+    try {
+      t.bot.setControlState('sneak', true)
+      let names = []
+      for (let i = 0; i < 3 && t.bot.vehicle; i++) {
+        t.written.length = 0
+        t.ticks(1)
+        await settle()
+        names = t.written.map(p => p.name)
+      }
+      assert.strictEqual(t.bot.vehicle, null, 'it stopped riding')
+      assert.strictEqual(names[0], 'steer_boat', names.join(' '))
+      assert.ok(!names.includes('vehicle_move'), names.join(' '))
+    } finally {
+      await t.close()
+    }
+  })
 })
