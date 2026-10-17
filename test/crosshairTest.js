@@ -72,6 +72,19 @@ describe('the crosshair (GameRenderer.pick)', () => {
     assert.strictEqual(bot.raycastHitResult(4.5, 3).entity?.name, 'item_frame')
   })
 
+  it('before 1.13 a torch is met by its narrower box (BlockTorch: 0.4 - 0.6 on the floor)', () => {
+    // the ray passes over the stone at (3, 100) just west of the torch on it at (3, 101): x 3.375 at y 101.01
+    for (const [version, hitsTorch] of [['1.12.2', false], ['1.13.2', true]]) {
+      const bot = fakeBot(version, 29.249000549316406)
+      const torch = bot.registry.blocksByName.torch
+      // (1.12: its metadata 5, on the floor)
+      bot.world.setBlockStateId(new Vec3(3, 101, 0), version === '1.12.2' ? (torch.id << 4) | 5 : torch.defaultState)
+      const hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.block.name, hitsTorch ? 'torch' : 'stone', version)
+      assert.strictEqual(hit.face, hitsTorch ? 4 : 1, version)
+    }
+  })
+
   it('an entity hit beyond the entity range is a miss where it was (LocalPlayer.filterHitResult)', () => {
     const bot = fakeBot('1.20.4', 0)
     bot.entities[3] = { id: 3, name: 'pig', type: 'animal', position: new Vec3(4.0, 102, 0.5), width: 0.9, height: 0.9, isValid: true }
