@@ -130,6 +130,37 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('a spear attacks at full charge only, and stabs (Player.cannotAttackWithItem, MultiPlayerGameMode.piercingAttack)', async () => {
+    for (const [version, stab] of [['26.1', 7], ['26.3', 8]]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.wooden_spear.id, 1))
+        t.bot.setQuickBarSlot(0)
+        const tick = n => { for (let i = 0; i < n; i++) t.bot.emit('physicsTick') }
+        // (the spear taken in the tick: no strength; a wooden spear's full charge takes 0.65 s, 13 ticks)
+        tick(1)
+        assert.strictEqual(t.bot.isPiercingWeapon(t.bot.heldItem), true, version)
+        tick(12)
+        assert.strictEqual(t.bot.cannotAttackWithItem(), true, version)
+        tick(1)
+        assert.strictEqual(t.bot.cannotAttackWithItem(), false, version)
+        t.bot.stab()
+        assert.strictEqual(t.bot.cannotAttackWithItem(), true, version)
+        await settle()
+        const dig = t.written.find(p => p.name === 'block_dig')
+        assert.deepStrictEqual([dig.data.status, dig.data.location, dig.data.face], [stab, { x: 0, y: 0, z: 0 }, 0], version)
+        // (26.3 swings with no packet: no punch follows a stab)
+        assert.strictEqual(t.names(/arm_animation|punch/).length, version === '26.1' ? 1 : 0, version)
+        // another item needs no charge
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.stick.id, 1))
+        assert.strictEqual(t.bot.cannotAttackWithItem(), false, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('a villager takes the use and opens its trades (Villager before 1.11), a spawn egg passes before 1.11', async () => {
     for (const [version, name] of [['1.8.8', 'Villager'], ['1.10.2', 'Villager'], ['1.20.4', 'villager']]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })

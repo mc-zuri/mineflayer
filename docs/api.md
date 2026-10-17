@@ -323,6 +323,10 @@
       - [bot.deactivateItem()](#botdeactivateitem)
       - [bot.useOn(targetEntity)](#botuseontargetentity)
       - [bot.attack(entity, swing = true)](#botattackentity-swing--true)
+      - [bot.stab()](#botstab)
+      - [bot.isPiercingWeapon(item)](#botispiercingweaponitem)
+      - [bot.cannotAttackWithItem(item = bot.heldItem, tolerance = 0)](#botcannotattackwithitemitem--bothelditem-tolerance--0)
+      - [bot.resetAttackStrengthTicker()](#botresetattackstrengthticker)
       - [bot.swingArm([hand], showHand)](#botswingarmhand-showhand)
       - [bot.mount(entity, offHand=false)](#botmountentity-offhandfalse)
       - [bot.dismount()](#botdismount)
@@ -2133,6 +2137,23 @@ Attack a player or a mob.
 
 - `entity` is a type of entity. To get a specific entity use [bot.nearestEntity()](#botnearestentitymatch--entity---return-true-) or [bot.entities](#botentities).
 - `swing` Default to `true`. If false the bot does not swing its arm when attacking.
+
+#### bot.stab()
+
+The attack of a piercing weapon (a 1.21.11+ spear), whatever the crosshair is on: the client's stab, and its swing.
+
+#### bot.isPiercingWeapon(item)
+
+Whether the item attacks by stabbing (the spears).
+
+#### bot.cannotAttackWithItem(item = bot.heldItem, tolerance = 0)
+
+Whether the item needs a charge the attack strength lacks yet (a spear needs a full one): the vanilla client does not
+attack then. The attack strength counts the ticks since the last attack or since another item was taken in hand.
+
+#### bot.resetAttackStrengthTicker()
+
+Spends the attack strength, as a swing at nothing does.
 
 #### bot.swingArm([hand], showHand)
 

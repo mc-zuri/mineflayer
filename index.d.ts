@@ -383,6 +383,14 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   attack: (entity: Entity) => void
 
+  stab: () => void
+
+  isPiercingWeapon: (item: Item | null) => boolean
+
+  cannotAttackWithItem: (item?: Item | null, tolerance?: number) => boolean
+
+  resetAttackStrengthTicker: () => void
+
   swingArm: (hand: 'left' | 'right' | undefined, showHand?: boolean) => void
 
   vehicle: Entity | null
