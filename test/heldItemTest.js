@@ -51,3 +51,23 @@ describe('the selected slot (MultiPlayerGameMode.ensureHasSentCarriedItem)', fun
     }
   })
 })
+
+describe('the rotation of an item use (ServerboundUseItemPacket)', function () {
+  this.timeout(10 * 1000)
+  it('use_item carries the float rotation the player holds, whole turns kept (Player.getYRot)', async () => {
+    const t = await fakeServerBot('26.1', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const JavaFloat = t.bot.entity.yawDegrees.constructor
+      t.bot.entity.yawDegrees = new JavaFloat(400.5)
+      t.bot.entity.pitchDegrees = new JavaFloat(12.25)
+      t.bot.activateItem()
+      await settle()
+      const use = t.written.find(p => p.name === 'use_item')
+      assert.ok(use)
+      assert.strictEqual(use.data.rotation.x, 400.5)
+      assert.strictEqual(use.data.rotation.y, 12.25)
+    } finally {
+      await t.close()
+    }
+  })
+})

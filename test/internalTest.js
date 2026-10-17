@@ -4298,21 +4298,23 @@ for (const supportedVersion of mineflayer.testedVersions) {
           })
 
           client.on('packet', (data, meta) => {
-            if (meta.name === 'use_item') {
-              const expectedYaw = toNotchianYaw(testYaw)
-              const expectedPitch = toNotchianPitch(testPitch)
+            if (meta.name !== 'use_item') return
+            try {
+              // the float degrees the bot holds (Player.getYRot / getXRot), the look asked for as the mouse's steps turn it
               assert.ok(data.rotation, 'use_item packet should have rotation field')
-              assert.ok(Math.abs(data.rotation.x - expectedYaw) < 0.001,
-                `Expected yaw ${expectedYaw}, got ${data.rotation.x}`)
-              assert.ok(Math.abs(data.rotation.y - expectedPitch) < 0.001,
-                `Expected pitch ${expectedPitch}, got ${data.rotation.y}`)
+              assert.strictEqual(data.rotation.x, Math.fround(bot.entity.yawDegrees.valueOf()))
+              assert.strictEqual(data.rotation.y, Math.fround(bot.entity.pitchDegrees.valueOf()))
+              assert.ok(Math.abs(data.rotation.x - toNotchianYaw(testYaw)) < 0.15, `Expected yaw ${toNotchianYaw(testYaw)}, got ${data.rotation.x}`)
+              assert.ok(Math.abs(data.rotation.y - toNotchianPitch(testPitch)) < 0.15, `Expected pitch ${toNotchianPitch(testPitch)}, got ${data.rotation.y}`)
               done()
+            } catch (err) {
+              done(err)
             }
           })
 
           await sleep(100)
-          bot.entity.yaw = testYaw
-          bot.entity.pitch = testPitch
+          // the look as the bot takes it (bot.look sets the float degrees it holds)
+          await bot.look(testYaw, testPitch, true)
           bot.activateItem()
         })
       })
