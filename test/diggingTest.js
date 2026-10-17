@@ -155,6 +155,34 @@ describe('digging (MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock)
     }
   })
 
+  it('1.14 - 1.18: a break the server acknowledges with another state puts it back, and the player where it was as it broke it (MultiPlayerGameMode.handleBlockBreakAck)', async () => {
+    for (const [version, movedBack] of [['1.15.2', true], ['1.16.5', false], ['1.18.2', false]]) {
+      const t = await standing(version)
+      try {
+        const block = t.bot.blockAt(new Vec3(1, 64, 0))
+        const done = t.bot.dig(block, 'ignore', 'auto', 1)
+        t.ticks(Math.ceil(t.bot.digTime(block) / 50 - 1e-9))
+        await done
+        const at = t.bot.entity.position.clone()
+        assert.strictEqual(t.bot.blockAt(block.position).type, 0, version)
+        // the player has moved on since
+        t.bot.entity.position.set(at.x + 0.25, at.y, at.z)
+        const Block = require('prismarine-block')(t.registry)
+        t.client.write('acknowledge_player_digging', { location: { x: 1, y: 64, z: 0 }, block: Block.fromProperties('dirt', {}, 0).stateId, status: 2, successful: true })
+        await settle()
+        assert.strictEqual(t.bot.blockAt(block.position).name, 'dirt', version)
+        // (from 1.16 only a player the block now collides with)
+        assert.deepStrictEqual(t.bot.entity.position.toArray(), movedBack ? at.toArray() : [at.x + 0.25, at.y, at.z], version)
+        // a start acknowledged as it was asked: nothing
+        t.client.write('acknowledge_player_digging', { location: { x: 2, y: 64, z: 0 }, block: Block.fromProperties('dirt', {}, 0).stateId, status: 0, successful: true })
+        await settle()
+        assert.strictEqual(t.bot.blockAt(new Vec3(2, 64, 0)).name, 'dirt', version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('from 1.19 a break is a prediction until the server acknowledges it (BlockStatePredictionHandler)', async () => {
     const t = await standing('1.20.4')
     try {
