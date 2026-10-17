@@ -363,6 +363,10 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   activateEntityAt: (entity: Entity, position: Vec3, offHand?: boolean) => Promise<'success' | 'consume' | 'pass'>
 
+  pickBlock: (block: Block, includeData?: boolean) => void
+
+  pickEntity: (entity: Entity, includeData?: boolean) => void
+
   consume: () => Promise<void>
 
   fish: () => Promise<void>

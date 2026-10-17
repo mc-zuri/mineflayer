@@ -315,6 +315,8 @@
       - [bot.activateBlock(block, direction?: Vec3, cursorPos?: Vec3)](#botactivateblockblock-direction-vec3-cursorpos-vec3)
       - [bot.activateEntity(entity, offHand=false)](#botactivateentityentity-offhandfalse)
       - [bot.activateEntityAt(entity, position, offHand=false)](#botactivateentityatentity-position-offhandfalse)
+      - [bot.pickBlock(block, includeData=false)](#botpickblockblock-includedatafalse)
+      - [bot.pickEntity(entity, includeData=false)](#botpickentityentity-includedatafalse)
       - [bot.consume()](#botconsume)
       - [bot.fish()](#botfish)
       - [bot.activateItem(offHand=false)](#botactivateitemoffhandfalse)
@@ -2087,6 +2089,15 @@ Activate an entity at the given position, useful for armor stands.
 - `entity` - the entity to activate
 - `position` - the world position to click at
 - `offHand` - use the off hand
+
+#### bot.pickBlock(block, includeData=false)
+
+The pick key on a block, from 1.21.4: the server puts the block's item in the hotbar. `includeData` asks for the block's
+data too (the control key held).
+
+#### bot.pickEntity(entity, includeData=false)
+
+The pick key on an entity, from 1.21.4: the server puts the entity's item in the hotbar.
 
 #### bot.consume()
 

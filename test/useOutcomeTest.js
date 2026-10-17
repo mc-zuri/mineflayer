@@ -729,6 +729,19 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.deepStrictEqual(names(), ['block_place'])
     })
 
+    it('the pick key asks the server for the block or the entity from 1.21.4 (ServerboundPickItemFromBlockPacket / FromEntity)', async () => {
+      const stone = bot.blockAt(new Vec3(1, 64, 0))
+      if (!registry.version['>=']('1.21.4')) {
+        assert.throws(() => bot.pickBlock(stone))
+        return
+      }
+      bot.pickBlock(stone)
+      bot.pickEntity({ id: 42 }, true)
+      await settle()
+      const picks = written.filter(p => /^pick_item/.test(p.name)).map(p => [p.name, p.data.position?.x ?? p.data.entityId, p.data.includeData])
+      assert.deepStrictEqual(picks, [['pick_item_from_block', 1, false], ['pick_item_from_entity', 42, true]])
+    })
+
     it('a block outside the world border is neither used nor dug: nothing is sent, the attack swings (WorldBorder)', async () => {
       bot.lookAt = async () => {}
       // a border of 10 around x -3.5: the chest at x 3 is outside it, the stone at x 1 inside
