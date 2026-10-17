@@ -415,6 +415,17 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.strictEqual(wall.getProperties().facing, 'west')
     })
 
+    it('an invulnerable player eats on a full stomach from 1.15 (Player.canEat: Abilities.invulnerable)', async () => {
+      hold('bread', 2)
+      bot.food = 20
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, false)
+      bot.deactivateItem()
+      bot.entity.isInvulnerable = true
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, registry.version['>=']('1.15'))
+    })
+
     it('an item on cooldown is not used: no release follows', async () => {
       if (!registry.itemsByName.goat_horn) return
       hold('goat_horn', 1)
