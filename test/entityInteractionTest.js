@@ -345,3 +345,26 @@ describe('the inventory of a vehicle (HasCustomInventoryScreen)', function () {
     }
   })
 })
+
+describe('a sneaking player\'s eyes (EntityPlayer.getEyeHeight, the crouching pose from 1.14)', function () {
+  this.timeout(10 * 1000)
+  it('before 1.14 the bot\'s eyes are its own sneak key\'s, 0.08 lower, whatever flag the server echoes back; another player\'s too', async () => {
+    // (from 1.14 the echoed flag crouches the bot until its own tick: the pose's 1.27)
+    for (const [version, own, other] of [['1.13.2', Math.fround(1.62 - 0.08), Math.fround(1.62 - 0.08)], ['1.12.2', Math.fround(1.62 - 0.08), Math.fround(1.62 - 0.08)], ['1.20.4', 1.27]]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const player = addEntity(t.bot, 9, { name: 'player', type: 'player', position: new Vec3(2.5, 65, 0.5), width: 0.6, height: 1.8, eyeHeight: 1.62 })
+        t.bot.setControlState('sneak', true)
+        t.ticks(2)
+        // (the server's shared flags for the player itself, crouching, after the bot's tick)
+        t.client.write('entity_metadata', { entityId: t.bot.entity.id, metadata: [{ key: 0, type: 0, value: 2 }] })
+        t.client.write('entity_metadata', { entityId: 9, metadata: [{ key: 0, type: 0, value: 2 }] })
+        await settle()
+        assert.strictEqual(t.bot.entity.eyeHeight, own, version)
+        if (other) assert.strictEqual(player.eyeHeight, other, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+})
