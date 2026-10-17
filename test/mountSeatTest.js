@@ -95,6 +95,32 @@ describe('mount seats (Entity.positionRider)', function () {
     })
   })
 
+  describe('[X] the mounts of 1.8 - 1.10 by their old names (Pig, EntityHorse)', () => {
+    it('[X] 1.9 - 1.10\'s Pig seats its rider at 0.75 of its height, less the player\'s 0.35', async () => {
+      const { at } = await seated('1.10.2', 'Pig', { setup: (pig) => { pig.height = 0.9 } })
+      assert.ok(Math.abs(at.y - (f32(0.9) * 0.75 - 0.35)) < 1e-9, String(at.y))
+    })
+
+    it('[X] an EntityHorse seats by its variant from 1.9: a donkey 0.25 lower, a skeleton horse 0.1875, a mule from 1.11', async () => {
+      // (its variant: an int after its flags from 1.9, at 14 on 1.10)
+      for (const [variant, lower] of [[0, 0], [1, 0.25], [2, 0], [4, 0.1875]]) {
+        const { at } = await seated('1.10.2', 'EntityHorse', { setup: (horse) => { horse.height = 1.6; horse.metadata[14] = variant } })
+        assert.ok(Math.abs(at.y - (f32(1.6) * 0.75 - lower - 0.35)) < 1e-9, `variant ${variant}: ${at.y}`)
+      }
+    })
+
+    it('[X] before 1.11 a pig is moved by the client of its first passenger without the stick (canPassengerSteer)', async () => {
+      // (a pig a block above the floor: the client moves it, so it falls)
+      const t = await riding('1.10.2', 'Pig', { at: new Vec3(3.5, 66, 1.5), setup: (pig) => { pig.height = 0.9; pig.width = 0.9 } })
+      try {
+        t.ticks(10)
+        assert.ok(t.vehicle.position.y < 65.5, String(t.vehicle.position))
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[P] a rider is off the ground (Entity.rideTick)', () => {
     it('[P] while riding the rider was not on the ground after its last tick either: its first tick on foot is in the air', async () => {
       const t = await fakeServerBot('1.20.4', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })

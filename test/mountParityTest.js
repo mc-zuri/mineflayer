@@ -304,6 +304,21 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // X: before 1.11 minecraft-data names the pig Pig: it is a pig its rider steers with the carrot on a stick
   // (EntityPig.canBeSteered), and moves (canPassengerSteer)
+  describe('the pig before 1.11 (EntityPig)', () => {
+    it('the rider of a Pig with the stick in hand steers it (1.10.2)', async () => {
+      const t = await riding('1.10.2', 'Pig', { setup: (v, t) => { v.metadata[12] = true; holdInHand(t, 'carrot_on_a_stick') } })
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(5)
+        await settle()
+        const moves = packets(t, 'vehicle_move')
+        assert.ok(moves.length > 0, 'vehicle moves')
+        assert.ok(moves[moves.length - 1].z > 1.6, `the pig at ${JSON.stringify(moves[moves.length - 1])}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // Y: 1.8's boat is the server's to move and seats its rider 0.4 along its yaw, at -0.3 with the player's -0.35
   // (EntityBoat.updateRiderPosition); there is no paddle packet before 1.9
