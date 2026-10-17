@@ -1,0 +1,84 @@
+/* eslint-env mocha */
+// Which mount the rider steers and how its ridden state starts and goes (Entity.getControllingPassenger,
+// LivingEntity.travelRidden, the interpolation of the server's moves), and what the rider tells the server while riding
+// (LocalPlayer.sendChanges), per version. Against a fake server, the bot stepped tick by tick.
+
+const assert = require('assert')
+const { Vec3 } = require('vec3')
+const { fakeServerBot } = require('./common/fakeServer')
+const { once, sleep } = require('../lib/promise_utils')
+
+const settle = () => sleep(50)
+
+// The bot on its feet at (0.5, 65, 0.5) on a floor of stone and a vehicle (id 100) of that name at `at`, which the
+// server puts the bot on (attach_entity before 1.9, set_passengers since) unless mount is false
+async function riding (version, name, { at = new Vec3(3.5, 65, 1.5), mount = true, setup = () => {} } = {}) {
+  const blocks = []
+  for (let x = 0; x < 8; x++) for (let z = 0; z < 3; z++) blocks.push([x, 64, z, 'stone'])
+  const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks })
+  const { bot, client, registry } = t
+  // an item of the version
+  t.item = (itemName) => new (require('prismarine-item')(registry))(registry.itemsByName[itemName].id, 1)
+  // the item in the selected hotbar slot
+  t.hold = (itemName) => bot.inventory.updateSlot(bot.QUICK_BAR_START + bot.quickBarSlot, t.item(itemName))
+  // a horse's (or camel's) saddle: from 1.21.5 the one it wears, before bit 4 of its flags
+  t.saddle = (v = t.vehicle) => {
+    if (registry.version['>=']('1.21.5')) v.setEquipment(7, t.item('saddle'))
+    else v.metadata[require('../lib/horse').horseFlagsIndex(registry)] = 0x02 | 0x04
+  }
+  t.attribute = (v, speed) => {
+    v.attributes = { [registry.version['>=']('1.21.2') ? 'minecraft:movement_speed' : 'minecraft:generic.movement_speed']: { value: speed, modifiers: [] } }
+  }
+  let vehicle
+  if (mount) {
+    const mounted = once(bot, 'mount')
+    if (registry.version['>=']('1.9')) client.write('set_passengers', { entityId: 100, passengers: [bot.entity.id] })
+    else client.write('attach_entity', { entityId: bot.entity.id, vehicleId: 100, leash: false })
+    await mounted
+    vehicle = bot.entities[100]
+  } else {
+    vehicle = new (require('prismarine-entity')(version))(100)
+    bot.entities[100] = vehicle
+  }
+  const type = registry.entitiesByName[name]
+  Object.assign(vehicle, { name, type: type?.type ?? 'other', height: type?.height ?? 1, width: type?.width ?? 1, onGround: true, metadata: [], isValid: true })
+  vehicle.position.set(at.x, at.y, at.z)
+  vehicle.interpolatedPosition?.set(at.x, at.y, at.z)
+  vehicle.yaw = 0
+  vehicle.pitch = 0
+  setup(vehicle, t)
+  await settle()
+  t.written.length = 0
+  t.vehicle = vehicle
+  return t
+}
+
+describe('mounts the rider steers, and what goes with them', function () {
+  this.timeout(20 * 1000)
+
+  describe('[G] before 1.19.4 a ridden mob\'s synced data is read by its index (no names in minecraft-data)', () => {
+    it('[G] 1.16.5: a pig\'s boost time synced by index boosts the pig the rider steers', async () => {
+      const ride = async (boost) => {
+        const t = await riding('1.16.5', 'pig', { setup: (v, t) => { t.attribute(v, 0.25); t.hold('carrot_on_a_stick') } })
+        try {
+          t.ticks(2)
+          if (boost) {
+            const synced = once(t.bot._client, 'entity_metadata')
+            // (Pig: saddle at 16, boost time at 17)
+            t.client.write('entity_metadata', { entityId: 100, metadata: [{ key: 17, type: 1, value: 140 }] })
+            await synced
+          }
+          const start = t.vehicle.position.clone()
+          t.bot.setControlState('forward', true)
+          t.ticks(10)
+          return t.vehicle.position.distanceTo(start)
+        } finally {
+          await t.close()
+        }
+      }
+      const plain = await ride(false)
+      const boosted = await ride(true)
+      assert.ok(boosted > plain + 0.05, `${boosted} after a boost, ${plain} without`)
+    })
+  })
+})

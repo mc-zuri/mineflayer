@@ -87,6 +87,33 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
   // client keeps it (Camel.getBodyAnchorAnimationYOffset, ClientLevel.tickTime)
 
   // F: before 1.19 a pig is its rider's to move only with the carrot on a stick in hand, from 1.11 (Pig.canBeSteered)
+  describe('a pig\'s boost before 1.19.4 (Pig.DATA_BOOST_TIME by index)', () => {
+    it('the boost the server syncs speeds up the steered pig (1.12.2)', async () => {
+      const ride = async (boost) => {
+        const t = await riding('1.12.2', 'pig', { setup: (v, t) => { v.metadata[13] = true; holdInHand(t, 'carrot_on_a_stick') } })
+        try {
+          // (the pig steered a tick: the boost goes to its rider's control)
+          t.ticks(1)
+          await settle()
+          if (boost) {
+            t.client.write('entity_metadata', { entityId: 100, metadata: [{ key: 14, type: 1, value: 140 }] })
+            await settle()
+          }
+          const start = t.vehicle.position.clone()
+          t.bot.setControlState('forward', true)
+          t.ticks(10)
+          await settle()
+          return t.vehicle.position.distanceTo(start)
+        } finally {
+          await t.close()
+        }
+      }
+      const plain = await ride(false)
+      const boosted = await ride(true)
+      assert.ok(plain > 0.1, `the pig went ${plain}`)
+      assert.ok(boosted > plain * 1.1, `boosted ${boosted}, plain ${plain}`)
+    })
+  })
 
   // H: 1.11 - 1.19.2 a pig's spawn data carries a boost time of 0, an empty boost its first steered tick spends at
   // 1 + 1.15F * Mth.sin(1 / 0 * PI) (ItemBasedSteering)
