@@ -66,6 +66,27 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('before 1.17 a click is played on the menu at once: a next click before the server answers starts from it', async () => {
+    // (m_c_open_horse_riding on 1.13.2: the saddle picked up and put back before the server confirmed the pick up)
+    for (const version of ['1.8.8', '1.13.2', '1.16.5']) {
+      const t = await fakeServerBot(version, { blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.stone.id, 1))
+        t.bot.clickWindow(36, 0, 0).catch(() => {})
+        t.bot.clickWindow(36, 0, 0).catch(() => {})
+        await sleep(50)
+        const clicks = t.written.filter(p => p.name === 'window_click').map(p => p.data)
+        const present = item => version === '1.8.8' ? item.blockId !== -1 : item.present
+        // the pick up carries the stone the slot held, the put back the empty slot it found
+        assert.deepStrictEqual(clicks.map(c => [c.slot, present(c.item)]), [[36, true], [36, false]], version)
+        assert.strictEqual(t.bot.inventory.slots[36]?.name, 'stone', version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('before 1.17 each menu numbers its own clicks from 1 (AbstractContainerMenu transaction ids)', async () => {
     const t = await clickingBot('1.12.2')
     try {
