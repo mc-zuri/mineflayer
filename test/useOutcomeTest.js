@@ -393,6 +393,15 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(use.useItemOn(pumpkin, WEST, center).result, 'success')
     })
 
+    it('1.8\'s firework on a block passes on the client (ItemFirework.onItemUse: the server launches it)', () => {
+      const bot = fakeBot('1.8.8')
+      bot.hold('fireworks')
+      assert.strictEqual(createUsePrediction(bot).useItemOn(bot.blockAt(new Vec3(2, 100, 0)), UP, center).result, 'pass')
+      const later = fakeBot('1.9.4')
+      later.hold('fireworks')
+      assert.strictEqual(createUsePrediction(later).useItemOn(later.blockAt(new Vec3(2, 100, 0)), UP, center).result, 'success')
+    })
+
     it('a firework rocket on a block launches it; a bucket uses the ray of the item, not the block', () => {
       const bot = fakeBot('26.1')
       const use = createUsePrediction(bot)
