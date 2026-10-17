@@ -220,6 +220,49 @@ describe('the swing the server asks for (ClientPacketListener.handleAnimate)', f
     }
   })
 
+  it('shears on a sheep are the server\'s from 1.16; a dye of another color, a bowl, a bucket and a water bucket on their mobs swing (Sheep, DyeItem, MushroomCow, Goat, Bucketable)', async () => {
+    for (const [version, shears] of [['1.20.4', 'consume'], ['26.1', 'consume'], ['1.15.2', 'success']]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        const hold = async (name) => {
+          t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: Item.toNotch(new Item(t.registry.itemsByName[name].id, 1)) })
+          await settle()
+        }
+        t.client.write('held_item_slot', { slot: 0 })
+        t.bot.lookAt = async () => {}
+        const woolIndex = t.registry.entitiesByName.sheep.metadataKeys?.indexOf('wool') ?? -1
+        const sheep = addEntity(t.bot, 7, { name: 'sheep', type: 'animal', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.3 })
+        await hold('shears')
+        assert.strictEqual(await t.bot.activateEntity(sheep), shears, `${version} shears`)
+        if (version === '1.15.2') continue
+        // white wool: blue dye colors it, white dye does not, and a sheared sheep takes no dye
+        sheep.metadata[woolIndex] = 0
+        await hold('blue_dye')
+        assert.strictEqual(await t.bot.activateEntity(sheep), 'success', `${version} blue dye`)
+        await hold('white_dye')
+        assert.strictEqual(await t.bot.activateEntity(sheep), 'pass', `${version} white dye`)
+        sheep.metadata[woolIndex] = 0x10
+        await hold('blue_dye')
+        assert.strictEqual(await t.bot.activateEntity(sheep), 'pass', `${version} sheared`)
+        const mooshroom = addEntity(t.bot, 8, { name: 'mooshroom', type: 'animal', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.4 })
+        await hold('bowl')
+        assert.strictEqual(await t.bot.activateEntity(mooshroom), 'success', `${version} bowl`)
+        assert.strictEqual(t.bot.heldItem?.name, 'mushroom_stew', `${version} stew`)
+        const goat = addEntity(t.bot, 9, { name: 'goat', type: 'animal', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.3 })
+        await hold('bucket')
+        assert.strictEqual(await t.bot.activateEntity(goat), 'success', `${version} goat`)
+        assert.strictEqual(t.bot.heldItem?.name, 'milk_bucket', `${version} milk`)
+        const cod = addEntity(t.bot, 10, { name: 'cod', type: 'water_creature', position: new Vec3(2.5, 65, 0.5), width: 0.5, height: 0.3 })
+        await hold('water_bucket')
+        assert.strictEqual(await t.bot.activateEntity(cod), 'success', `${version} cod`)
+        assert.strictEqual(t.bot.heldItem?.name, 'cod_bucket', `${version} cod bucket`)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('the server\'s swing of the player\'s own arm is swung back before 26.3 (ClientPacketListener.handleAnimate)', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
