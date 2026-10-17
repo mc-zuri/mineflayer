@@ -393,12 +393,17 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.deepStrictEqual(names(), ['block_place'])
     })
 
-    it('a fishing rod\'s use swings (from the item before 1.15)', async () => {
+    it('a fishing rod\'s use swings (from the item before 1.15), the use of an item before 1.9 at -1, -1, -1', async () => {
       hold('fishing_rod', 1)
       bot.activateItem()
       await settle()
       const use = registry.version['<']('1.9') ? 'block_place' : 'use_item'
       assert.deepStrictEqual(names(), swings ? [use, 'arm_animation'] : [use])
+      if (use === 'block_place') {
+        const { data } = written.find(p => p.name === 'block_place')
+        assert.deepStrictEqual([data.location.x, data.location.y, data.location.z], [-1, -1, -1])
+        assert.deepStrictEqual([data.cursorX, data.cursorY, data.cursorZ], [0, 0, 0])
+      }
     })
 
     it('a torch placed against a block stands in the world at once, on the wall it was put against', async () => {
