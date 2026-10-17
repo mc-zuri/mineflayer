@@ -177,3 +177,29 @@ describe('an item in use (LocalPlayer.isUsingItem)', function () {
     }
   })
 })
+
+describe('a spear (1.21.11 KineticWeapon, UseEffects)', function () {
+  this.timeout(10 * 1000)
+  it('is used while held, with use effects that let a sprint go on at full speed', async () => {
+    const t = await fakeServerBot('26.1', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      t.client.write('held_item_slot', { slot: 0 })
+      const hold = async (name) => {
+        t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: Item.toNotch(new Item(t.registry.itemsByName[name].id, 1)) })
+        await settle()
+      }
+      await hold('wooden_spear')
+      assert.strictEqual(t.bot.activateItem(), 'consume')
+      assert.strictEqual(t.bot.usingHeldItem, true)
+      assert.deepStrictEqual(t.bot.usingItemEffects, { canSprint: true, speedMultiplier: 1 })
+      t.bot.deactivateItem()
+      // (another item's are UseEffects.DEFAULT)
+      await hold('shield')
+      t.bot.activateItem()
+      assert.strictEqual(t.bot.usingItemEffects, null)
+    } finally {
+      await t.close()
+    }
+  })
+})
