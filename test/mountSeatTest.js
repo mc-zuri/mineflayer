@@ -58,4 +58,23 @@ describe('mount seats (Entity.positionRider)', function () {
       assert.ok(Math.abs(at.y - (f32(f32(0.5625) * f32(0.8888889)) - 0.6)) < 1e-9, String(at.y))
     })
   })
+
+  describe('[P] a rider is off the ground (Entity.rideTick)', () => {
+    it('[P] while riding the rider was not on the ground after its last tick either: its first tick on foot is in the air', async () => {
+      const t = await fakeServerBot('1.20.4', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+      try {
+        // on its feet on the stone, then on a minecart for one tick
+        t.ticks(3)
+        assert.strictEqual(t.bot.entity.lastOnGround, true)
+        const mounted = once(t.bot, 'mount')
+        t.client.write('set_passengers', { entityId: 100, passengers: [t.bot.entity.id] })
+        await mounted
+        Object.assign(t.bot.entities[100], { name: 'minecart', type: 'other', height: 0.7, width: 0.98, onGround: true, metadata: [] })
+        t.ticks(1)
+        assert.strictEqual(t.bot.entity.lastOnGround, false)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })

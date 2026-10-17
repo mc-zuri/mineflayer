@@ -114,6 +114,28 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // P: a passenger does not touch the ground (Entity.rideTick moves it by no move of its own): its first tick on foot
   // after it leaves the vehicle keeps the air's inertia, as after a tick in the air
+  describe('the rider\'s first tick on foot (Entity.onGround while riding)', () => {
+    it('after the dismount the rider\'s first tick keeps its motion as in the air (1.14.4)', async () => {
+      const t = await riding('1.14.4', 'pig', { before: (v, t) => t.ticks(2) })
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(2)
+        await settle()
+        const dismounted = once(t.bot, 'dismount')
+        t.client.write('set_passengers', { entityId: 100, passengers: [] })
+        await dismounted
+        t.ticks(1)
+        await settle()
+        // (its motion after its last tick riding: the air's walk 0.0196 kept by 0.91F; this tick 0.0196 more, kept by
+        // 0.91F as in the air, not by the ground's 0.546F * 0.91F)
+        const f32 = Math.fround
+        const ridden = 0.0196 * f32(0.91)
+        assert.ok(Math.abs(t.bot.entity.velocity.z - (ridden + 0.0196) * f32(0.91)) < 1e-6, `z motion ${t.bot.entity.velocity.z}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // Q: 1.21.2+'s position sync carries a motion the client does not take (ClientPacketListener.handleEntityPositionSync)
   describe('the position sync\'s motion (ClientboundEntityPositionSyncPacket)', () => {
