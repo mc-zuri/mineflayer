@@ -557,6 +557,18 @@ describe('the crosshair (Minecraft.pick, Item.getPlayerPOVHitResult)', () => {
     assert.strictEqual(hit.intersect.x, 2.375)
   })
 
+  it('before 1.13 meets a cake by its bites (two sixteenths off its west side a bite)', () => {
+    for (const version of ['1.8.8', '1.12.2']) {
+      const bot = fakeBot(version, { pitch: 35 })
+      rayTrace(bot)
+      bot.world.setBlockStateId(new Vec3(2, 101, 0), (bot.registry.blocksByName.cake.id << 4) | 2)
+      const hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.block.name, 'cake', version)
+      assert.strictEqual(hit.face, WEST, version)
+      assert.strictEqual(hit.intersect.x, 2 + 5 / 16, version)
+    }
+  })
+
   it('takes a hopper\'s top for a ray into its bowl (its interaction shape, from 1.13)', () => {
     for (const version of ['1.13.2', '26.1']) {
       const bot = fakeBot(version, { pitch: 18 })
