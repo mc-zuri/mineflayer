@@ -65,6 +65,23 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // D: a living vehicle turns over its interpolation steps (LivingEntity.aiStep's lerp, InterpolationHandler), and
   // where it seats its rider turns with it
+  describe('a living vehicle\'s turn (LivingEntity.lerpPositionAndRotationStep)', () => {
+    it('the llama the server turns a quarter seats its rider a third of the way round after a tick (1.21.4)', async () => {
+      const t = await riding('1.21.4', 'llama')
+      try {
+        t.client.write('entity_look', { entityId: 100, yaw: 64, pitch: 0, onGround: true })
+        await settle()
+        t.ticks(1)
+        await settle()
+        // (from its spawn's 180) the seat (0, 1.37, -0.3) at 150 degrees, not at 90
+        const seat = offset(t.bot, t.vehicle)
+        assert.ok(Math.abs(seat.x - 0.15) < 1e-4, `x ${seat.x}`)
+        assert.ok(Math.abs(seat.z - 0.3 * Math.cos(Math.PI / 6)) < 1e-4, `z ${seat.z}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // E: a camel seats its rider by its pose, sat down or standing up over its animation, against the level's time as the
   // client keeps it (Camel.getBodyAnchorAnimationYOffset, ClientLevel.tickTime)

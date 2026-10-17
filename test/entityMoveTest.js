@@ -4,12 +4,35 @@
 
 const assert = require('assert')
 const { Vec3 } = require('vec3')
+const conv = require('../lib/conversions')
 const { createEntityInterpolation } = require('../lib/entityInterpolation')
 const { fakeServerBot } = require('./common/fakeServer')
 const { once, sleep } = require('../lib/promise_utils')
 
+const f32 = Math.fround
+
 describe('the moves of other entities', function () {
   this.timeout(20 * 1000)
+
+  describe('[D] a living entity turns with its interpolation (LivingEntity.aiStep)', () => {
+    it('[D] a zombie turns toward the yaw the server sent a third of the way a step, from its spawn\'s, kept in entity.yawDegrees', () => {
+      for (const version of ['1.19.4', '1.20.4']) {
+        const interpolation = createEntityInterpolation(require('prismarine-registry')(version))
+        const zombie = { id: 7, name: 'zombie', type: 'hostile', position: new Vec3(0, 0, 0), yaw: conv.fromNotchianYaw(0), pitch: 0 }
+        interpolation.spawn(zombie)
+        interpolation.move(zombie, 0, 0, 0, { yaw: 90, pitch: 0 })
+        // (the packet's yaw is set on the entity after the move: ClientPacketListener.handleMoveEntity)
+        zombie.yaw = conv.fromNotchianYaw(90)
+        const turned = []
+        for (let i = 0; i < 3; i++) {
+          interpolation.tick(zombie)
+          turned.push(Number(zombie.yawDegrees))
+        }
+        assert.strictEqual(turned[0], f32(30), version)
+        assert.ok(Math.abs(turned[2] - 90) < 1e-4, `${version}: ${turned}`)
+      }
+    })
+  })
 
   describe('[R] the packet position as a double from 1.16 (Entity.packetCoordinates, VecDeltaCodec)', () => {
     it('[R] from 1.16 a zero relative move keeps an axis; the others are floored to 1/4096 before 1.19.4, rounded since', () => {
