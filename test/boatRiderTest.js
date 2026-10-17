@@ -55,4 +55,24 @@ describe('the rider of a boat it steers', function () {
       }
     }
   })
+  // the server's teleport that dismounts the rider (1.17 - 1.19.3's dismountVehicle) lets go of the boat it steered,
+  // shown where the client moved it last (the rider stands on it there); its interpolation goes on from there
+  // (Boat.tickLerp: no lerp while controlled; v_boat_dismount on 1.19)
+  it('shows the boat it steered where it moved it, once a teleport dismounts it', async () => {
+    const t = await inBoat('1.19')
+    try {
+      t.bot.setControlState('forward', true)
+      t.ticks(3)
+      await settle()
+      const boat = t.bot.entities[100]
+      const at = boat.position.clone()
+      assert.ok(at.x !== 8.5 || at.z !== 8.5, 'the boat moved')
+      t.client.write('position', { x: at.x, y: at.y + 0.5625, z: at.z, yaw: 0, pitch: 0, flags: 0, teleportId: 2, dismountVehicle: true })
+      await settle()
+      assert.strictEqual(t.bot.vehicle, null)
+      assert.deepStrictEqual(boat.interpolatedPosition.toArray(), at.toArray())
+    } finally {
+      await t.close()
+    }
+  })
 })
