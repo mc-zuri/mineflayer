@@ -761,6 +761,19 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.strictEqual(wall.getProperties().facing, 'west')
     })
 
+    it('from 1.19 a block placed is a prediction: acknowledged without it, what was there is back (BlockStatePredictionHandler)', async () => {
+      if (!registry.version['>=']('1.19')) return
+      bot.lookAt = async () => {}
+      hold('torch', 4)
+      assert.strictEqual(await bot.activateBlock(bot.blockAt(new Vec3(1, 64, 0)), new Vec3(0, 1, 0), new Vec3(0.5, 1, 0.5)), 'success')
+      assert.strictEqual(bot.blockAt(new Vec3(1, 65, 0)).name, 'torch')
+      await settle()
+      const { sequence } = written.find(p => p.name === 'block_place').data
+      client.write('acknowledge_player_digging', { sequenceId: sequence })
+      await settle()
+      assert.strictEqual(bot.blockAt(new Vec3(1, 65, 0)).type, 0)
+    })
+
     it('an invulnerable player eats on a full stomach from 1.15 (Player.canEat: Abilities.invulnerable)', async () => {
       hold('bread', 2)
       bot.food = 20

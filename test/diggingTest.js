@@ -108,6 +108,48 @@ describe('digging (MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock)
     }
   })
 
+  it('from 1.19 a break is a prediction until the server acknowledges it (BlockStatePredictionHandler)', async () => {
+    const t = await standing('1.20.4')
+    try {
+      const { bot, client, registry } = t
+      const dirt = registry.blocksByName.dirt.defaultState
+      const stone = registry.blocksByName.stone.defaultState
+      const breakBlock = async (position) => {
+        const block = bot.blockAt(position)
+        t.written.length = 0
+        const done = bot.dig(block, 'ignore', 'auto', 1)
+        // (after a break, the destroy delay first)
+        for (let i = 0; i < 40 && bot.blockAt(position).type !== 0; i++) t.ticks(1)
+        await done
+        await settle()
+        assert.strictEqual(bot.blockAt(position).type, 0)
+        return digs(t).find(d => d.status === 2).sequence
+      }
+      const first = new Vec3(1, 64, 0)
+      // acknowledged with no change from the server (it did not break it): the block is put back
+      client.write('acknowledge_player_digging', { sequenceId: await breakBlock(first) })
+      await settle()
+      assert.strictEqual(bot.blockAt(first).stateId, dirt)
+      // the server's change of the predicted block waits for the acknowledgement (ClientLevel.setServerVerifiedBlockState)
+      const sequence = await breakBlock(first)
+      client.write('block_change', { location: first, type: stone })
+      await settle()
+      assert.strictEqual(bot.blockAt(first).type, 0)
+      client.write('acknowledge_player_digging', { sequenceId: sequence })
+      await settle()
+      assert.strictEqual(bot.blockAt(first).stateId, stone)
+      // a break the server made too stays
+      const second = new Vec3(2, 64, 0)
+      const confirmed = await breakBlock(second)
+      client.write('block_change', { location: second, type: 0 })
+      client.write('acknowledge_player_digging', { sequenceId: confirmed })
+      await settle()
+      assert.strictEqual(bot.blockAt(second).type, 0)
+    } finally {
+      await t.close()
+    }
+  })
+
   it('26.3: a dig turned to another face of its block sends CHANGE_DESTROY_DIRECTION', async () => {
     const t = await standing('26.3')
     try {
