@@ -379,6 +379,8 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
         // (and goes in a flower pot)
         const pot = bot.set(new Vec3(2, 101, 1), 'flower_pot', version === '1.12.2' ? {} : undefined)
         assert.strictEqual(use.useItemOn(pot, WEST, center).result, 'success', `${version} in a pot`)
+        // (which takes it from the hand on the client too)
+        assert.strictEqual(use.useItemOn(pot, WEST, center).takes, true, `${version} taken`)
       }
     })
 
@@ -1038,3 +1040,23 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
     })
   })
 }
+
+describe('a block\'s use that takes the held item (FlowerPotBlock.use: ItemStack.shrink on both sides)', function () {
+  this.timeout(10 * 1000)
+  it('1.8\'s use of a flower pot sends the hand as the pot left it: the last flower gone (PlayerControllerMP.onPlayerRightClick)', async () => {
+    const { fakeServerBot } = require('./common/fakeServer')
+    const t = await fakeServerBot('1.8.8', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: [[0, 64, 0, 'stone'], [2, 65, 0, 'flower_pot']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      t.bot.lookAt = async () => {}
+      t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.red_flower.id, 1))
+      assert.strictEqual(await t.bot.activateBlock(t.bot.blockAt(new Vec3(2, 65, 0)), new Vec3(-1, 0, 0), new Vec3(0, 0.5, 0.5)), 'success')
+      await sleep(100)
+      const place = t.written.find(p => p.name === 'block_place')
+      assert.strictEqual(place.data.heldItem.blockId, -1)
+      assert.strictEqual(t.bot.heldItem, null)
+    } finally {
+      await t.close()
+    }
+  })
+})
