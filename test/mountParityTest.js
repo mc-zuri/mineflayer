@@ -740,4 +740,31 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AF: the rider's aiStep sets its input whether it steers its mount or not (LocalPlayer.aiStep: xxa, zza), and the
+  // mount moves on it at its next tick (AbstractHorse.getRiddenInput): the first tick of a horse saddled again goes on
+  // the key held the tick before (m_c_open_donkey_riding t66 on 1.21.4)
+  describe('the rider\'s input before the mount is steered (LocalPlayer.aiStep, AbstractHorse.getRiddenInput)', () => {
+    it('a horse saddled again moves at its first steered tick on the key its rider held while it was not', async () => {
+      for (const version of ['1.19.4', '1.20.1', '1.21.4', '1.21.6']) {
+        const t = await riding(version, 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x02 } })
+        try {
+          // (unsaddled: the rider's own input, no vehicle move)
+          t.bot.setControlState('forward', true)
+          t.ticks(1)
+          await settle()
+          assert.strictEqual(packets(t, 'vehicle_move').length, 0, `${version}: unsaddled`)
+          t.vehicle.metadata[horseFlags(t.registry)] = 0x06
+          if (t.registry.version['>=']('1.21.5')) saddle(t.vehicle, t.registry)
+          t.ticks(1)
+          await settle()
+          const [move] = packets(t, 'vehicle_move')
+          // (south, its rider's yaw 0)
+          assert.ok(move && move.z > 1.5 + 0.05, `${version}: ${JSON.stringify(move)}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
