@@ -297,6 +297,34 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('from 1.16 a baby fed its food grows on the client too, a Success that swings, a grown one a CONSUME; not one whose age is locked (Animal.mobInteract, AgeableMob.canAgeUp)', async () => {
+    const cases = [
+      // version, name, food, baby, age locked, result
+      ['1.20.4', 'pig', 'carrot', true, false, 'success'],
+      ['1.20.4', 'pig', 'carrot', false, false, 'consume'],
+      ['1.20.4', 'strider', 'warped_fungus', true, false, 'success'],
+      ['26.1', 'pig', 'carrot', true, true, 'consume'],
+      ['26.1', 'pig', 'carrot', true, false, 'success'],
+      ['1.21.6', 'happy_ghast', 'snowball', true, false, 'success'],
+      ['1.21.6', 'happy_ghast', 'snowball', false, false, 'consume']
+    ]
+    for (const [version, name, food, baby, locked, result] of cases) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.lookAt = async () => {}
+        const keys = t.registry.entitiesByName[name].metadataKeys
+        const mob = addEntity(t.bot, 8, { name, type: 'animal', position: new Vec3(0.5, 65, 2.5), width: 0.9, height: 0.9 })
+        mob.metadata[keys.indexOf('baby')] = baby
+        if (keys.includes('age_locked')) mob.metadata[keys.indexOf('age_locked')] = locked
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName[food].id, 1))
+        assert.strictEqual(await t.bot.activateEntity(mob), result, `${version} ${name} ${[baby, locked]}`)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('before 1.15 an empty item frame takes the click of an empty hand too (ItemFrame.interact: true)', async () => {
     for (const [version, result] of [['1.12.2', 'success'], ['1.14.4', 'success'], ['1.15.2', 'pass']]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
