@@ -319,6 +319,15 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       }
     })
 
+    it('shears carve a pumpkin from 1.13, pass on one before', () => {
+      for (const [version, expected] of [['1.12.2', 'pass'], ['1.13.2', 'success']]) {
+        const bot = fakeBot(version)
+        const pumpkin = bot.set(new Vec3(2, 101, 0), 'pumpkin', version === '1.12.2' ? {} : undefined)
+        bot.hold('shears')
+        assert.strictEqual(createUsePrediction(bot).useItemOn(pumpkin, WEST, center).result, expected, version)
+      }
+    })
+
     it('a sign item places a sign (1.13 calls the item and the block sign)', () => {
       const bot = fakeBot('1.13.2')
       bot.hold('sign')
