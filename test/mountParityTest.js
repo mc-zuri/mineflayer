@@ -715,4 +715,29 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AE: 26.3 steps a mob's interpolation before its tick (Entity.commonTick), its rider steering it too, and the vehicle
+  // move tells where the interpolation heads while it runs (Entity.getClientPositionAndRotation): the server's position
+  // and the mob's own rotation, not yet where the rider took it
+  describe('the 26.3 vehicle move of a mount still in its interpolation (Entity.getClientPositionAndRotation)', () => {
+    it('the first steered tick of a pig the server just moved reports the move\'s end and the pig\'s own rotation (26.3)', async () => {
+      const t = await riding('26.3', 'pig', {
+        before: async (v, t) => {
+          t.client.write('rel_entity_move', { entityId: 100, delta: { onGround: true, steps: [{ ticks: 3, dX: 0, dY: 0, dZ: 0 }] } })
+          await settle()
+        },
+        setup: (v, t) => { saddle(v, t.registry); holdInHand(t, 'carrot_on_a_stick') }
+      })
+      try {
+        t.ticks(3)
+        await settle()
+        const moves = packets(t, 'vehicle_move')
+        // (the pig spawned facing north, 180; its rider faces south, 0)
+        assert.deepStrictEqual([moves[0].x, moves[0].z, moves[0].yaw], [3.5, 1.5, 180])
+        assert.ok(moves[2].z > 1.5 && moves[2].yaw === 0, `then steered: ${JSON.stringify(moves[2])}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
