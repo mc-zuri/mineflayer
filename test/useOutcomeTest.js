@@ -106,4 +106,16 @@ describe('the crosshair (Minecraft.pick, Item.getPlayerPOVHitResult)', () => {
     assert.strictEqual(hit.type, 'entity')
     assert.strictEqual(hit.entity.name, 'cushion')
   })
+
+  it('before 1.9 picks an entity by its box grown by 0.1 (Entity.getCollisionBorderSize)', () => {
+    for (const [version, x] of [['1.8.8', 2.5 - 0.3 - 0.10000000149011612], ['1.9.4', 2.5 - 0.3]]) {
+      const bot = fakeBot(version, { pitch: 0 })
+      rayTrace(bot)
+      bot.entities[2] = { id: 2, name: 'Zombie', type: 'mob', position: new Vec3(2.5, 101, 0.5), width: 0.6, height: 1.95, isValid: true }
+      const hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.type, 'entity', version)
+      assert.ok(Math.abs(hit.intersect.x - x) < 1e-6, `${version}: ${hit.intersect.x}`)
+      assert.ok(Math.abs(bot._entityHitPoint(hit.entity).x - x) < 1e-6, version)
+    }
+  })
 })
