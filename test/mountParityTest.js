@@ -408,6 +408,25 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // U: before 1.21.2 a mount its rider takes control of stops interpolating where the client showed it
   // (Entity.isControlledByLocalInstance): its steering starts there, not at the server's last move
+  describe('where a mount the bot takes control of starts (LivingEntity.aiStep)', () => {
+    it('a pig the server moved a block just before is steered from where it was shown (1.20.4)', async () => {
+      const t = await riding('1.20.4', 'pig', {
+        before: async (v, t) => {
+          t.client.write('rel_entity_move', { entityId: 100, dX: 4096, dY: 0, dZ: 0, onGround: true })
+          await settle()
+        },
+        setup: (v, t) => { v.metadata[t.registry.entitiesByName.pig.metadataKeys.indexOf('saddle')] = true; holdInHand(t, 'carrot_on_a_stick') }
+      })
+      try {
+        t.ticks(1)
+        await settle()
+        const [move] = packets(t, 'vehicle_move')
+        assert.ok(Math.abs(move.x - 3.5) < 0.01, `x ${move.x}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // V: from 1.15 a mob its rider moves keeps its packet position where the client put it (LivingEntity.aiStep's
   // setPacketCoordinates): the server's next relative move adds to it

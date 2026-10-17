@@ -213,6 +213,24 @@ describe('mounts the rider steers, and what goes with them', function () {
     })
   })
 
+  describe('[U] a new ridden state starts where the client shows the mount (Entity.isControlledByLocalInstance)', () => {
+    it('[U] before 1.21.2 a horse saddled while it eases to a server move starts where the client showed it', async () => {
+      // (the interpolation stops under the rider's control before 1.21.2: the horse stays where it was shown)
+      const t = await riding('1.20.4', 'horse', { setup: (v, t) => t.attribute(v, 0.225) })
+      try {
+        const start = t.vehicle.position.x
+        const moved = once(t.bot._client, 'rel_entity_move')
+        t.client.write('rel_entity_move', { entityId: 100, dX: 3 * 4096, dY: 0, dZ: 0, onGround: true })
+        await moved
+        t.saddle()
+        t.ticks(1)
+        assert.ok(Math.abs(t.vehicle.position.x - start) < 1e-6, `the horse is at ${t.vehicle.position.x}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[Y] 1.8: the client moves no ridden mob, and steers no boat (EntityHorse / EntityPig on the server only)', () => {
     it('[Y] 1.8.8: a saddled horse does not go on the rider\'s forward key', async () => {
       const t = await riding('1.8.8', 'EntityHorse', { setup: (v, t) => { t.saddle(v); t.attribute(v, 0.225) } })
