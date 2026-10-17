@@ -303,6 +303,22 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(use.useItemOn(ahead, UP, center).result, 'fail')
     })
 
+    it('before 1.13 a block item that cannot go where it would is not used on the block (no packet), an item is', () => {
+      for (const version of ['1.8.8', '1.12.2', '1.13.2']) {
+        const bot = fakeBot(version)
+        const use = createUsePrediction(bot)
+        const ahead = bot.blockAt(new Vec3(2, 100, 0))
+        bot.set(new Vec3(2, 101, 0), 'cobblestone')
+        bot.hold('cobblestone', 8)
+        const refused = use.useItemOn(ahead, UP, center)
+        assert.strictEqual(refused.result, 'fail', version)
+        assert.strictEqual(!!refused.unsent, version !== '1.13.2', version)
+        // (the stick is no block item: its use on the block is sent and passes)
+        bot.hold('stick')
+        assert.deepStrictEqual(use.useItemOn(ahead, UP, center), { result: 'pass', place: null }, version)
+      }
+    })
+
     it('a sign item places a sign (1.13 calls the item and the block sign)', () => {
       const bot = fakeBot('1.13.2')
       bot.hold('sign')
@@ -519,13 +535,13 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.deepStrictEqual(names(), ['block_place'])
     })
 
-    it('a block placed into the player takes no swing', async () => {
+    it('a block placed into the player takes no swing (before 1.13 is not even sent: ItemBlock.canPlaceBlockOnSide)', async () => {
       bot.lookAt = async () => {}
       hold('dirt', 8)
       const under = bot.blockAt(new Vec3(0, 64, 0))
       assert.strictEqual(await bot.activateBlock(under, new Vec3(0, 1, 0), new Vec3(0.5, 1, 0.5)), 'fail')
       await settle()
-      assert.deepStrictEqual(names(), ['block_place'])
+      assert.deepStrictEqual(names(), registry.version['<']('1.13') ? [] : ['block_place'])
     })
 
     it('a fishing rod\'s use swings (from the item before 1.15), the use of an item before 1.9 at -1, -1, -1', async () => {
