@@ -83,4 +83,25 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       await t.close()
     }
   })
+
+  it('before 1.17 a click carries the stack the menu returns from it (AbstractContainerMenu.clicked)', async () => {
+    for (const version of ['1.8.8', '1.12.2']) {
+      const t = await clickingBot(version)
+      try {
+        const dirt = t.registry.itemsByName.dirt.id
+        // a quick move that takes the whole stack: 1.8 returns the stack moved, 1.9+ nothing (no same item left)
+        t.bot.inventory.updateSlot(36, t.item('dirt', 5))
+        await t.click(36, 0, 1)
+        // a pick up: the slot's stack as it was
+        t.bot.inventory.updateSlot(37, t.item('dirt', 3))
+        await t.click(37, 0, 0)
+        // a double click (PICKUP_ALL): nothing
+        await t.click(38, 0, 6)
+        const items = t.clicks().map(c => c.item.blockId === -1 ? null : [c.item.blockId, c.item.itemCount])
+        assert.deepStrictEqual(items, [version === '1.8.8' ? [dirt, 5] : null, [dirt, 3], null], version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
 })
