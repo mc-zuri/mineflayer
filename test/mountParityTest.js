@@ -1012,4 +1012,24 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AN: from 26.3 a teleport of the mount the bot steers goes through the mount's own stepped interpolation alone
+  // (SteppedInterpolationHandler; the ridden state's lerp is the older client's InterpolationHandler) (m_horse t28 on 26.3)
+  describe('a relative teleport of the steered mount on 26.3 (SteppedInterpolationHandler)', () => {
+    it('moves it the teleport\'s distance, once', async () => {
+      const t = await riding('26.3', 'horse', { setup: (v, { registry }) => { saddle(v, registry); v.metadata[horseFlags(registry)] = 0x06 } })
+      try {
+        t.ticks(1)
+        await settle()
+        const from = t.vehicle.position.x
+        t.client.write('entity_teleport', relativeTeleport(1))
+        await settle()
+        t.ticks(4)
+        await settle()
+        assert.ok(Math.abs(t.vehicle.position.x - (from + 1)) < 1e-6, String(t.vehicle.position.x - from))
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
