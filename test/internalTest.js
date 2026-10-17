@@ -2129,10 +2129,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
           const { manual, client, vehicle, runTicks } = await ridingManualBot(name)
           try {
             vehicle.metadata = []
-            if (name === 'horse') {
-              if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
-              else vehicle.metadata[17] = 0x02 | 0x04 // tame, saddled
-            }
+            // (saddled, a camel too: AbstractHorse.getControllingPassenger)
+            if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+            else vehicle.metadata[17] = 0x02 | 0x04 // tame, saddled
             vehicle.attributes = { 'minecraft:movement_speed': { value: 0.225, modifiers: [] } }
             manual.setControlState('forward', true)
             runTicks(3)
@@ -2681,10 +2680,19 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // the recordings' camel, saddled: its driver steers it (AbstractHorse.getControllingPassenger); from 1.21.5 the
+      // saddle it wears, before bit 4 of its flags (where the version has camels)
+      function saddleCamel (manual, vehicle) {
+        if (!manual.registry.entitiesByName.camel) return
+        if (manual.registry.version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
+        else (vehicle.metadata = vehicle.metadata ?? [])[manual.registry.entitiesByName.camel.metadataKeys?.indexOf('flags') ?? 17] = 0x02 | 0x04
+      }
+
       it('a sprinting passenger walks at the sprinting air speed, as Player.getFlyingSpeed (v_camel_sprint t1)', async function () {
         if (!require('minecraft-data')(supportedVersion).version['>=']('1.14')) return this.skip()
-        const { manual, runTicks } = await ridingManualBot('camel')
+        const { manual, vehicle, runTicks } = await ridingManualBot('camel')
         try {
+          saddleCamel(manual, vehicle)
           manual.entity.yawDegrees = new JavaFloat(270)
           manual.entity.yaw = conv.fromNotchianYaw(270)
           manual.setControlState('forward', true)
@@ -2716,6 +2724,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
         if (!require('minecraft-data')(supportedVersion).version['>=']('1.20')) return this.skip()
         const { manual, vehicle, runTicks } = await ridingManualBot('camel')
         try {
+          saddleCamel(manual, vehicle)
           vehicle.height = 2.375
           vehicle.position.set(1.5, pos.y + 1, 1.5)
           manual.entity.yawDegrees = new JavaFloat(270)

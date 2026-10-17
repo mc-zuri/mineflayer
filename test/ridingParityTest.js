@@ -8,6 +8,7 @@ const { Vec3 } = require('vec3')
 const { fakeServerBot } = require('./common/fakeServer')
 const { once, sleep } = require('../lib/promise_utils')
 
+const f32 = Math.fround
 const settle = () => sleep(50)
 
 // a row of stone to stand on, and what else is asked for
@@ -46,6 +47,7 @@ async function riding (version, name, { at = new Vec3(3.5, 65, 1.5), blocks = gr
 const item = (registry, name) => new (require('prismarine-item')(registry))(registry.itemsByName[name].id, 1)
 const saddle = (vehicle, registry) => vehicle.setEquipment(7, item(registry, 'saddle'))
 // the rider's offset from its vehicle's position
+const offset = (bot, vehicle) => bot.entity.position.minus(vehicle.position)
 const ridingJumps = (written) => written.filter(p => p.name === 'entity_action' && /riding_jump/i.test(String(p.data.actionId))).length
 
 describe('riding (vanilla\'s mounts and seats)', function () {
@@ -87,6 +89,54 @@ describe('riding (vanilla\'s mounts and seats)', function () {
   })
 
   describe('the camel (Camel, CamelHusk)', () => {
+    it('a camel is steered only while saddled (AbstractHorse.getControllingPassenger)', async () => {
+      for (const version of ['1.20.4', '26.1']) {
+        const t = await riding(version, 'camel')
+        try {
+          const start = t.vehicle.position.clone()
+          t.bot.setControlState('forward', true)
+          t.ticks(5)
+          await settle()
+          assert.ok(t.vehicle.position.equals(start), `${version}: the unsaddled camel moved`)
+          assert.deepStrictEqual(t.names(/vehicle_move/), [], version)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+
+    it('a saddled camel husk is steered as a camel is', async () => {
+      const t = await riding('26.1', 'camel_husk', { setup: (v, { registry }) => saddle(v, registry) })
+      try {
+        const start = t.vehicle.position.clone()
+        t.bot.setControlState('forward', true)
+        t.ticks(5)
+        await settle()
+        assert.ok(t.vehicle.position.distanceTo(start) > 0.01, 'the camel husk did not move')
+        assert.ok(t.names(/vehicle_move/).length > 0)
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('a steered camel seats its rider by the camel\'s own yaw, not the rider\'s unwrapped one (Entity.setRot)', async () => {
+      // the rider has turned ten thousand times round: its float yaw (3600090) is the camel's (90) only within a turn
+      const t = await riding('26.1', 'camel', { yaw: 3600090, setup: (v, { registry }) => saddle(v, registry) })
+      try {
+        t.ticks(2)
+        const mth = t.bot.physicsEngine.mth
+        const seat = yaw => {
+          const angle = f32(-f32(yaw) * f32(0.017453292))
+          return { x: 0.5 * mth.sin(angle), z: 0.5 * mth.cos(angle) }
+        }
+        const at = offset(t.bot, t.vehicle)
+        // (the two seats differ: the float radians of the unwrapped yaw are off)
+        assert.ok(Math.abs(seat(3600090).z - seat(90).z) > 1e-4)
+        assert.ok(Math.abs(at.z - seat(90).z) < 1e-9, `${at} ${seat(90).z}`)
+      } finally {
+        await t.close()
+      }
+    })
   })
 
   describe('seats (EntityType.passengerAttachments)', () => {
