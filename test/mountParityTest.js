@@ -108,6 +108,20 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // N: 1.20.2 - 1.20.4 a skeleton or zombie horse seats its rider 0.28125F below its height
   // (SkeletonHorse / ZombieHorse.getPassengerAttachmentPoint)
+  describe('the undead horses\' seat on 1.20.2 - 1.20.4 (SkeletonHorse.getPassengerAttachmentPoint)', () => {
+    it('a skeleton horse seats its rider 0.28125 below its height, with the player\'s -0.6 (1.20.4)', async () => {
+      const t = await riding('1.20.4', 'skeleton_horse')
+      try {
+        t.ticks(1)
+        await settle()
+        const f32 = Math.fround
+        const expected = f32(f32(t.vehicle.height) - f32(0.28125)) + f32(-0.6)
+        assert.ok(Math.abs(offset(t.bot, t.vehicle).y - expected) < 1e-9, `y ${offset(t.bot, t.vehicle).y}, expected ${expected}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // O: a steered mob that does not turn with its rider keeps its own pitch, a float never -0 (Entity.getXRot, 0.0F):
   // the vehicle move reports it so

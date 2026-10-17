@@ -51,6 +51,28 @@ async function seated (version, name, options) {
 describe('mount seats (Entity.positionRider)', function () {
   this.timeout(20 * 1000)
 
+  describe('[N] the skeleton and zombie horses 1.20.2 - 1.20.4 (SkeletonHorse.getPassengerAttachmentPoint)', () => {
+    it('[N] 1.20.2 - 1.20.4 a skeleton or zombie horse seats its rider 0.28125F below its height', async () => {
+      for (const name of ['skeleton_horse', 'zombie_horse']) {
+        const { at } = await seated('1.20.4', name)
+        assert.strictEqual(at.y, f32(f32(1.6) - f32(0.28125)) + f32(-0.6), name)
+      }
+    })
+
+    it('[N] a rearing skeleton horse does not move its rider', async () => {
+      const t = await riding('1.20.4', 'skeleton_horse', { setup: (horse) => { horse.metadata[17] = 0x20 } })
+      try {
+        t.ticks(3)
+        const at = t.bot.entity.position.minus(t.vehicle.position)
+        assert.ok(t.vehicle.standAnimO > 0)
+        assert.strictEqual(at.y, f32(f32(1.6) - f32(0.28125)) + f32(-0.6))
+        assert.ok(at.x === 0 && at.z === 0, String(at))
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[W] a bamboo chest boat before 1.21.2 (Boat.Type.BAMBOO)', () => {
     it('[W] a chest boat of the bamboo type seats its rider at a raft\'s height before 1.21.2', async () => {
       const typeIndex = require('prismarine-registry')('1.20.4').entitiesByName.chest_boat.metadataKeys.indexOf('type')
