@@ -96,4 +96,25 @@ describe('a falling block (FallingBlockEntity)', function () {
       assert.strictEqual(entity.position.y, 102.00999999046326 + (raised ? 0.009999990463256836 : 0), version)
     }
   })
+
+  it('it falls on the client by its names before 1.14 too: 1.9 - 1.10 FallingSand, 1.13 falling_objects', async () => {
+    const { performance } = require('perf_hooks')
+    const now = performance.now
+    let clock = now.call(performance)
+    performance.now = () => clock
+    try {
+      for (const version of ['1.10.2', '1.13.2', '1.20.4']) {
+        const { bot, entity } = await spawnFallingBlock(version)
+        // (in the air: no world loaded)
+        bot.blockAt = () => null
+        const spawnedAt = entity.position.y
+        // one client tick: 0.04 down (FallingBlockEntity.tick)
+        clock += 50
+        bot.emit('physicsTick')
+        assert.ok(Math.abs(entity.position.y - (spawnedAt - 0.04)) < 1e-9, `${version}: ${entity.name} at ${entity.position.y}`)
+      }
+    } finally {
+      performance.now = now
+    }
+  })
 })
