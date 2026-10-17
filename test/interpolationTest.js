@@ -142,4 +142,23 @@ describe('a falling block (FallingBlockEntity)', function () {
       performance.now = now
     }
   })
+  // 1.8's client moves an empty boat by the motion the server's velocity packets gave it, while it does not
+  // interpolate: halved on the ground, 0.99F of it kept (EntityBoat.onUpdate: isRemote and isBoatEmpty; the boat the
+  // player walks into in n_walk_into_boat on 1.8.8, ticks 13 - 15)
+  it("1.8's empty boat drifts on its motion while it does not interpolate", () => {
+    const shown = []
+    for (const version of ['1.8.8', '1.9.4']) {
+      const registry = require('prismarine-registry')(version)
+      const interpolation = createEntityInterpolation(registry)
+      const boat = { id: 8, name: 'Boat', type: 'object', position: new Vec3(3.5, 101, 38.5), velocity: new Vec3(0.02475, 0, 0), onGround: true, passengers: [] }
+      interpolation.spawn(boat)
+      const xs = []
+      for (let i = 0; i < 3; i++) {
+        interpolation.tick(boat)
+        xs.push(boat.interpolatedPosition.x)
+      }
+      shown.push(xs)
+    }
+    assert.deepStrictEqual(shown, [[3.52475, 3.537001250118017, 3.543065618984854], [3.5, 3.5, 3.5]])
+  })
 })
