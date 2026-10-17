@@ -229,6 +229,26 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('a mount\'s screen shows what it wears from its opening: its body armor from 1.20.5, its saddle from 1.21.5 (AbstractHorse.getBodyArmorAccess, createEquipmentSlotContainer)', async () => {
+    for (const [version, armor, saddle] of [['1.20.4', false, false], ['1.20.6', true, false], ['1.21.5', true, true]]) {
+      const t = await clickingBot(version)
+      try {
+        const Entity = require('prismarine-entity')(t.registry)
+        const horse = new Entity(50)
+        horse.name = 'horse'
+        horse.equipment[6] = t.item('iron_horse_armor')
+        horse.equipment[7] = t.item('saddle')
+        t.bot.entities[50] = horse
+        t.client.write('open_horse_window', { windowId: 3, nbSlots: 2, entityId: 50 })
+        await sleep(50)
+        const window = t.bot.currentWindow
+        assert.deepStrictEqual([window.slots[0]?.name ?? null, window.slots[1]?.name ?? null], [saddle ? 'saddle' : null, armor ? 'iron_horse_armor' : null], version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   // a 1.16.5 merchant screen open (however it was opened) with its offers
   async function merchantBot () {
     const t = await clickingBot('1.16.5')
