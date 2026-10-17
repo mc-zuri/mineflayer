@@ -468,6 +468,74 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
   })
 })
 
+describe('the pick key\'s item before 1.21.4 (Block.getCloneItemStack, Entity.getPickResult)', () => {
+  const { createPickResult } = require('../lib/pickResult')
+  const at = new Vec3(2, 101, 0)
+  const picked = item => item && [item.name, item.metadata]
+
+  it('a block\'s item, or another\'s: a crop\'s seeds, a wall sign\'s sign, a potted plant, a sticky piston\'s head; none for a fluid', () => {
+    const bot = fakeBot('1.20.4')
+    const pick = createPickResult(bot)
+    const cases = [
+      ['stone', {}, ['stone', 0]],
+      ['wheat', { age: 3 }, ['wheat_seeds', 0]],
+      ['carrots', { age: 0 }, ['carrot', 0]],
+      ['redstone_wire', { power: 0, north: 'none', south: 'none', east: 'none', west: 'none' }, ['redstone', 0]],
+      ['oak_wall_sign', { facing: 'north', waterlogged: false }, ['oak_sign', 0]],
+      ['wall_torch', { facing: 'north' }, ['torch', 0]],
+      ['potted_poppy', {}, ['poppy', 0]],
+      ['piston_head', { facing: 'up', short: false, type: 'sticky' }, ['sticky_piston', 0]],
+      ['water_cauldron', { level: 1 }, ['cauldron', 0]],
+      ['candle_cake', { lit: false }, ['cake', 0]],
+      ['water', { level: 0 }, null],
+      ['air', {}, null]
+    ]
+    for (const [name, properties, expected] of cases) assert.deepStrictEqual(picked(pick.blockItem(bot.set(at, name, properties))), expected, name)
+  })
+
+  it('before 1.13 the block\'s item with its kind (damageDropped): a log\'s wood, a slab\'s stone; cocoa\'s brown dye', () => {
+    for (const version of ['1.8.8', '1.12.2']) {
+      const bot = fakeBot(version)
+      const pick = createPickResult(bot)
+      const registry = bot.registry
+      const set = (name, metadata) => {
+        bot.world.setBlockStateId(at, (registry.blocksByName[name].id << 4) | metadata)
+        return bot.blockAt(at)
+      }
+      assert.deepStrictEqual(picked(pick.blockItem(set('log', 4 | 1))), ['log', 1], version)
+      assert.deepStrictEqual(picked(pick.blockItem(set('stone', 3))), ['stone', 3], version)
+      assert.deepStrictEqual(picked(pick.blockItem(set('stone_slab', 8 | 1))), ['stone_slab', 1], version)
+      assert.deepStrictEqual(picked(pick.blockItem(set('double_stone_slab', 3))), ['stone_slab', 3], version)
+      assert.deepStrictEqual(picked(pick.blockItem(set('cocoa', 5))), ['dye', 3], version)
+      assert.deepStrictEqual(picked(pick.blockItem(set('standing_sign', 4))), ['sign', 0], version)
+      assert.deepStrictEqual(picked(pick.blockItem(set('furnace', 2))), ['furnace', 0], version)
+      assert.deepStrictEqual(picked(pick.blockItem(set('piston_head', 8 | 1))), ['sticky_piston', 0], version)
+      assert.strictEqual(pick.blockItem(set('flowing_water', 0)), null, version)
+    }
+  })
+
+  it('an entity\'s item: a boat of its wood, a minecart of its kind, a mob\'s spawn egg, none for an item', () => {
+    const bot = fakeBot('1.20.4')
+    const pick = createPickResult(bot)
+    const keys = name => bot.registry.entitiesByName[name].metadataKeys
+    const boat = { name: 'boat', type: 'other', metadata: { [keys('boat').indexOf('type')]: 6 } }
+    assert.deepStrictEqual(picked(pick.entityItem(boat)), ['dark_oak_boat', 0])
+    assert.deepStrictEqual(picked(pick.entityItem({ name: 'chest_boat', metadata: { [keys('chest_boat').indexOf('type')]: 8 } })), ['bamboo_chest_raft', 0])
+    assert.deepStrictEqual(picked(pick.entityItem({ name: 'hopper_minecart' })), ['hopper_minecart', 0])
+    assert.deepStrictEqual(picked(pick.entityItem({ name: 'spawner_minecart' })), ['minecart', 0])
+    assert.deepStrictEqual(picked(pick.entityItem({ name: 'cow', type: 'animal' })), ['cow_spawn_egg', 0])
+    assert.deepStrictEqual(picked(pick.entityItem({ name: 'item_frame', metadata: {} })), ['item_frame', 0])
+    assert.deepStrictEqual(picked(pick.entityItem({ name: 'leash_knot' })), ['lead', 0])
+    assert.strictEqual(pick.entityItem({ name: 'item', type: 'other' }), null)
+    assert.strictEqual(pick.entityItem({ name: 'player', type: 'player' }), null)
+    // (1.8: the spawn egg of the entity's id; no egg for a golem)
+    const old = createPickResult(fakeBot('1.8.8'))
+    assert.deepStrictEqual(picked(old.entityItem({ name: 'Pig', type: 'mob' })), ['spawn_egg', 90])
+    assert.strictEqual(old.entityItem({ name: 'VillagerGolem', type: 'mob' }), null)
+    assert.deepStrictEqual(picked(old.entityItem({ name: 'MinecartRideable', type: 'object' })), ['minecart', 0])
+  })
+})
+
 describe('the crosshair (Minecraft.pick, Item.getPlayerPOVHitResult)', () => {
   it('meets a redstone wire, a torch and a lectern by their outline shapes', () => {
     const bot = fakeBot('26.1', { pitch: 40 })
@@ -748,17 +816,92 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.deepStrictEqual(names(), success ? ['block_place', 'arm_animation'] : ['block_place'])
     })
 
+    // the pick key's packets: [name, what they say]
+    const Item = require('prismarine-item')(registry)
+    const put = (slot, name, count = 1, metadata = 0) => bot.inventory.updateSlot(slot, name ? new Item(registry.itemsByName[name].id, count, metadata) : null)
+    const picks = () => written.filter(p => /^(pick_item|custom_payload|set_creative_slot)/.test(p.name) && !(p.name === 'custom_payload' && p.data.channel !== 'MC|PickItem')).map(p => {
+      if (p.name === 'custom_payload') return [p.name, p.data.channel, [...p.data.data]]
+      if (p.name === 'set_creative_slot') {
+        const item = Item.fromNotch(p.data.item)
+        return [p.name, p.data.slot, item?.name, item?.count, item?.metadata, item?.nbt?.value?.EntityTag?.value?.id?.value]
+      }
+      return [p.name, p.data.slot ?? p.data.position?.x ?? p.data.entityId]
+    })
+
+    it('before 1.21.4 the pick key selects the block\'s item in the hotbar, and asks the server for one elsewhere from 1.9 (Minecraft.pickBlock)', async () => {
+      if (registry.version['>=']('1.21.4')) return
+      // (the slot the server selected as the player joined)
+      client.write('held_item_slot', { slot: 0 })
+      await settle()
+      const stone = bot.blockAt(new Vec3(1, 64, 0))
+      // (in the rest of the inventory: ServerboundPickItemPacket from 1.13, the MC|PickItem channel before, nothing in 1.8)
+      put(20, 'stone', 8)
+      bot.pickBlock(stone)
+      await settle()
+      const expected = registry.version['>=']('1.13') ? [['pick_item', 20]] : registry.version['>=']('1.9') ? [['custom_payload', 'MC|PickItem', [20]]] : []
+      assert.deepStrictEqual(picks(), expected)
+      assert.strictEqual(bot.quickBarSlot, 0)
+      // (in the hotbar: selected on the client, nothing sent for the pick)
+      written.length = 0
+      put(39, 'stone', 8)
+      bot.pickBlock(stone)
+      await settle()
+      assert.deepStrictEqual(picks(), [])
+      assert.strictEqual(bot.quickBarSlot, 3)
+      // (an item of another kind, and the block's own item for a crop: wheat seeds; nothing for air or an item not there)
+      written.length = 0
+      put(20, null)
+      put(39, null)
+      put(22, registry.version['>=']('1.13') ? 'granite' : 'stone', 1, registry.version['>=']('1.13') ? 0 : 1)
+      bot.pickBlock(stone)
+      bot.pickBlock(bot.blockAt(new Vec3(1, 66, 0)))
+      await settle()
+      assert.deepStrictEqual(picks(), [])
+    })
+
+    it('before 1.21.4 in creative the pick key puts the item in the hotbar and sets that slot, an entity\'s too (Inventory.setPickedItem)', async () => {
+      if (registry.version['>=']('1.21.4')) return
+      client.write('held_item_slot', { slot: 0 })
+      await settle()
+      bot.game.gameMode = 'creative'
+      put(36, 'dirt', 8)
+      bot.pickBlock(bot.blockAt(new Vec3(1, 64, 0)))
+      await settle()
+      assert.deepStrictEqual(picks(), [['set_creative_slot', 37, 'stone', 1, 0, undefined]])
+      assert.strictEqual(bot.quickBarSlot, 1)
+      assert.strictEqual(bot.heldItem?.name, 'stone')
+      // (an entity: a mob's spawn egg, before 1.13 the one egg of the entity's id or with its EntityTag)
+      written.length = 0
+      const name = registry.entitiesByName.cow ? 'cow' : 'Cow'
+      bot.pickEntity({ id: 42, name, type: registry.entitiesByName[name].type, position: new Vec3(2.5, 65, 0.5) })
+      await settle()
+      const egg = registry.version['>=']('1.13')
+        ? ['cow_spawn_egg', 0, undefined]
+        : registry.version['>=']('1.9') ? ['spawn_egg', 0, registry.version['>=']('1.11') ? 'minecraft:cow' : 'Cow'] : ['spawn_egg', registry.entitiesByName.Cow.id, undefined]
+      assert.deepStrictEqual(picks(), [['set_creative_slot', 38, egg[0], 1, egg[1], egg[2]]])
+      assert.strictEqual(bot.quickBarSlot, 2)
+      // (the stone again: its hotbar slot selected and sent again)
+      written.length = 0
+      bot.pickBlock(bot.blockAt(new Vec3(1, 64, 0)))
+      await settle()
+      assert.deepStrictEqual(picks(), [['set_creative_slot', 37, 'stone', 1, 0, undefined]])
+      assert.strictEqual(bot.quickBarSlot, 1)
+    })
+
     it('the pick key asks the server for the block or the entity from 1.21.4 (ServerboundPickItemFromBlockPacket / FromEntity)', async () => {
       const stone = bot.blockAt(new Vec3(1, 64, 0))
       if (!registry.version['>=']('1.21.4')) {
-        assert.throws(() => bot.pickBlock(stone))
+        // (an entity's item in survival: nothing)
+        bot.pickEntity({ id: 42, name: 'pig', type: 'animal' })
+        await settle()
+        assert.deepStrictEqual(picks(), [])
         return
       }
       bot.pickBlock(stone)
       bot.pickEntity({ id: 42 }, true)
       await settle()
-      const picks = written.filter(p => /^pick_item/.test(p.name)).map(p => [p.name, p.data.position?.x ?? p.data.entityId, p.data.includeData])
-      assert.deepStrictEqual(picks, [['pick_item_from_block', 1, false], ['pick_item_from_entity', 42, true]])
+      const sent = written.filter(p => /^pick_item/.test(p.name)).map(p => [p.name, p.data.position?.x ?? p.data.entityId, p.data.includeData])
+      assert.deepStrictEqual(sent, [['pick_item_from_block', 1, false], ['pick_item_from_entity', 42, true]])
     })
 
     it('a block outside the world border is neither used nor dug: nothing is sent, the attack swings (WorldBorder)', async () => {

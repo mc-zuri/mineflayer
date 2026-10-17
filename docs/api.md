@@ -2096,12 +2096,16 @@ Activate an entity at the given position, useful for armor stands.
 
 #### bot.pickBlock(block, includeData=false)
 
-The pick key on a block, from 1.21.4: the server puts the block's item in the hotbar. `includeData` asks for the block's
-data too (the control key held).
+The pick key on a block. From 1.21.4 the server puts the block's item in the hotbar; `includeData` asks for the block's
+data too (the control key held). Before 1.21.4 the bot picks it as the vanilla client did: the item in the hotbar is
+selected; one elsewhere in the inventory is asked of the server (`pick_item`, before 1.13 the `MC|PickItem` channel; not
+in 1.8); in creative the item is put in the hotbar and that slot set (`set_creative_slot`). `includeData` is not used
+there.
 
 #### bot.pickEntity(entity, includeData=false)
 
-The pick key on an entity, from 1.21.4: the server puts the entity's item in the hotbar.
+The pick key on an entity: from 1.21.4 the server puts the entity's item in the hotbar; before, only in creative, the
+bot puts it there itself as with `bot.pickBlock`.
 
 #### bot.consume()
 
