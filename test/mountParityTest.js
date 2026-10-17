@@ -176,6 +176,21 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // H: 1.11 - 1.19.2 a pig's spawn data carries a boost time of 0, an empty boost its first steered tick spends at
   // 1 + 1.15F * Mth.sin(1 / 0 * PI) (ItemBasedSteering)
+  describe('the empty boost of a pig\'s spawn data (ItemBasedSteering.onSynced, 1.11 - 1.19.2)', () => {
+    it('the first steered tick of a pig goes at the spent boost\'s speed (1.12.2)', async () => {
+      const t = await riding('1.12.2', 'pig', { setup: (v, t) => { v.metadata[13] = true; holdInHand(t, 'carrot_on_a_stick') } })
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(1)
+        await settle()
+        const [move] = packets(t, 'vehicle_move')
+        // (0.05625 at the plain speed)
+        assert.ok(Math.abs(move.z - 1.5 - 0.0562437847) < 2e-6, `the pig went ${move.z - 1.5}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // I: 1.16's rider whose shift key was down after its tick stops riding on its own client (Player.rideTick's
   // wantsToStopRiding), before the server says so

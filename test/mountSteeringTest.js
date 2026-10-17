@@ -131,6 +131,25 @@ describe('mounts the rider steers, and what goes with them', function () {
     })
   })
 
+  describe('[H] 1.11 - 1.19.2 a pig or strider spends the empty boost its spawn data started (ItemBasedSteering.onSynced)', () => {
+    it('[H] 1.16.5: the first steered tick of a pig goes at the empty boost\'s speed, once', async () => {
+      const first = async (spent) => {
+        const t = await riding('1.16.5', 'pig', { setup: (v, t) => { t.attribute(v, 0.25); t.hold('carrot_on_a_stick'); v.spentSpawnBoost = spent } })
+        try {
+          t.bot.setControlState('forward', true)
+          t.ticks(2)
+          assert.strictEqual(t.vehicle.spentSpawnBoost, true)
+          return t.vehicle.velocity.clone()
+        } finally {
+          await t.close()
+        }
+      }
+      const fresh = await first(undefined)
+      const spent = await first(true)
+      assert.ok(fresh.distanceTo(spent) > 1e-9, `${fresh} ${spent}`)
+    })
+  })
+
   describe('[J] before 1.19 an unsaddled horse is its rider\'s (AbstractHorse.canBeSteered)', () => {
     it('[J] 1.16.5: the rider moves its unsaddled horse (it falls), which jumps only saddled', async () => {
       const t = await riding('1.16.5', 'horse', { at: new Vec3(3.5, 66, 1.5), setup: (v, t) => { t.attribute(v, 0.225); v.onGround = false } })

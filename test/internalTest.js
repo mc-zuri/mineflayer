@@ -2387,6 +2387,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           vehicle.velocity.set(ride.vx, -0.0784000015258789, 0)
           vehicle.yaw = conv.fromNotchianYaw(270)
           if (ride.box) vehicle.box = [ride.box[0], pos.y + 1, 1.5 - Math.fround(0.45), ride.box[1], pos.y + 1 + Math.fround(0.9), 1.5 + Math.fround(0.45)]
+          // (the recorded pig was steered before: the empty boost of its spawn data was spent, ItemBasedSteering)
+          vehicle.spentSpawnBoost = true
           manual.entity.yawDegrees = 270
           manual.entity.yaw = conv.fromNotchianYaw(270)
           const moved = once(client, 'vehicle_move')
