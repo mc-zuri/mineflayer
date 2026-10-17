@@ -90,6 +90,21 @@ describe('mount seats (Entity.positionRider)', function () {
       assert.strictEqual(at.y, f32(f32(f32(2.375) - f32(0.6)) + -0.35))
       assert.ok(Math.abs(Math.hypot(at.x, at.z) - 0.5) < 1e-6, String(at))
     })
+
+    it('[T] before 1.20.2 a camel the rider does not steer seats it by its body\'s rotation, not its yaw (yBodyRot)', async () => {
+      // (unsaddled: the camel's yaw east, -90; its head and body south, 0, as the client turned them: a still mob's body
+      // stays, BodyRotationControl.clientTick; m_c_open_camel_riding t49 on 1.20.1)
+      for (const version of ['1.19.3', '1.19.4', '1.20.1']) {
+        const { at } = await seated(version, 'camel', {
+          setup: (camel) => {
+            camel.yaw = conv.fromNotchianYaw(-90)
+            camel.headYawDegrees = 0
+            camel.bodyYawDegrees = 0
+          }
+        })
+        assert.ok(Math.abs(at.x) < 1e-6 && Math.abs(at.z - 0.5) < 1e-6, `${version}: ${at}`)
+      }
+    })
   })
 
   describe('[K] the llama before 1.20.5 (Llama.positionRider)', () => {
