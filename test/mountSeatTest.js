@@ -92,6 +92,17 @@ describe('mount seats (Entity.positionRider)', function () {
     })
   })
 
+  describe('[K] the llama before 1.20.5 (Llama.positionRider)', () => {
+    it('[K] before 1.20.5 a llama seats its rider 0.3 behind its middle, at its version\'s height', async () => {
+      // 1.11 - 1.17: 0.67 of its height, 1.18 - 1.20.1: 0.6, + the player's -0.35; 1.20.2 - 1.20.4: height - 0.5F - 0.6F
+      for (const [version, y] of [['1.16.5', f32(1.87) * 0.67 + -0.35], ['1.19.4', f32(1.87) * 0.6 + -0.35], ['1.20.4', f32(f32(1.87) - f32(0.5)) + f32(-0.6)]]) {
+        const { at } = await seated(version, 'llama')
+        assert.ok(Math.abs(at.y - y) < 1e-9, `${version}: ${at.y} ${y}`)
+        assert.ok(Math.abs(Math.hypot(at.x, at.z) - f32(0.3)) < 1e-6, `${version}: ${at}`)
+      }
+    })
+  })
+
   describe('[M] the strider adds its riding offset, then the player\'s own (Entity.positionRider)', () => {
     it('[M] a strider seats its rider at its y plus its riding offset, then plus the player\'s', async () => {
       const at = new Vec3(3.5, 65.1, 1.5)

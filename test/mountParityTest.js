@@ -203,6 +203,20 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // K: before 1.20.5 a llama seats its rider 0.3 behind its middle along its body's rotation, at 0.67 of its height
   // (0.6 from 1.18) with the player's -0.35 (Llama.positionRider)
+  describe('the llama\'s seat before 1.20.5 (Llama.positionRider)', () => {
+    it('a llama facing north seats its rider 0.3 south of its middle (1.12.2)', async () => {
+      const t = await riding('1.12.2', 'llama')
+      try {
+        t.ticks(1)
+        await settle()
+        const seat = offset(t.bot, t.vehicle)
+        assert.ok(Math.abs(seat.y - (Math.fround(1.87) * 0.67 - 0.35)) < 1e-9, `y ${seat.y}`)
+        assert.ok(Math.abs(seat.z - 0.3) < 1e-6 && Math.abs(seat.x) < 1e-6, `x ${seat.x}, z ${seat.z}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // L: before 1.13 the player that climbs on a horse turns to the horse's rotation on its own client too
   // (AbstractHorse.mountTo)

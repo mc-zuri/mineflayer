@@ -154,13 +154,14 @@ describe('riding (vanilla\'s mounts and seats)', function () {
     })
 
     it('a llama seats its rider at (0, 1.37, -0.3) from 1.20.5', async () => {
-      for (const [version, back] of [['1.20.4', 0], ['26.1', 0.3]]) {
+      // (1.20.2 - 1.20.4 its float attachment (0, height - 0.5F, -0.3F): Llama.getPassengerAttachmentPoint)
+      for (const [version, y] of [['1.20.4', f32(f32(f32(1.87) - f32(0.5)) + f32(-0.6))], ['26.1', 1.37 - 0.6]]) {
         const t = await riding(version, 'llama')
         try {
           t.ticks(2)
           const at = offset(t.bot, t.vehicle)
-          assert.ok(Math.abs(Math.hypot(at.x, at.z) - back) < 1e-6, `${version}: ${at}`)
-          if (back) assert.ok(Math.abs(at.y - (1.37 - 0.6)) < 1e-9, `${version}: ${at}`)
+          assert.ok(Math.abs(Math.hypot(at.x, at.z) - 0.3) < 1e-6, `${version}: ${at}`)
+          assert.ok(Math.abs(at.y - y) < 1e-6, `${version}: ${at}`)
         } finally {
           await t.close()
         }
