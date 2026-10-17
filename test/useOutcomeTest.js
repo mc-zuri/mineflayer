@@ -139,6 +139,14 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       }
     })
 
+    it('a smithing table opens its screen from 1.16, does nothing before', () => {
+      for (const [version, expected] of [['1.14.4', 'pass'], ['1.15.2', 'pass'], ['1.16.5', 'success']]) {
+        const bot = fakeBot(version)
+        const table = bot.set(new Vec3(2, 101, 0), 'smithing_table')
+        assert.strictEqual(createUsePrediction(bot).useItemOn(table, WEST, center).result, expected, version)
+      }
+    })
+
     it('an empty jukebox and an uncharged respawn anchor pass, a disc goes in', () => {
       const bot = fakeBot('26.1')
       const jukebox = bot.set(new Vec3(2, 101, 0), 'jukebox', { has_record: false })
