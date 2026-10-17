@@ -1978,7 +1978,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           client.write('spawn_entity', {
             entityId: 99,
             objectUUID: '00112233-4455-6677-8899-aabbccddeeff',
-            type: itemRegistry.entitiesByName.fireworks_rocket.id,
+            // (1.11 - 1.12 name it fireworks_rocket, 1.13 firework_rocket: EntityType)
+            type: (itemRegistry.entitiesByName.fireworks_rocket ?? itemRegistry.entitiesByName.firework_rocket).id,
             x: 1.5,
             y: pos.y + 1,
             z: 1.5,
