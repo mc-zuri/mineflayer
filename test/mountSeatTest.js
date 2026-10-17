@@ -51,6 +51,20 @@ async function seated (version, name, options) {
 describe('mount seats (Entity.positionRider)', function () {
   this.timeout(20 * 1000)
 
+  describe('[M] the strider adds its riding offset, then the player\'s own (Entity.positionRider)', () => {
+    it('[M] a strider seats its rider at its y plus its riding offset, then plus the player\'s', async () => {
+      const at = new Vec3(3.5, 65.1, 1.5)
+      const t = await riding('1.16.5', 'strider', { at })
+      try {
+        t.ticks(1)
+        const riding = f32(1.7) - 0.19
+        assert.strictEqual(t.bot.entity.position.y, (at.y + riding) + -0.35)
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[N] the skeleton and zombie horses 1.20.2 - 1.20.4 (SkeletonHorse.getPassengerAttachmentPoint)', () => {
     it('[N] 1.20.2 - 1.20.4 a skeleton or zombie horse seats its rider 0.28125F below its height', async () => {
       for (const name of ['skeleton_horse', 'zombie_horse']) {

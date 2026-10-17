@@ -105,6 +105,19 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // M: a strider seats its rider at its y plus its riding offset, then plus the player's own (Entity.positionRider adds
   // them in turn)
+  describe('the strider\'s seat (Strider.getPassengersRidingOffset)', () => {
+    it('the rider of a strider at y 65 sits at (65 + its riding offset) - 0.35 (1.16.5)', async () => {
+      const t = await riding('1.16.5', 'strider')
+      try {
+        t.ticks(1)
+        await settle()
+        const ridingOffset = Math.fround(t.vehicle.height) - 0.19 + 0
+        assert.strictEqual(t.bot.entity.position.y, (65 + ridingOffset) + -0.35)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // N: 1.20.2 - 1.20.4 a skeleton or zombie horse seats its rider 0.28125F below its height
   // (SkeletonHorse / ZombieHorse.getPassengerAttachmentPoint)
