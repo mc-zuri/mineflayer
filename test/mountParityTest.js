@@ -636,4 +636,24 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AB: the horse the player climbs on stops rearing and eating on the client too (AbstractHorse.doPlayerRide's
+  // clearStanding and setEating(false))
+  describe('climbing on a rearing horse (AbstractHorse.doPlayerRide)', () => {
+    it('the bot that mounts a rearing horse clears its rearing on its own copy at once (1.21.4)', async () => {
+      const t = await fakeServerBot('1.21.4', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+      try {
+        const horse = entityAt(t, 100, 'horse', new Vec3(1.5, 65, 0.5))
+        const flags = horseFlags(t.registry)
+        horse.metadata[flags] = 0x02 | 0x20
+        t.ticks(2)
+        await settle()
+        assert.ok(horse.standAnim > 0, 'it rears')
+        t.bot.mount(horse)
+        assert.strictEqual(horse.metadata[flags], 0x02)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
