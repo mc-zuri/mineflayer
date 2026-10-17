@@ -56,6 +56,38 @@ async function riding (version, name, { at = new Vec3(3.5, 65, 1.5), mount = tru
 describe('mounts the rider steers, and what goes with them', function () {
   this.timeout(20 * 1000)
 
+  describe('[A] a llama with a saddle on 1.21.5 (Mob.isSaddled, AbstractHorse.getControllingPassenger)', () => {
+    it('[A] 1.21.5 steers a llama with a saddle in its slot, 1.21.6 does not', async () => {
+      for (const [version, steers] of [['1.21.5', true], ['1.21.6', false]]) {
+        const t = await riding(version, 'llama', { setup: (v, t) => { v.setEquipment(7, t.item('saddle')); t.attribute(v, 0.175) } })
+        try {
+          const start = t.vehicle.position.clone()
+          t.bot.setControlState('forward', true)
+          t.ticks(5)
+          await settle()
+          assert.strictEqual(t.vehicle.position.distanceTo(start) > 0.05, steers, version)
+          assert.strictEqual(t.names(/^vehicle_move$/).length > 0, steers, version)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+
+    it('[A] a steered llama jumps on its rider\'s released jump (PlayerRideableJumping)', async () => {
+      const t = await riding('1.21.5', 'llama', { setup: (v, t) => { v.setEquipment(7, t.item('saddle')); t.attribute(v, 0.175) } })
+      try {
+        t.bot.setControlState('jump', true)
+        t.ticks(3)
+        t.bot.setControlState('jump', false)
+        t.ticks(2)
+        await settle()
+        assert.strictEqual(t.written.filter(p => p.name === 'entity_action' && /riding_jump/i.test(String(p.data.actionId))).length, 1)
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[C] the sneak key the rider lets go of asks no more to dismount (LocalPlayer.tick: the live shift key)', () => {
     it('[C] a sneak pressed and let go before the tick sends no shift', async () => {
       const t = await riding('1.20.4', 'minecart')

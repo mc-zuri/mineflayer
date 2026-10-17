@@ -46,12 +46,30 @@ function entityAt ({ bot, registry }, id, name, at, yaw = 0) {
 }
 
 const item = (registry, name) => new (require('prismarine-item')(registry))(registry.itemsByName[name].id, 1)
+const saddle = (vehicle, registry) => vehicle.setEquipment(7, item(registry, 'saddle'))
 const packets = (t, name) => t.written.filter(p => p.name === name).map(p => p.data)
 
 describe('mount parity (vanilla\'s client, version by version)', function () {
   this.timeout(30 * 1000)
 
   // A: 1.21.5 counts the saddle in a llama's saddle slot (Mob.isSaddled): its rider steers it as a horse
+  describe('the 1.21.5 llama (AbstractHorse.getControllingPassenger)', () => {
+    it('a llama with a saddle is steered on 1.21.5, never on 1.21.4 or 1.21.6', async () => {
+      for (const [version, steered] of [['1.21.4', false], ['1.21.5', true], ['1.21.6', false]]) {
+        const t = await riding(version, 'llama', { setup: (v, { registry }) => saddle(v, registry) })
+        try {
+          const start = t.vehicle.position.clone()
+          t.bot.setControlState('forward', true)
+          t.ticks(5)
+          await settle()
+          assert.strictEqual(t.vehicle.position.distanceTo(start) > 0.01, steered, `${version}: the llama moved`)
+          assert.strictEqual(packets(t, 'vehicle_move').length > 0, steered, `${version}: vehicle_move`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
   // the item in the bot's hand
   const holdInHand = (t, name) => t.bot.inventory.updateSlot(t.bot.QUICK_BAR_START + t.bot.quickBarSlot, item(t.registry, name))
 
