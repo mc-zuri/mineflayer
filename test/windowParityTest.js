@@ -186,4 +186,53 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       await t.close()
     }
   })
+
+  // a 1.16.5 merchant screen open (however it was opened) with its offers
+  async function merchantBot () {
+    const t = await clickingBot('1.16.5')
+    t.bot.currentWindow = t.windows.createWindow(5, t.windows.windows['minecraft:merchant'].type, 'Villager')
+    const slot = (name, count) => ({ present: true, itemId: t.registry.itemsByName[name].id, itemCount: count })
+    const offer = (input, output) => ({ inputItem1: slot(input, 1), outputItem: slot(output, 1), inputItem2: undefined, tradeDisabled: false, nbTradeUses: 0, maximumNbTradeUses: 12, xp: 1, specialPrice: 0, priceMultiplier: 0.05, demand: 0 })
+    t.offers = () => {
+      t.client.write('trade_list', {
+        windowId: 5,
+        trades: [offer('emerald', 'bread'), offer('wheat', 'emerald')],
+        villagerLevel: 1,
+        experience: 0,
+        isRegularVillager: true,
+        canRestock: true
+      })
+      return sleep(50)
+    }
+    return t
+  }
+
+  it('a merchant screen takes the offers the server sends it, its selection at the first (ClientSideMerchant)', async () => {
+    const t = await merchantBot()
+    try {
+      await t.offers()
+      const window = t.bot.currentWindow
+      assert.deepStrictEqual(window.trades.map(trade => trade.outputItem.name), ['bread', 'emerald'])
+      assert.strictEqual(window.selectedTrade, window.trades[0])
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('bot.selectTrade picks the offer in the open merchant screen (MerchantMenu.setSelectionHint)', async () => {
+    const t = await merchantBot()
+    try {
+      await t.offers()
+      t.bot.selectTrade(1)
+      const window = t.bot.currentWindow
+      assert.strictEqual(window.selectedTrade, window.trades[1])
+      await sleep(50)
+      assert.deepStrictEqual(t.written.filter(p => p.name === 'select_trade').map(p => p.data.slot), [1])
+      // the offers again (as after a trade): the selection stays where it was
+      await t.offers()
+      assert.strictEqual(window.selectedTrade, window.trades[1])
+    } finally {
+      await t.close()
+    }
+  })
 })
