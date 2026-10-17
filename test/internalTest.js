@@ -109,9 +109,10 @@ describe('inventory simulator', () => {
     const dirt = registry.itemsByName.dirt.id
     for (let slot = 0; slot < 27; slot++) fullWindow.updateSlot(slot, new Item(dirt, 64))
     fullWindow.updateSlot(27, new Item(stone, 10))
-    assert.deepStrictEqual(click(fullWindow, 1, 0, 27), [27, 54])
-    assert.strictEqual(fullWindow.slots[27], null)
-    assert.strictEqual(fullWindow.slots[54].count, 10)
+    // a chest full: the stack stays where it is (ChestMenu.quickMoveStack moves the inventory's into the chest only)
+    assert.deepStrictEqual(click(fullWindow, 1, 0, 27), [])
+    assert.strictEqual(fullWindow.slots[27].count, 10)
+    assert.strictEqual(fullWindow.slots[54], null)
   })
 
   it('quick-moves between the main inventory and hotbar boundary slots', () => {
