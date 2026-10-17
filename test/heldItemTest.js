@@ -74,6 +74,58 @@ describe('the rotation of an item use (ServerboundUseItemPacket)', function () {
 
 describe('an item in use (LocalPlayer.isUsingItem)', function () {
   this.timeout(10 * 1000)
+  it('its use complete (entity event 9), a drink leaves its container in the hand and a food one less, 1.20.4', async () => {
+    const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      const give = async (name, count) => {
+        t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: Item.toNotch(new Item(t.registry.itemsByName[name].id, count)) })
+        await settle()
+      }
+      t.client.write('held_item_slot', { slot: 0 })
+      // (Player.handleEntityEvent 9: LivingEntity.completeUsingItem, Item.finishUsingItem on the client)
+      const complete = async () => {
+        t.client.write('entity_status', { entityId: t.bot.entity.id, entityStatus: 9 })
+        await settle()
+      }
+      await give('milk_bucket', 1)
+      t.bot.activateItem()
+      assert.strictEqual(t.bot.usingHeldItem, true)
+      await complete()
+      assert.strictEqual(t.bot.usingHeldItem, false)
+      assert.deepStrictEqual([t.bot.heldItem?.name, t.bot.heldItem?.count], ['bucket', 1])
+      await give('bread', 3)
+      t.bot.food = 10
+      t.bot.activateItem()
+      await complete()
+      assert.deepStrictEqual([t.bot.heldItem?.name, t.bot.heldItem?.count], ['bread', 2])
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('before 1.17 the server\'s stack in its slot, the same too, ends the use at the next tick (updateActiveHand)', async () => {
+    for (const [version, ends] of [['1.12.2', true], ['1.20.4', false]]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        const bread = Item.toNotch(new Item(t.registry.itemsByName.bread.id, 3))
+        t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: bread })
+        t.client.write('held_item_slot', { slot: 0 })
+        await settle()
+        t.bot.food = 10
+        t.bot.activateItem()
+        t.client.write('set_slot', { windowId: 0, stateId: 2, slot: 36, item: bread })
+        await settle()
+        assert.strictEqual(t.bot.usingHeldItem, true, version)
+        t.ticks(1)
+        assert.strictEqual(t.bot.usingHeldItem, !ends, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('the server\'s cooldown on it does not stop the use: letting go releases it (RELEASE_USE_ITEM), 1.20.4', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
