@@ -210,6 +210,35 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('before 1.16 a pig takes a sneaking ride (from 1.11) and a saddle whatever it wears (before 1.15), a grown one no food (Pig.mobInteract, SaddleItem)', async () => {
+    const cases = [
+      // version, saddled, ridden, sneaking, held, result
+      ['1.12.2', true, false, true, null, 'success'],
+      ['1.12.2', true, true, false, 'saddle', 'success'],
+      ['1.12.2', false, false, false, 'carrot', 'pass'],
+      ['1.10.2', true, false, false, null, 'pass'],
+      ['1.15.2', true, true, false, 'saddle', 'pass'],
+      ['1.15.2', false, false, false, 'saddle', 'success'],
+      ['1.15.2', true, false, true, 'carrot', 'success'],
+      ['1.16.5', true, false, true, null, 'pass']
+    ]
+    for (const [version, saddled, ridden, sneaking, held, result] of cases) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.lookAt = async () => {}
+        const pig = addEntity(t.bot, 8, { name: 'pig', type: 'animal', position: new Vec3(0.5, 65, 2.5), width: 0.9, height: 0.9 })
+        pig.metadata[require('../lib/entityData').entityDataKeys(t.registry, 'pig').indexOf('saddle')] = saddled
+        if (ridden) pig.passengers = [addEntity(t.bot, 9, { name: 'zombie', type: 'hostile', position: new Vec3(0.5, 65, 2.5) })]
+        t.bot.inventory.updateSlot(36, held && new Item(t.registry.itemsByName[held].id, 1))
+        t.bot.setControlState('sneak', sneaking)
+        assert.strictEqual(t.bot.mount(pig), result, `${version} ${[saddled, ridden, sneaking, held]}`)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('before 1.15 an empty item frame takes the click of an empty hand too (ItemFrame.interact: true)', async () => {
     for (const [version, result] of [['1.12.2', 'success'], ['1.14.4', 'success'], ['1.15.2', 'pass']]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
