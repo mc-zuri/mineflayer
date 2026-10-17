@@ -344,7 +344,9 @@ export interface Bot extends TypedEmitter<BotEvents> {
     count: number | null
   ) => Promise<void>
 
-  dig: ((block: Block, forceLook?: boolean | 'ignore') => Promise<void>) & ((block: Block, forceLook: boolean | 'ignore', digFace: 'auto' | Vec3 | 'raycast') => Promise<void>)
+  dig: ((block: Block, forceLook?: boolean | 'ignore') => Promise<void>) & ((block: Block, forceLook: boolean | 'ignore', digFace: 'auto' | Vec3 | 'raycast', face?: number, options?: { held?: boolean }) => Promise<void>)
+
+  isDestroying: boolean
 
   stopDigging: () => void
 
