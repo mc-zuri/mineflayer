@@ -312,6 +312,27 @@ describe('the swing the server asks for (ClientPacketListener.handleAnimate)', f
     }
   })
 
+  it('before 1.15 shears on a sheep pass on the client; before 1.16 a dye takes on any sheep, even of its color (Sheep.mobInteract, DyeItem.interactEnemy)', async () => {
+    for (const [version, shears, sameColor] of [['1.12.2', 'pass', 'success'], ['1.14.4', 'pass', 'success'], ['1.15.2', 'success', 'success'], ['1.16.5', 'consume', 'pass']]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.lookAt = async () => {}
+        const sheep = addEntity(t.bot, 7, { name: 'sheep', type: 'animal', position: new Vec3(2.5, 65, 0.5), width: 0.9, height: 1.3 })
+        // a blue sheep with its wool
+        const wool = require('../lib/entityData').entityDataKeys(t.registry, 'sheep').indexOf('wool')
+        sheep.metadata[wool] = 11
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.shears.id, 1))
+        assert.strictEqual(await t.bot.activateEntity(sheep), shears, `${version} shears`)
+        const blue = t.registry.itemsByName.blue_dye ?? t.registry.itemsByName.lapis_lazuli
+        t.bot.inventory.updateSlot(36, t.registry.version['>=']('1.13') ? new Item(blue.id, 1) : new Item(t.registry.itemsByName.dye.id, 1, 4))
+        assert.strictEqual(await t.bot.activateEntity(sheep), sameColor, `${version} blue dye`)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('before 1.19.4 a mob\'s data is read where the version puts it: a sheep\'s wool, a baby, an item frame\'s item (SynchedEntityData)', async () => {
     for (const [version, wool, baby, frameItem] of [['1.15.2', 16, 15, 7], ['1.17.1', 17, 16, 8], ['1.12.2', 13, 12, 6], ['1.9.4', 12, 11, 5]]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
