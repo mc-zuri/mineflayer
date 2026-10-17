@@ -81,6 +81,30 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(use.useItemOn(cake, UP, center).result, 'success')
     })
 
+    it('an invulnerable player eats no cake nor food before 1.15, a hungry one does (Player.canEat)', () => {
+      for (const version of ['1.12.2', '1.14.4']) {
+        const bot = fakeBot(version, { food: 10 })
+        bot.entity.isInvulnerable = true
+        const cake = bot.set(new Vec3(2, 101, 0), 'cake')
+        const use = createUsePrediction(bot)
+        bot.hold('stick')
+        assert.strictEqual(use.useItemOn(cake, UP, center).result, 'pass', version)
+        bot.hold('beef')
+        assert.strictEqual(use.useItem(), 'fail', version)
+        // (a golden apple neither, even on a full stomach)
+        bot.hold('golden_apple')
+        assert.strictEqual(use.useItem(), 'fail', version)
+        bot.entity.isInvulnerable = false
+        assert.strictEqual(use.useItem(), 'consume', version)
+        bot.hold('stick')
+        assert.strictEqual(use.useItemOn(cake, UP, center).result, 'success', version)
+      }
+      // from 1.15 an invulnerable player eats a full stomach's food and a golden apple is always eaten
+      const bot = fakeBot('1.16.5')
+      bot.hold('golden_apple')
+      assert.strictEqual(createUsePrediction(bot).useItem(), 'consume')
+    })
+
     it('an empty jukebox and an uncharged respawn anchor pass, a disc goes in', () => {
       const bot = fakeBot('26.1')
       const jukebox = bot.set(new Vec3(2, 101, 0), 'jukebox', { has_record: false })
