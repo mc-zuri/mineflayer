@@ -767,4 +767,87 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AG: the ground contact of the server's moves, teleports and position syncs (Entity.setOnGround), for an entity the
+  // client does not move itself (ClientPacketListener.handleMoveEntity, handleTeleportEntity, handleEntityPositionSync);
+  // from 1.21.2 a teleport's for the mount it steers too; 1.8 for every entity. A mount the rider then steers starts its
+  // travel in the air: its flying speed (m_c_open_donkey_riding t66 on 1.21.4)
+  describe('the ground contact of the server\'s moves (Entity.setOnGround)', () => {
+    const teleport = (registry, onGround) => {
+      const v = registry.version
+      if (v['<']('1.9')) return { entityId: 100, x: 3.5 * 32, y: 65 * 32, z: 1.5 * 32, yaw: 0, pitch: 0, onGround }
+      if (v['<']('1.21.2')) return { entityId: 100, x: 3.5, y: 65, z: 1.5, yaw: 0, pitch: 0, onGround }
+      const flags = { x: false, y: false, z: false, yaw: false, pitch: false, dx: false, dy: false, dz: false, yawDelta: false }
+      return { entityId: 100, x: 3.5, y: 65, z: 1.5, dx: 0, dy: 0, dz: 0, yaw: 0, pitch: 0, flags, onGround }
+    }
+    const sync = (registry, onGround) => registry.version['>=']('26.3')
+      ? { entityId: 100, pathType: 'linear', path: { x: 3.5, y: 65, z: 1.5 }, yaw: 0, pitch: 0, onGround }
+      : { entityId: 100, x: 3.5, y: 65, z: 1.5, dx: 0, dy: 0, dz: 0, yaw: 0, pitch: 0, onGround }
+    const move = (registry, onGround) => registry.version['>=']('26.3')
+      ? { entityId: 100, delta: { onGround, dX: 0, dY: 0, dZ: 0 } }
+      : { entityId: 100, dX: 0, dY: 0, dZ: 0, onGround }
+
+    it('an entity the client does not move takes the ground contact the server tells', async () => {
+      for (const version of ['1.8.8', '1.12.2', '1.20.1', '1.21.4', '26.3']) {
+        const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+        try {
+          const pig = entityAt(t, 100, 'pig', new Vec3(3.5, 65, 1.5))
+          t.client.write('rel_entity_move', move(t.registry, false))
+          await settle()
+          assert.strictEqual(pig.onGround, false, `${version}: the move's`)
+          t.client.write('entity_teleport', teleport(t.registry, true))
+          await settle()
+          assert.strictEqual(pig.onGround, true, `${version}: the teleport's`)
+          if (t.registry.version['>=']('1.21.2')) {
+            t.client.write('sync_entity_position', sync(t.registry, false))
+            await settle()
+            assert.strictEqual(pig.onGround, false, `${version}: the position sync's`)
+          }
+        } finally {
+          await t.close()
+        }
+      }
+    })
+
+    it('a horse saddled again after the server synced it in the air goes its first steered tick at its flying speed (1.21.4)', async () => {
+      const t = await riding('1.21.4', 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x02 } })
+      try {
+        t.bot.setControlState('forward', true)
+        t.ticks(1)
+        await settle()
+        t.client.write('sync_entity_position', sync(t.registry, false))
+        await settle()
+        t.vehicle.metadata[horseFlags(t.registry)] = 0x06
+        t.ticks(1)
+        await settle()
+        // (0.98 of its flying speed, its speed * 0.1F: not the ground's)
+        const moved = t.vehicle.position.z - 1.5
+        assert.ok(moved > 0 && moved < 0.05, String(moved))
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('a teleport of the horse its rider steers puts it in the air as it says from 1.21.2, not before', async () => {
+      for (const [version, inAir] of [['1.21.1', false], ['1.21.4', true], ['1.21.6', true]]) {
+        // (falling onto the floor: its first tick ends on the ground)
+        const t = await riding(version, 'horse', { setup: (v, { registry }) => { saddle(v, registry); v.metadata[horseFlags(registry)] = 0x06; v.velocity.set(0, -0.0784, 0) } })
+        try {
+          t.bot.setControlState('forward', true)
+          t.ticks(1)
+          await settle()
+          const before = t.vehicle.position.z
+          t.client.write('entity_teleport', teleport(t.registry, false))
+          await settle()
+          t.ticks(1)
+          await settle()
+          const moved = t.vehicle.position.z - before
+          assert.ok(moved > 0, `${version}: ${moved}`)
+          assert.strictEqual(moved < 0.05, inAir, `${version}: ${moved}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
