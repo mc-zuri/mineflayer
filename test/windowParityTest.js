@@ -192,6 +192,25 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('the screen of a mount has the saddle, the armor and the chest before the player slots, as its packet counts them', async () => {
+    // a donkey with a chest (15 slots) and a horse: the inventory's size to 1.20.4, without the armor on 1.20.5 - 1.20.6,
+    // the chest's columns from 1.21 (the recorded vanilla servers' counts)
+    for (const [version, donkey, horse] of [['1.16.5', 17, 2], ['1.20.4', 17, 2], ['1.20.6', 16, 1], ['1.21.1', 5, 0], ['1.21.5', 5, 0], ['26.1', 5, 0]]) {
+      const t = await clickingBot(version)
+      try {
+        const starts = []
+        for (const [id, nbSlots] of [[60, donkey], [61, horse]]) {
+          t.client.write('open_horse_window', { windowId: id, nbSlots, entityId: id })
+          await sleep(50)
+          starts.push([t.bot.currentWindow.inventoryStart, t.bot.currentWindow.slots.length])
+        }
+        assert.deepStrictEqual(starts, [[17, 53], [2, 38]], version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('from 1.21.5 the saddle slot of a mount\'s screen is the saddle the mount wears (EquipmentSlot.SADDLE)', async () => {
     const t = await clickingBot('1.21.5')
     try {
