@@ -35,4 +35,13 @@ describe('moving pistons', function () {
     kept.blockChanged([1, 101, 2707], 'stone')
     assert.deepStrictEqual(progresses(kept, 2), [0, 0.5])
   })
+  // its end sets the block it moved, as the client's finalTick does (PistonMovingBlockEntity.tick): the head the player
+  // the server put inside the plate stands on (n_piston_push_jumping on 1.19.3, before the server's head comes)
+  it('sets the block it moved where it ends', function () {
+    const placed = []
+    const pistons = extended()
+    for (let i = 0; i < 4; i++) pistons.tick(() => {}, (pos, stateId) => placed.push([pos, stateId]))
+    const Block = require('prismarine-block')(registry)
+    assert.deepStrictEqual(placed.map(([pos, stateId]) => [pos, Block.fromStateId(stateId, 0).name, Block.fromStateId(stateId, 0).getProperties().facing]), [[[0, 101, 2707], 'piston_head', 'east']])
+  })
 })
