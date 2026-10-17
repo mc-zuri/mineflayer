@@ -187,6 +187,29 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('a leash knot takes any click, an item frame one unless both it and the hand are empty (LeashFenceKnotEntity / ItemFrame.interact)', async () => {
+    const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      t.client.write('held_item_slot', { slot: 0 })
+      t.bot.lookAt = async () => {}
+      const knot = addEntity(t.bot, 7, { name: 'leash_knot', type: 'other', position: new Vec3(2.5, 65.375, 0.5), width: 0.375, height: 0.5 })
+      assert.strictEqual(await t.bot.activateEntity(knot), 'success')
+      const frame = addEntity(t.bot, 8, { name: 'item_frame', type: 'other', position: new Vec3(2.96875, 65.5, 0.5), width: 0.5, height: 0.5 })
+      assert.strictEqual(await t.bot.activateEntity(frame), 'pass')
+      t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: Item.toNotch(new Item(t.registry.itemsByName.stick.id, 1)) })
+      await settle()
+      assert.strictEqual(await t.bot.activateEntity(frame), 'success')
+      // (a stick in the frame: the empty hand turns it)
+      t.client.write('set_slot', { windowId: 0, stateId: 2, slot: 36, item: Item.toNotch(null) })
+      await settle()
+      frame.metadata[t.registry.entitiesByName.item_frame.metadataKeys.indexOf('item')] = Item.toNotch(new Item(t.registry.itemsByName.stick.id, 1))
+      assert.strictEqual(await t.bot.activateEntity(frame), 'success')
+    } finally {
+      await t.close()
+    }
+  })
+
   it('a villager takes the use and opens its trades (Villager before 1.11), a spawn egg passes before 1.11', async () => {
     for (const [version, name] of [['1.8.8', 'Villager'], ['1.10.2', 'Villager'], ['1.20.4', 'villager']]) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
