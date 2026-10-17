@@ -925,4 +925,35 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AK: before 1.9 the server alone moves a saddled horse; its rider's client still charges its jump and tells the
+  // server its power at the release (EntityPlayerSP.onLivingUpdate: isRidingHorse, sendHorseJump), before its look
+  // (c_ride_donkey_jump_charge_3 t4 on 1.8.8)
+  describe('the 1.8 rider\'s horse jump (EntityPlayerSP.onLivingUpdate: sendHorseJump)', () => {
+    it('a saddled horse\'s rider tells the jump it charged, an unsaddled one\'s nothing', async () => {
+      for (const flags of [0x06, 0x02]) {
+        const t = await riding('1.8.8', 'EntityHorse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = flags } })
+        try {
+          t.bot.setControlState('jump', true)
+          t.ticks(3)
+          await settle()
+          assert.strictEqual(packets(t, 'entity_action').length, 0, 'charging')
+          t.written.length = 0
+          t.bot.setControlState('jump', false)
+          t.ticks(1)
+          await settle()
+          const names = t.written.map(p => p.name).filter(n => n === 'entity_action' || n === 'look')
+          if (flags === 0x02) {
+            assert.deepStrictEqual(names, ['look'])
+          } else {
+            assert.deepStrictEqual(names, ['entity_action', 'look'])
+            // (three ticks held: 0.2F)
+            assert.strictEqual(packets(t, 'entity_action')[0].jumpBoost, 20)
+          }
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
