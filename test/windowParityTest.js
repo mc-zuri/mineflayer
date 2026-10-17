@@ -119,4 +119,26 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       await t.close()
     }
   })
+
+  it('1.16 - 26.2 a click that drops out of the screen swings the arm first (LivingEntity.drop)', async () => {
+    for (const version of ['1.15.2', '1.16.5', '1.20.4', '26.3']) {
+      const t = await clickingBot(version)
+      try {
+        const swings = t.registry.version['>=']('1.16') && !t.registry.version['>=']('26.3')
+        const relevant = () => t.names(/^(window_click|arm_animation|punch)$/)
+        // the drop key on a slot
+        t.bot.inventory.updateSlot(36, t.item('dirt', 5))
+        await t.click(36, 0, 4)
+        assert.deepStrictEqual(relevant(), swings ? ['arm_animation', 'window_click'] : ['window_click'], version)
+        // the carried stack clicked outside the screen
+        t.written.length = 0
+        t.bot.inventory.updateSlot(37, t.item('dirt', 5))
+        await t.click(37, 0, 0)
+        await t.click(-999, 0, 0)
+        assert.deepStrictEqual(relevant(), swings ? ['window_click', 'arm_animation', 'window_click'] : ['window_click', 'window_click'], version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
 })
