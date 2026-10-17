@@ -317,6 +317,28 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
 
   // O: a steered mob that does not turn with its rider keeps its own pitch, a float never -0 (Entity.getXRot, 0.0F):
   // the vehicle move reports it so
+  describe('the steered mob\'s own pitch (Entity.getXRot)', () => {
+    it('a sitting camel, which does not turn with its rider, reports a pitch of 0, not -0 (1.21.6)', async () => {
+      const t = await riding('1.21.6', 'camel', {
+        setup: (v, { registry }) => {
+          const keys = registry.entitiesByName.camel.metadataKeys
+          saddle(v, registry)
+          v.metadata[keys.indexOf('pose')] = 10
+          v.metadata[keys.indexOf('last_pose_change_tick')] = -1000
+        }
+      })
+      try {
+        t.client.write('update_time', { age: [0, 2000], time: [0, 2000], tickDayTime: true })
+        await settle()
+        t.ticks(1)
+        await settle()
+        const [move] = packets(t, 'vehicle_move')
+        assert.ok(Object.is(move.pitch, 0), `pitch ${Object.is(move.pitch, -0) ? '-0' : move.pitch}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // P: a passenger does not touch the ground (Entity.rideTick moves it by no move of its own): its first tick on foot
   // after it leaves the vehicle keeps the air's inertia, as after a tick in the air

@@ -231,6 +231,21 @@ describe('mounts the rider steers, and what goes with them', function () {
     })
   })
 
+  describe('[-0 pitch] a vehicle_move never says pitch -0 (the float the vehicle holds)', () => {
+    it('[-0 pitch] a mount of no steering rule the rider moves sends pitch 0, not -0', async () => {
+      const t = await riding('1.20.4', 'chicken')
+      try {
+        t.ticks(2)
+        await settle()
+        const moves = t.written.filter(p => p.name === 'vehicle_move')
+        assert.ok(moves.length > 0)
+        for (const { data } of moves) assert.ok(!Object.is(data.pitch, -0), 'pitch -0')
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[Y] 1.8: the client moves no ridden mob, and steers no boat (EntityHorse / EntityPig on the server only)', () => {
     it('[Y] 1.8.8: a saddled horse does not go on the rider\'s forward key', async () => {
       const t = await riding('1.8.8', 'EntityHorse', { setup: (v, t) => { t.saddle(v); t.attribute(v, 0.225) } })
