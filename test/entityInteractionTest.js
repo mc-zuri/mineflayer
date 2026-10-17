@@ -210,6 +210,25 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('before 1.11 a boat is called Boat and a pig Pig: they take the use all the same (EntityBoat, ItemSaddle)', async () => {
+    for (const [version, saddle] of [['1.8.8', 16], ['1.9.4', 12], ['1.10.2', 13]]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        t.bot.lookAt = async () => {}
+        const boat = addEntity(t.bot, 7, { name: 'Boat', type: 'other', position: new Vec3(0.5, 65, 2.5), width: 1.5, height: 0.6 })
+        assert.strictEqual(t.bot.mount(boat), 'success', `${version} boat`)
+        // a saddle put on a pig without one
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.saddle.id, 1))
+        const pig = addEntity(t.bot, 8, { name: 'Pig', type: 'mob', position: new Vec3(0.5, 65, 2.5), width: 0.9, height: 0.9 })
+        pig.metadata[saddle] = t.registry.version['<']('1.9') ? 0 : false
+        assert.strictEqual(t.bot.mount(pig), 'success', `${version} pig`)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('before 1.16 a pig takes a sneaking ride (from 1.11) and a saddle whatever it wears (before 1.15), a grown one no food (Pig.mobInteract, SaddleItem)', async () => {
     const cases = [
       // version, saddled, ridden, sneaking, held, result
