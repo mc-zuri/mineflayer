@@ -1090,4 +1090,37 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AQ: the rider's travel takes its speed and friction from the ground contact of its last move (LivingEntity.travel:
+  // onGround): the first tick of a player that got on its mount from the ground goes at the ground's speed, the block's
+  // friction kept (m_c_mount_click_zombie_horse t51 on 1.14.4)
+  describe('the first tick of a rider that got on from the ground (LivingEntity.travel: onGround)', () => {
+    it('goes at the ground speed, then at the air speed', async () => {
+      for (const version of ['1.14.4', '1.20.1']) {
+        const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+        try {
+          t.ticks(3)
+          await settle()
+          assert.strictEqual(t.bot.entity.onGround, true, `${version}: on the ground`)
+          const vehicle = entityAt(t, 100, 'horse', new Vec3(3.5, 65, 1.5))
+          vehicle.metadata[horseFlags(t.registry)] = 0x06
+          if (t.registry.version['>=']('1.21.5')) saddle(vehicle, t.registry)
+          const mounted = once(t.bot, 'mount')
+          t.client.write('set_passengers', { entityId: 100, passengers: [t.bot.entity.id] })
+          await mounted
+          t.bot.setControlState('forward', true)
+          t.ticks(1)
+          await settle()
+          // (south, yaw 0: 0.1 * 0.98F, kept by 0.6F * 0.91F)
+          const ground = t.bot.entity.velocity.z
+          t.ticks(1)
+          await settle()
+          assert.ok(Math.abs(ground - 0.1 * 0.98 * 0.546) < 1e-6, `${version}: ${ground}`)
+          assert.ok(Math.abs(t.bot.entity.velocity.z - 0.02 * 0.98 * 0.91) < 1e-6, `${version}: ${t.bot.entity.velocity.z}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
