@@ -2751,7 +2751,9 @@ for (const supportedVersion of mineflayer.testedVersions) {
           manual.setControlState('forward', true)
           manual.entity.sprinting = true
           runTicks(1)
-          assert.strictEqual(manual.entity.velocity.x, 0.023186799936810092)
+          // (0.025999999F; on 1.18.2 - 1.19.3 Player.aiStep's 0.02F + 0.006F in floats, c_ride_donkey_sprint_turn t2)
+          const floatSum = registry.isNewerOrEqualTo('1.18.2') && !registry.isNewerOrEqualTo('1.19.4')
+          assert.strictEqual(manual.entity.velocity.x, floatSum ? 0.023186801597917115 : 0.023186799936810092)
         } finally {
           manual.end()
         }
