@@ -987,4 +987,29 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // the flags of a 1.21.2+ teleport, all relative: x + 1, nothing else
+  const relativeTeleport = (dx) => ({ entityId: 100, x: dx, y: 0, z: 0, dx: 0, dy: 0, dz: 0, yaw: 0, pitch: 0, onGround: true, flags: { x: true, y: true, z: true, yaw: true, pitch: true, dx: true, dy: true, dz: true, yawDelta: false } })
+
+  // AM: from 1.21.2 a teleport's rotation is relative to the entity's own where its flags say
+  // (ClientPacketListener.setValuesFromPositionPacket: PositionMoveRotation.calculateAbsolute) (m_horse t28 on 26.3)
+  describe('a relative teleport\'s rotation (PositionMoveRotation.calculateAbsolute)', () => {
+    it('turns the entity by the rotation sent, from its own', async () => {
+      const conv = require('../lib/conversions')
+      for (const version of ['1.21.4', '26.3']) {
+        const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+        try {
+          const pig = entityAt(t, 100, 'pig', new Vec3(3.5, 65, 1.5), conv.fromNotchianYaw(270))
+          t.client.write('entity_teleport', relativeTeleport(1))
+          await settle()
+          t.ticks(4)
+          await settle()
+          assert.ok(Math.abs(pig.position.x - 4.5) < 1e-9, `${version}: ${pig.position.x}`)
+          assert.ok(Math.abs(((conv.toNotchianYaw(pig.yaw) % 360) + 360) % 360 - 270) < 1e-3, `${version}: ${conv.toNotchianYaw(pig.yaw)}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
