@@ -97,4 +97,13 @@ describe('the crosshair (Minecraft.pick, Item.getPlayerPOVHitResult)', () => {
     bot.set(new Vec3(2, 101, 0), 'water', { level: 3 })
     assert.strictEqual(bot._povHitResult('source_only').block.name, 'stone')
   })
+
+  it('picks 26.3\'s cushion', () => {
+    const bot = fakeBot('26.3', { pitch: 35 })
+    rayTrace(bot)
+    bot.entities[2] = { id: 2, name: 'cushion', type: 'other', position: new Vec3(2.5, 101, 0.5), width: 1, height: 0.25, isValid: true }
+    const hit = bot.raycastHitResult(4.5, 3)
+    assert.strictEqual(hit.type, 'entity')
+    assert.strictEqual(hit.entity.name, 'cushion')
+  })
 })
