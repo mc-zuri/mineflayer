@@ -425,6 +425,8 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   openAnvil: (anvil: Block) => Promise<Anvil>
 
+  setAnvilItemName: (name: string) => void
+
   selectTrade: (index: number) => void
 
   openVillager: (

@@ -235,4 +235,31 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
       await t.close()
     }
   })
+
+  it('bot.setAnvilItemName names the item in the open anvil screen (ServerboundRenameItemPacket, AnvilMenu.setItemName)', async () => {
+    for (const version of ['1.12.2', '1.16.5', '1.20.4']) {
+      const t = await clickingBot(version)
+      try {
+        const type = t.windows.windows['minecraft:anvil'].type
+        const window = t.windows.createWindow(6, type, 'Repair')
+        t.bot.currentWindow = window
+        let computed = 0
+        window.showAnvilResult = () => computed++
+        // (before 1.13 the name goes on the MC|ItemName channel, with no openAnvil before it)
+        t.bot.setAnvilItemName('Blade')
+        await sleep(50)
+        assert.strictEqual(window.anvilName, 'Blade')
+        assert.strictEqual(computed, 1)
+        if (t.registry.version['<']('1.13')) {
+          const named = t.written.filter(p => p.name === 'custom_payload' && p.data.channel === 'MC|ItemName')
+          assert.strictEqual(named.length, 1)
+          assert.ok(named[0].data.data.includes(Buffer.from('Blade')))
+          continue
+        }
+        assert.deepStrictEqual(t.written.filter(p => p.name === 'name_item').map(p => p.data.name), ['Blade'])
+      } finally {
+        await t.close()
+      }
+    }
+  })
 })
