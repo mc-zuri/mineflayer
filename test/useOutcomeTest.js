@@ -430,6 +430,32 @@ describe('the crosshair (Minecraft.pick, Item.getPlayerPOVHitResult)', () => {
     assert.strictEqual(bot._povHitResult('source_only').block.name, 'stone')
   })
 
+  it('before 1.13 meets a block by its one selection box: a cauldron\'s whole block, a brewing stand\'s base, a lever\'s own', () => {
+    for (const version of ['1.12.2', '1.13.2']) {
+      const legacy = version === '1.12.2'
+      // a cauldron, its top crossed above its west wall
+      let bot = fakeBot(version, { pitch: 18 })
+      rayTrace(bot)
+      bot.set(new Vec3(2, 101, 0), 'cauldron', legacy ? {} : { level: 0 })
+      let hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.block.name, 'cauldron', version)
+      assert.strictEqual(hit.intersect.y === 102, legacy, `${version} cauldron ${hit.intersect.y}`)
+      // a brewing stand: the ray passes over its base, and meets its rod from 1.13
+      bot = fakeBot(version, { pitch: 30 })
+      rayTrace(bot)
+      bot.set(new Vec3(2, 101, 0), 'brewing_stand', {})
+      hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.block?.name === 'brewing_stand', !legacy, version)
+      // a lever on the floor: 4/16 from its side before 1.13, 5/16 since
+      bot = fakeBot(version, { pitch: 35 })
+      rayTrace(bot)
+      bot.set(new Vec3(2, 101, 0), 'lever', { face: 'floor', facing: 'north', powered: false })
+      hit = bot.raycastHitResult(4.5, 3)
+      assert.strictEqual(hit.block.name, 'lever', version)
+      assert.strictEqual(hit.intersect.x - 2, legacy ? 0.25 : 0.3125, version)
+    }
+  })
+
   it('picks 26.3\'s cushion', () => {
     const bot = fakeBot('26.3', { pitch: 35 })
     rayTrace(bot)
