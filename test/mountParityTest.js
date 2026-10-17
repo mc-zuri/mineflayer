@@ -95,6 +95,19 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
   // after it leaves the vehicle keeps the air's inertia, as after a tick in the air
 
   // Q: 1.21.2+'s position sync carries a motion the client does not take (ClientPacketListener.handleEntityPositionSync)
+  describe('the position sync\'s motion (ClientboundEntityPositionSyncPacket)', () => {
+    it('a pig the server syncs keeps its own motion (1.21.3)', async () => {
+      const t = await fakeServerBot('1.21.3', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+      try {
+        const pig = entityAt(t, 101, 'pig', new Vec3(3.5, 65, 1.5))
+        t.client.write('sync_entity_position', { entityId: 101, x: 3.5, y: 65, z: 1.5, dx: 0.5, dy: 0, dz: 0, yaw: 0, pitch: 0, onGround: true })
+        await settle()
+        assert.strictEqual(pig.velocity.x, 0)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // R: from 1.16 the client keeps an entity's packet position as a double (Entity.packetCoordinates, VecDeltaCodec from
   // 1.19): a relative move of 0 on an axis keeps it as it is, another is added to it floored to 1/4096 before 1.19.4,
