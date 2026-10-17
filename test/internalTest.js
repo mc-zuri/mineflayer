@@ -2260,7 +2260,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
           else vehicle.metadata[index] = 0x02 | 0x04
           const synced = once(manual._client, 'entity_metadata')
-          client.write('entity_metadata', { entityId: 100, metadata: [{ key: index, type: version['>=']('1.19.4') ? 'byte' : 0, value: version['>=']('1.21.5') ? 0x22 : 0x26 }] })
+          // (rearing: bit 32, before 1.11 EntityHorse's 64)
+          client.write('entity_metadata', { entityId: 100, metadata: [{ key: index, type: version['>=']('1.19.4') ? 'byte' : 0, value: version['>=']('1.21.5') ? 0x22 : version['<']('1.11') ? 0x46 : 0x26 }] })
           await synced
           vehicle.velocity.set(0, -0.0784000015258789, 0)
           manual.setControlState('forward', true)
@@ -2285,7 +2286,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
           if (version['>=']('1.21.5')) vehicle.setEquipment(7, new (require('prismarine-item')(manual.registry))(manual.registry.itemsByName.saddle.id, 1))
           else vehicle.metadata[index] = 0x02 | 0x04
           const synced = once(manual._client, 'entity_metadata')
-          client.write('entity_metadata', { entityId: 100, metadata: [{ key: index, type: version['>=']('1.19.4') ? 'byte' : 0, value: version['>=']('1.21.5') ? 0x22 : 0x26 }] })
+          // (rearing: bit 32, before 1.11 EntityHorse's 64)
+          client.write('entity_metadata', { entityId: 100, metadata: [{ key: index, type: version['>=']('1.19.4') ? 'byte' : 0, value: version['>=']('1.21.5') ? 0x22 : version['<']('1.11') ? 0x46 : 0x26 }] })
           await synced
           vehicle.position.set(0.5, pos.y + 1, 1.5)
           vehicle.velocity.set(0, -0.0784000015258789, 0)

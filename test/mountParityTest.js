@@ -616,4 +616,24 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AA: before 1.11 EntityHorse's flags have it rear at bit 64 (32 is eating grass); from 1.11 AbstractHorse's at 32
+  describe('the horse\'s rearing flag (EntityHorse.isRearing, AbstractHorse.isStanding)', () => {
+    it('a horse rears on bit 64 before 1.11 (1.10.2) and on bit 32 from 1.11 (1.12.2)', async () => {
+      for (const [version, name, bits] of [['1.10.2', 'EntityHorse', [0x40, 0x20]], ['1.12.2', 'horse', [0x20, 0x10]]]) {
+        for (const [bit, rears] of [[bits[0], true], [bits[1], false]]) {
+          const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+          try {
+            const horse = entityAt(t, 100, name, new Vec3(3.5, 65, 1.5))
+            horse.metadata[horseFlags(t.registry)] = 0x02 | bit
+            t.ticks(2)
+            await settle()
+            assert.strictEqual((horse.standAnim ?? 0) > 0, rears, `${version} flags ${bit}`)
+          } finally {
+            await t.close()
+          }
+        }
+      }
+    })
+  })
 })
