@@ -419,6 +419,21 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(use.useItem(), 'pass')
     })
 
+    it('a drink is a Success on 1.15 (it swings), a CONSUME from 1.16 (DrinkHelper.startDrinking)', () => {
+      for (const [version, result] of [['1.15.2', 'success'], ['1.16.5', 'consume'], ['1.20.4', 'consume']]) {
+        const bot = fakeBot(version)
+        const use = createUsePrediction(bot)
+        bot.hold('milk_bucket')
+        assert.strictEqual(use.useItem(), result, version)
+        bot.hold('potion')
+        assert.strictEqual(use.useItem(), result, version)
+        // (food is a CONSUME on both)
+        bot.food = 10
+        bot.hold('bread')
+        assert.strictEqual(use.useItem(), 'consume', version)
+      }
+    })
+
     it('throws swing, food is consumed by a player who can eat, an item on cooldown passes', () => {
       const bot = fakeBot('26.1')
       const use = createUsePrediction(bot)
