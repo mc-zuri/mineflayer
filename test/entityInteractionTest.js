@@ -43,6 +43,20 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
   this.timeout(10 * 1000)
   const uses = t => t.written.filter(p => p.name === 'use_entity').map(p => p.data)
 
+  it('a camel takes the ride with a swing until 1.21.11 (Camel.mobInteract: SUCCESS, CONSUME since)', async () => {
+    for (const [version, result, swings] of [['1.21.5', 'success', 1], ['1.21.11', 'consume', 0]]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const camel = addEntity(t.bot, 7, { name: 'camel', type: 'animal', position: new Vec3(0.5, 65, 2.5), width: 1.7, height: 2.375 })
+        assert.strictEqual(t.bot.mount(camel), result, version)
+        await settle()
+        assert.strictEqual(t.names(/arm_animation/).length, swings, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('before 26.1 a mount is INTERACT_AT where the crosshair meets it, then INTERACT, and a swing from 1.15', async () => {
     for (const version of ['1.12.2', '1.20.4']) {
       const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
