@@ -161,6 +161,16 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       }
     })
 
+    it('before 1.11 a cake\'s use swings whether a slice is eaten or not', () => {
+      for (const [version, expected] of [['1.8.8', 'success'], ['1.10.2', 'success'], ['1.11.2', 'pass']]) {
+        const bot = fakeBot(version)
+        bot.entity.isInvulnerable = true
+        const cake = bot.set(new Vec3(2, 101, 0), 'cake')
+        bot.hold('stick')
+        assert.strictEqual(createUsePrediction(bot).useItemOn(cake, UP, center).result, expected, version)
+      }
+    })
+
     it('an empty jukebox and an uncharged respawn anchor pass, a disc goes in', () => {
       const bot = fakeBot('26.1')
       const jukebox = bot.set(new Vec3(2, 101, 0), 'jukebox', { has_record: false })
