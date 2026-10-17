@@ -3185,7 +3185,7 @@ for (const supportedVersion of mineflayer.testedVersions) {
       })
 
       // v_raft_forward t1 before 1.21.2: the boat of the bamboo type and the seat it gave its rider
-      const BAMBOO_BOAT_SEATS = { '1.20.4': [100.52334181621595, 100.42334179237409], '1.20.6': [100.52334181630349, 100.42334181630349], '1.21.1': [100.52334181630349, 100.42334181630349] }
+      const BAMBOO_BOAT_SEATS = { '1.20.1': [100.52334181621595, 100.42334181472583], '1.20.4': [100.52334181621595, 100.42334179237409], '1.20.6': [100.52334181630349, 100.42334181630349], '1.21.1': [100.52334181630349, 100.42334181630349] }
       it('a boat of the bamboo type seats its rider as a raft (Boat.Type.BAMBOO, v_raft_forward t1)', async function () {
         const seat = BAMBOO_BOAT_SEATS[supportedVersion]
         if (!seat) return this.skip() // the recordings' versions
@@ -3197,6 +3197,23 @@ for (const supportedVersion of mineflayer.testedVersions) {
           vehicle.position.set(0.5, seat[0], 0.5)
           runTicks(1)
           assert.strictEqual(manual.entity.position.y, seat[1])
+        } finally {
+          manual.end()
+        }
+      })
+
+      // 1.19.3 - 1.19.4 (the update_1_20 experiment): Boat.getPassengersRidingOffset 0.3 for the bamboo type, the 8th
+      // type in 1.19.3 (no CHERRY yet) in Boat.DATA_ID_TYPE, the 12th data; the float sum with the player's -0.35
+      it('a boat of the bamboo type seats its rider 0.3 up in 1.19.3 - 1.19.4 (Boat.getPassengersRidingOffset)', async function () {
+        if (supportedVersion !== '1.19.3' && supportedVersion !== '1.19.4') return this.skip()
+        const { manual, vehicle, runTicks } = await ridingManualBot('boat')
+        try {
+          vehicle.height = 0.5625
+          vehicle.metadata = []
+          vehicle.metadata[11] = supportedVersion === '1.19.3' ? 7 : 8 // bamboo
+          vehicle.position.set(0.5, 64, 0.5)
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.y, 64 + Math.fround(0.3 - 0.35))
         } finally {
           manual.end()
         }
