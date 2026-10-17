@@ -56,6 +56,22 @@ describe('the crosshair (GameRenderer.pick)', () => {
     assert.strictEqual(hit.entity.name, 'pig')
   })
 
+  it('does not pick an item minecraft-data calls a mob (1.14.4): the block behind it is dug', () => {
+    // a block just broken drops its item in front of the next one (m_dig on 1.14.4 - 1.15.2)
+    const bot = fakeBot('1.14.4', 30)
+    bot.set(new Vec3(3, 101, 0), 'stone')
+    const data = bot.registry.entitiesByName.item
+    assert.strictEqual(data.type, 'mob')
+    bot.entities[2] = { id: 2, name: 'item', type: data.type, position: new Vec3(2.4, 101.4, 0.5), width: 0.25, height: 0.25, isValid: true }
+    bot.entities[3] = { id: 3, name: 'arrow', type: 'mob', position: new Vec3(2.0, 101.6, 0.5), width: 0.5, height: 0.5, isValid: true }
+    const hit = bot.raycastHitResult(4.5, 3)
+    assert.strictEqual(hit.type, 'block')
+    assert.ok(hit.block.position.equals(new Vec3(3, 101, 0)))
+    // (an item frame, which is not living either, is picked)
+    bot.entities[4] = { id: 4, name: 'item_frame', type: 'mob', position: new Vec3(2.5, 101.4, 0.5), width: 0.5, height: 0.5, isValid: true }
+    assert.strictEqual(bot.raycastHitResult(4.5, 3).entity?.name, 'item_frame')
+  })
+
   it('an entity hit beyond the entity range is a miss where it was (LocalPlayer.filterHitResult)', () => {
     const bot = fakeBot('1.20.4', 0)
     bot.entities[3] = { id: 3, name: 'pig', type: 'animal', position: new Vec3(4.0, 102, 0.5), width: 0.9, height: 0.9, isValid: true }
