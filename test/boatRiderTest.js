@@ -14,19 +14,28 @@ function ground () {
   return blocks
 }
 
+// still water a block deep over the stone
+function pool () {
+  const blocks = ground()
+  for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) blocks.push([x, 65, z, 'water'])
+  return blocks
+}
+
 // The bot on its feet at (0.5, 65, 0.5), then put by the server in a boat (id 100) at (8.5, 65, 8.5)
-async function inBoat (version) {
-  const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+async function inBoat (version, { blocks = ground(), y = 65 } = {}) {
+  const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks })
   const { bot, client, registry } = t
   const Entity = require('prismarine-entity')(bot.version)
   const boat = bot.entities[100] ?? (bot.entities[100] = new Entity(100))
-  const name = registry.entitiesByName.oak_boat ? 'oak_boat' : 'boat'
+  const name = registry.entitiesByName.oak_boat ? 'oak_boat' : registry.entitiesByName.boat ? 'boat' : 'Boat'
   const type = registry.entitiesByName[name]
   Object.assign(boat, { name, type: type.type ?? 'mob', height: type.height, width: type.width, onGround: true, metadata: [] })
-  boat.position.set(8.5, 65, 8.5)
+  boat.position.set(8.5, y, 8.5)
   bot.entityInterpolation?.spawn(boat)
   const mounted = once(bot, 'mount')
-  client.write('set_passengers', { entityId: 100, passengers: [bot.entity.id] })
+  // (before 1.9 the rider is attached to its vehicle: S1BPacketEntityAttach)
+  if (registry.version['<']('1.9')) client.write('attach_entity', { entityId: bot.entity.id, vehicleId: 100, leash: false })
+  else client.write('set_passengers', { entityId: 100, passengers: [bot.entity.id] })
   await mounted
   await settle()
   t.written.length = 0
@@ -71,6 +80,22 @@ describe('the rider of a boat it steers', function () {
       await settle()
       assert.strictEqual(t.bot.vehicle, null)
       assert.deepStrictEqual(boat.interpolatedPosition.toArray(), at.toArray())
+    } finally {
+      await t.close()
+    }
+  })
+  // 1.8's rider is in the water its boat floats on (Entity.handleWaterMovement, which 1.9 skips for a boat's passenger):
+  // its tick from no motion (Entity.updateRidden) swims, its input at 0.02F, 0.8F of the motion kept, then 0.02 down
+  // (EntityLivingBase.moveEntityWithHeading; v_boat_dismount on 1.8.8)
+  it('swims in the water its boat floats on, on 1.8', async () => {
+    const t = await inBoat('1.8.8', { blocks: pool(), y: 65.9 })
+    try {
+      t.bot.setControlState('forward', true)
+      t.ticks(2)
+      await settle()
+      const { x, y, z } = t.bot.entity.velocity
+      // (yaw 0: the input along z; the recorded 0.015680000419616702)
+      assert.deepStrictEqual([x, y, z].map(v => v + 0), [0, -0.02, 0.015680000419616702])
     } finally {
       await t.close()
     }
