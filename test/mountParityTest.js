@@ -1032,4 +1032,32 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AO: before 1.9 the client seats its rider before the rider's tick, along the horse's body, which a saddled horse
+  // turned to its rider's look of this tick in its travel (EntityHorse.moveEntityWithHeading, updateRiderPosition): a
+  // rearing horse seats its rider back along that look (m_c_mount_click_skeleton_horse t43 on 1.8.8)
+  describe('the 1.8 rider of a rearing horse (EntityHorse.updateRiderPosition)', () => {
+    it('sits back along its look of this tick', async () => {
+      const conv = require('../lib/conversions')
+      // (tame, saddled, rearing)
+      const t = await riding('1.8.8', 'EntityHorse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x06 | 0x40 } })
+      try {
+        await t.bot.look(conv.fromNotchianYaw(270), 0, true)
+        t.ticks(2)
+        await settle()
+        // (the server turns its player to 90 and the client looks back to 270 before its tick)
+        t.client.write('position', { x: 3.5, y: 66, z: 1.5, yaw: 90, pitch: 0, flags: 0 })
+        await settle()
+        // (its mouse turns it, the look not yet sent)
+        const { JavaFloat } = require('../lib/javamath')
+        t.bot.entity.yawDegrees = new JavaFloat(270)
+        t.bot.entity.yaw = conv.fromNotchianYaw(270)
+        t.ticks(1)
+        await settle()
+        assert.ok(t.bot.entity.position.x < t.vehicle.position.x - 0.1, `${t.bot.entity.position.x} ${t.vehicle.position.x}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
