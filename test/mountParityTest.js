@@ -683,4 +683,36 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       assert.ok(Math.abs(await turned('1.21.9') - 150) > 10, 'goes on turning on 1.21.9')
     })
   })
+
+  // AD: a mob turns its body after its head as BodyRotationControl does on the client (Mob.tickHeadTurn): standing, its
+  // body follows a head held steady for 20 ticks, and stays when the head turns more than 15 degrees from where it
+  // was last steady; before 1.20.5 a llama seats its rider along that body rotation (Llama.positionRider)
+  describe('a mob\'s body rotation (BodyRotationControl.clientTick)', () => {
+    it('the body follows a steady head, then stays as the head turns away; the llama\'s rider sits along it (1.20.2)', async () => {
+      const t = await riding('1.20.2', 'llama')
+      try {
+        // (its head steady at the spawn's 180)
+        t.ticks(25)
+        await settle()
+        // the head turns to 172.97 (byte 123) over 3 ticks: within 15 of where it was steady, the body goes with it
+        t.client.write('entity_head_rotation', { entityId: 100, headYaw: 123 })
+        await settle()
+        t.ticks(3)
+        await settle()
+        assert.ok(Math.abs(t.vehicle.bodyYawDegrees - 172.96875) < 1e-4, `body ${t.vehicle.bodyYawDegrees}`)
+        // then to 150.47 (byte 107): past 15 degrees the body stops where it was
+        t.client.write('entity_head_rotation', { entityId: 100, headYaw: 107 })
+        await settle()
+        t.ticks(3)
+        await settle()
+        assert.ok(Math.abs(t.vehicle.headYawDegrees - 150.46875) < 1e-4, `head ${t.vehicle.headYawDegrees}`)
+        assert.ok(Math.abs(t.vehicle.bodyYawDegrees - 165.46875) < 1e-4, `body ${t.vehicle.bodyYawDegrees}`)
+        const seat = offset(t.bot, t.vehicle)
+        const radians = 165.46875 * Math.PI / 180
+        assert.ok(Math.abs(seat.x - 0.3 * Math.sin(radians)) < 1e-4 && Math.abs(seat.z + 0.3 * Math.cos(radians)) < 1e-4, `seat ${seat}`)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
