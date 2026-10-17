@@ -70,11 +70,57 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AbstractHorse's flags: tame (2), saddled (4)
+  const horseFlags = (registry) => {
+    const named = registry.entitiesByName.horse?.metadataKeys?.indexOf('flags') ?? -1
+    if (named >= 0) return named
+    const v = registry.version
+    return v['<']('1.9') ? 16 : v['<']('1.10') ? 12 : v['<']('1.14') ? 13 : v['<']('1.15') ? 15 : v['<']('1.17') ? 16 : 17
+  }
   // the item in the bot's hand
   const holdInHand = (t, name) => t.bot.inventory.updateSlot(t.bot.QUICK_BAR_START + t.bot.quickBarSlot, item(t.registry, name))
 
   // B: a mount still easing to the server's move goes on with it under its rider, and the vehicle move reports where it
   // heads (Entity.lerpTargetX, from 1.21.5 lerpTargetYRot / XRot too: InterpolationHandler)
+  describe('the interpolation a ridden mob is in (LivingEntity.aiStep, InterpolationHandler)', () => {
+    it('a teleport of the steered horse turns it: the vehicle move reports the rotation it heads to (1.21.6)', async () => {
+      const t = await riding('1.21.6', 'horse', { setup: (v, { registry }) => { saddle(v, registry); v.metadata[horseFlags(registry)] = 0x06 } })
+      try {
+        t.ticks(1)
+        const flags = { x: false, y: false, z: false, yaw: false, pitch: false, dx: false, dy: false, dz: false, yawDelta: false }
+        t.client.write('entity_teleport', { entityId: 100, x: 3.5, y: 65, z: 1.5, dx: 0, dy: 0, dz: 0, yaw: -90, pitch: 0, flags, onGround: true })
+        await settle()
+        t.written.length = 0
+        t.ticks(1)
+        await settle()
+        const [move] = packets(t, 'vehicle_move')
+        assert.strictEqual(move.yaw, -90)
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('a pig the server moved just before its rider took it reports that move\'s target first (1.21.9)', async () => {
+      const t = await riding('1.21.9', 'pig', {
+        before: async (v, t) => {
+          t.client.write('rel_entity_move', { entityId: 100, dX: 0, dY: 0, dZ: 0, onGround: true })
+          await settle()
+        },
+        setup: (v, t) => { saddle(v, t.registry); holdInHand(t, 'carrot_on_a_stick') }
+      })
+      try {
+        t.ticks(4)
+        await settle()
+        // (it goes south, its rider's yaw 0)
+        const moves = packets(t, 'vehicle_move')
+        assert.strictEqual(moves[0].z, 1.5)
+        assert.ok(moves[3].z > 1.5, 'the pig went on')
+      } finally {
+        await t.close()
+      }
+    })
+  })
 
   // C: before 1.21.2 the shift of a passenger's input is the shift key as it is that tick (LocalPlayer.tick's
   // ServerboundPlayerInputPacket): let go, the next input no longer asks to dismount

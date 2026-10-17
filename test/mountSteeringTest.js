@@ -88,6 +88,52 @@ describe('mounts the rider steers, and what goes with them', function () {
     })
   })
 
+  describe('[B] a mount taken over goes on with its interpolation (LivingEntity.aiStep before travelRidden, 1.21.2+)', () => {
+    it('[B] a horse saddled while it eases to a server move goes on toward it over the steps left', async () => {
+      const t = await riding('1.21.4', 'horse', { setup: (v, t) => t.attribute(v, 0.225) })
+      try {
+        const start = t.vehicle.position.x
+        const moved = once(t.bot._client, 'rel_entity_move')
+        t.client.write('rel_entity_move', { entityId: 100, dX: 3 * 4096, dY: 0, dZ: 0, onGround: true })
+        await moved
+        t.saddle()
+        t.ticks(1)
+        assert.ok(Math.abs(t.vehicle.position.x - (start + 1)) < 1e-6, `after a step ${t.vehicle.position.x}`)
+        t.ticks(2)
+        assert.ok(Math.abs(t.vehicle.position.x - (start + 3)) < 1e-6, `after the steps ${t.vehicle.position.x}`)
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('[B] from 1.21.5 the vehicle_move of a mount easing to a server move says the rotation it heads to', async () => {
+      const t = await riding('1.21.5', 'horse', { setup: (v, t) => t.attribute(v, 0.225) })
+      try {
+        const moved = once(t.bot._client, 'entity_move_look')
+        t.client.write('entity_move_look', { entityId: 100, dX: 4096, dY: 0, dZ: 0, yaw: 64, pitch: 0, onGround: true })
+        await moved
+        t.saddle()
+        t.ticks(1)
+        await settle()
+        const [move] = t.written.filter(p => p.name === 'vehicle_move')
+        // (yaw 64 / 256 of a turn: 90 degrees)
+        assert.strictEqual(move.data.yaw, 90)
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('[B] the steered mob holds the float yaw it turned to, where it seats its rider (vehicle.yawDegrees)', async () => {
+      const t = await riding('1.21.4', 'horse', { setup: (v, t) => { t.saddle(v); t.attribute(v, 0.225) } })
+      try {
+        t.ticks(2)
+        assert.ok(t.vehicle.yawDegrees != null && Number.isFinite(Number(t.vehicle.yawDegrees)))
+      } finally {
+        await t.close()
+      }
+    })
+  })
+
   describe('[C] the sneak key the rider lets go of asks no more to dismount (LocalPlayer.tick: the live shift key)', () => {
     it('[C] a sneak pressed and let go before the tick sends no shift', async () => {
       const t = await riding('1.20.4', 'minecart')
