@@ -76,6 +76,15 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.deepStrictEqual(use.useItemOn(cake, UP, center), { result: 'consume' })
     })
 
+    it('a spectator\'s use of a block is a Success before 1.21.2, a CONSUME from 1.21.2 (MultiPlayerGameMode.performUseItemOn)', () => {
+      for (const [version, expected] of [['1.8.8', 'success'], ['1.12.2', 'success'], ['1.20.4', 'success'], ['1.21.1', 'success'], ['1.21.3', 'consume'], ['26.3', 'consume']]) {
+        const bot = fakeBot(version, { gameMode: 'spectator' })
+        const chest = bot.set(new Vec3(2, 101, 0), 'chest', { facing: 'west' })
+        bot.hold('stone')
+        assert.deepStrictEqual(createUsePrediction(bot).useItemOn(chest, WEST, center), { result: expected }, version)
+      }
+    })
+
     it('a cake is eaten by a hungry player, passes for a full one and takes no swing with an empty hand (1.15+)', () => {
       const bot = fakeBot('26.1', { food: 10 })
       const cake = bot.set(new Vec3(2, 101, 0), 'cake')
@@ -727,6 +736,16 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       assert.strictEqual(await bot.activateBlock(jukebox, new Vec3(-1, 0, 0), new Vec3(0, 0.5, 0.5)), 'pass')
       await settle()
       assert.deepStrictEqual(names(), ['block_place'])
+    })
+
+    it('a spectator\'s use of a block is sent; before 1.21.2 it is a Success that swings, from 1.21.2 a CONSUME', async () => {
+      bot.lookAt = async () => {}
+      bot.game.gameMode = 'spectator'
+      const stone = bot.blockAt(new Vec3(1, 64, 0))
+      const success = !registry.version['>=']('1.21.2')
+      assert.strictEqual(await bot.activateBlock(stone, new Vec3(0, 1, 0), new Vec3(0.5, 1, 0.5)), success ? 'success' : 'consume')
+      await settle()
+      assert.deepStrictEqual(names(), success ? ['block_place', 'arm_animation'] : ['block_place'])
     })
 
     it('the pick key asks the server for the block or the entity from 1.21.4 (ServerboundPickItemFromBlockPacket / FromEntity)', async () => {
