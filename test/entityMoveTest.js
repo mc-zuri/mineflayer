@@ -3,11 +3,31 @@
 // handleEntityPositionSync; Entity's packet coordinates; LivingEntity's turn with its interpolation).
 
 const assert = require('assert')
+const { Vec3 } = require('vec3')
+const { createEntityInterpolation } = require('../lib/entityInterpolation')
 const { fakeServerBot } = require('./common/fakeServer')
 const { once, sleep } = require('../lib/promise_utils')
 
 describe('the moves of other entities', function () {
   this.timeout(20 * 1000)
+
+  describe('[R] the packet position as a double from 1.16 (Entity.packetCoordinates, VecDeltaCodec)', () => {
+    it('[R] from 1.16 a zero relative move keeps an axis; the others are floored to 1/4096 before 1.19.4, rounded since', () => {
+      const moved = (version) => {
+        const interpolation = createEntityInterpolation(require('prismarine-registry')(version))
+        const pig = { id: 7, name: 'pig', type: 'passive', position: new Vec3(0.3, 64.3, 0.3), yaw: 0, pitch: 0 }
+        interpolation.spawn(pig)
+        return interpolation.move(pig, 4096, 0, 0, null)
+      }
+      for (const version of ['1.16.5', '1.19.2', '1.19.4']) {
+        const to = moved(version)
+        assert.strictEqual(to.y, 64.3, version)
+        assert.strictEqual(to.z, 0.3, version)
+        const encode = version === '1.19.4' ? Math.round : Math.floor
+        assert.strictEqual(to.x, (encode(0.3 * 4096) + 4096) / 4096, version)
+      }
+    })
+  })
 
   describe('[Q] a position sync leaves the entity\'s motion alone (ClientPacketListener.handleEntityPositionSync)', () => {
     it('[Q] the motion a position sync carries is not the entity\'s', async () => {

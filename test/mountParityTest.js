@@ -112,6 +112,30 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
   // R: from 1.16 the client keeps an entity's packet position as a double (Entity.packetCoordinates, VecDeltaCodec from
   // 1.19): a relative move of 0 on an axis keeps it as it is, another is added to it floored to 1/4096 before 1.19.4,
   // rounded from 1.19.4 (VecDeltaCodec.encode)
+  describe('the packet position\'s codec (VecDeltaCodec)', () => {
+    const moved = async (version, x, dX) => {
+      const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+      try {
+        const pig = entityAt(t, 101, 'pig', new Vec3(3.5, 65, 1.5))
+        t.client.write('entity_teleport', { entityId: 101, x, y: 65, z: 1.5, yaw: 0, pitch: 0, onGround: true })
+        await settle()
+        t.client.write('rel_entity_move', { entityId: 101, dX, dY: 0, dZ: 4096, onGround: true })
+        await settle()
+        return pig.position.x
+      } finally {
+        await t.close()
+      }
+    }
+
+    it('an axis a move does not change keeps the teleport\'s double (1.16.5)', async () => {
+      assert.strictEqual(await moved('1.16.5', 3.5 + 0.3 / 4096, 0), 3.5 + 0.3 / 4096)
+    })
+
+    it('a move adds to the position floored before 1.19.4, rounded from 1.19.4', async () => {
+      assert.strictEqual(await moved('1.19.2', 3.5 + 0.7 / 4096, 1), (14336 + 1) / 4096)
+      assert.strictEqual(await moved('1.19.4', 3.5 + 0.7 / 4096, 1), (14337 + 1) / 4096)
+    })
+  })
 
   // S: a mob the player pushed was pushed back (Entity.push): the push goes into its next tick, steered too
 
