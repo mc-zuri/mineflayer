@@ -350,6 +350,20 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       }
     })
 
+    it('a flower goes on dirt only and in a flower pot, by its names before 1.13 too (red_flower)', () => {
+      for (const [version, flower] of [['1.12.2', 'red_flower'], ['1.13.2', 'poppy']]) {
+        const bot = fakeBot(version)
+        const use = createUsePrediction(bot)
+        bot.hold(flower)
+        assert.strictEqual(use.useItemOn(bot.blockAt(new Vec3(2, 100, 0)), UP, center).result, 'fail', `${version} on stone`)
+        const dirt = bot.set(new Vec3(2, 100, 0), 'dirt')
+        assert.strictEqual(use.useItemOn(dirt, UP, center).result, 'success', `${version} on dirt`)
+        // (and goes in a flower pot)
+        const pot = bot.set(new Vec3(2, 101, 1), 'flower_pot', version === '1.12.2' ? {} : undefined)
+        assert.strictEqual(use.useItemOn(pot, WEST, center).result, 'success', `${version} in a pot`)
+      }
+    })
+
     it('a sign item places a sign (1.13 calls the item and the block sign)', () => {
       const bot = fakeBot('1.13.2')
       bot.hold('sign')
