@@ -122,6 +122,23 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       }
     })
 
+    it('before 1.15 a block\'s use that acts swings (a boolean Block.activate): a campfire\'s food, a flower pot', () => {
+      for (const [version, expected] of [['1.13.2', 'success'], ['1.14.4', 'success'], ['1.15.2', 'consume']]) {
+        const bot = fakeBot(version)
+        const use = createUsePrediction(bot)
+        const pot = bot.set(new Vec3(2, 101, 0), 'flower_pot')
+        assert.strictEqual(use.useItemOn(pot, WEST, center).result, expected, `${version} flower pot`)
+        if (version === '1.13.2') continue
+        const campfire = bot.set(new Vec3(2, 101, 1), 'campfire', { lit: true, facing: 'north', signal_fire: false, waterlogged: false })
+        bot.hold('beef')
+        assert.strictEqual(use.useItemOn(campfire, UP, center).result, expected, `${version} campfire`)
+        // (a lectern without a book: nothing before 1.15)
+        const lectern = bot.set(new Vec3(2, 101, 2), 'lectern', { facing: 'north', has_book: false, powered: false })
+        bot.hold('stick')
+        assert.strictEqual(use.useItemOn(lectern, UP, center).result, version === '1.14.4' ? 'pass' : 'consume', `${version} lectern`)
+      }
+    })
+
     it('an empty jukebox and an uncharged respawn anchor pass, a disc goes in', () => {
       const bot = fakeBot('26.1')
       const jukebox = bot.set(new Vec3(2, 101, 0), 'jukebox', { has_record: false })
