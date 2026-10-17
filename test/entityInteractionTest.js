@@ -75,6 +75,18 @@ describe('a right click on an entity (MultiPlayerGameMode.interactAt / interact)
     }
   })
 
+  it('on 1.15 the client answers a click on a boat with false: it goes on to the off hand (Boat.interact)', async () => {
+    for (const [version, result] of [['1.14.4', 'success'], ['1.15.2', 'pass'], ['1.16.5', 'success']]) {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const boat = addEntity(t.bot, 7, { name: 'boat', type: 'other', position: new Vec3(0.5, 65, 2.5), width: 1.375, height: 0.5625 })
+        assert.strictEqual(t.bot.mount(boat), result, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('from 26.1 one interaction says where on the entity it is; an armor stand takes the click at INTERACT_AT', async () => {
     const t = await fakeServerBot('26.1', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
