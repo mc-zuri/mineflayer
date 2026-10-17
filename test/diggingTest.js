@@ -83,6 +83,26 @@ describe('digging (MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock)
     }
   })
 
+  it('a dig the server\'s break ended is still aborted once the key lets go (MultiPlayerGameMode.stopDestroyBlock: isDestroying)', async () => {
+    for (const version of ['1.13.2', '1.20.4']) {
+      const t = await standing(version)
+      try {
+        const done = t.bot.dig(t.bot.blockAt(new Vec3(1, 64, 0)), 'ignore', 'auto', 1)
+        t.ticks(2)
+        // the server breaks the block first
+        t.client.write('block_change', { location: { x: 1, y: 64, z: 0 }, type: 0 })
+        await done
+        assert.strictEqual(t.bot.isDestroying, true, version)
+        t.bot.stopDigging()
+        await settle()
+        assert.deepStrictEqual(digs(t).map(d => [d.status, d.face]), [[0, 1], [1, 0]], version)
+        assert.strictEqual(t.bot.isDestroying, false, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('the key held on from a broken block starts the next after the destroy delay of 5 ticks', async () => {
     const t = await standing('1.20.4')
     try {
