@@ -425,6 +425,54 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('from 1.17 bot.craft waits for the result slot the server sends for each change of the grid, so each click goes with the server\'s state id (CraftingMenu.slotChangedCraftingGrid)', async () => {
+    for (const version of ['1.17.1', '1.21.11']) {
+      const t = await clickingBot(version)
+      try {
+        // a server that plays the grid as vanilla's does: each change of a grid slot (a click in it, the take of the
+        // result taking one from each stack) sends the result slot with a new state id, a moment later; a click with
+        // a state id behind is answered with the whole menu
+        let serverStateId = 0
+        const grid = new Set()
+        const stale = []
+        const table = t.registry.itemsByName.crafting_table.id
+        const sendResult = () => {
+          serverStateId++
+          const item = grid.size === 4 ? t.Item.toNotch(new t.Item(table, 1)) : t.Item.toNotch(null)
+          const stateId = serverStateId
+          setTimeout(() => t.client.write('set_slot', { windowId: 0, stateId, slot: 0, item }), 20)
+        }
+        t.client.on('window_click', (packet) => {
+          if (packet.stateId !== serverStateId) stale.push([packet.slot, packet.stateId, serverStateId])
+          const before = new Set(grid)
+          for (const { location, item } of packet.changedSlots) {
+            if (location < 1 || location > 4) continue
+            if (item != null && item.present !== false && (item.itemCount ?? 1) > 0) grid.add(location)
+            else grid.delete(location)
+          }
+          if (packet.slot === 0) {
+            // ResultSlot.onTake: one off each stack of the grid, each a change
+            for (let i = 0; i < before.size; i++) sendResult()
+          } else if (packet.slot >= 1 && packet.slot <= 4) sendResult()
+        })
+        t.client.write('set_slot', { windowId: 0, stateId: serverStateId, slot: 0, item: t.Item.toNotch(null) })
+        await sleep(50)
+        t.bot.inventory.updateSlot(36, t.item('oak_planks', 8))
+        const ticking = setInterval(() => t.bot.physicsTick(), 50)
+        try {
+          const recipe = t.bot.recipesFor(table, null, 1, null)[0]
+          await t.bot.craft(recipe, 2, null)
+        } finally {
+          clearInterval(ticking)
+        }
+        assert.deepStrictEqual(stale, [], version)
+        assert.strictEqual(t.bot.inventory.items().find(item => item.name === 'crafting_table')?.count, 2, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('bot.clickEnchantment clicks an offer of the open enchanting screen (ServerboundContainerButtonClickPacket)', async () => {
     const t = await clickingBot('1.16.5')
     try {
