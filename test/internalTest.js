@@ -3959,6 +3959,50 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      it('a spawned entity moves as its spawn says where vanilla\'s spawn sets its motion (Entity.recreateFromPacket, NetHandlerPlayClient.handleSpawnObject before 1.14)', async function () {
+        const atLeast = (version) => registry.version['>='](version)
+        const type = (...names) => names.map(name => registry.entitiesByName[name]).find(Boolean)
+        const cases = [
+          // an object with data 1 before 1.14; every entity from 1.21.5
+          { entity: type('item', 'Item'), data: 1, moves: !atLeast('1.14') || atLeast('1.21.5') },
+          // (an arrow's data is its shooter's id + 1 before 1.14) a projectile on 1.21.4
+          { entity: type('arrow', 'Arrow'), data: 1, moves: !atLeast('1.14') || atLeast('1.21.4') },
+          // its data (the block) put to 0 before 1.14
+          { entity: type('falling_block', 'FallingSand'), data: 1, moves: atLeast('1.21.5') },
+          // the motion is the fireball's acceleration before 1.21 (AbstractHurtingProjectile)
+          { entity: type('fireball', 'Fireball'), data: 1, moves: atLeast('1.21') },
+          // 1.8 sends no motion with data 0 and 1.9 - 1.13 leave it
+          { entity: type('snowball', 'Snowball'), data: 0, moves: atLeast('1.21.4') },
+          // its constructor's motion before 1.14 (ShulkerBullet, from 1.9), its recreateFromPacket after
+          { entity: type('shulker_bullet', 'ShulkerBullet'), data: 0, moves: true },
+          // a mob comes in the general spawn from 1.19 (LivingEntity.recreateFromPacket)
+          { entity: registry.supportFeature('consolidatedEntitySpawnPacket') ? type('zombie') : null, data: 0, moves: true }
+        ].filter(c => c.entity)
+        const velocity = registry.supportFeature('entityVelocityIsLpVec3') ? { x: 0.125, y: -0.25, z: 0.375 } : { x: 1000, y: -2000, z: 3000 }
+        const [client] = await once(server, 'playerJoin')
+        for (const [i, { entity, data, moves }] of cases.entries()) {
+          const spawned = once(bot, 'entitySpawn')
+          client.write('spawn_entity', {
+            entityId: 20 + i,
+            objectUUID: '00112233-4455-6677-8899-aabbccddeeff',
+            type: entity.id,
+            x: 0.5,
+            y: 70,
+            z: 0.5,
+            pitch: 0,
+            yaw: 0,
+            headPitch: 0,
+            objectData: data,
+            velocity
+          })
+          const [spawnedEntity] = await spawned
+          assert.strictEqual(spawnedEntity.id, 20 + i)
+          const expected = moves ? [0.125, -0.25, 0.375] : [0, 0, 0]
+          const got = [spawnedEntity.velocity.x, spawnedEntity.velocity.y, spawnedEntity.velocity.z]
+          assert.ok(got.every((v, axis) => Math.abs(v - expected[axis]) < 1e-3), `${entity.name}: ${got} (expected ${expected})`)
+        }
+      })
+
       it('\'itemDrop\' event', function (done) {
         const itemData = {
           itemId: 149,
