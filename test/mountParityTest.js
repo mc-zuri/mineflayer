@@ -1123,4 +1123,29 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AR: before 1.11 the rider's use of its stick boosts the pig it steers on the client, for a length the client draws
+  // itself (ItemCarrotOnAStick.onItemRightClick, EntityPig.boost: rand.nextInt(841) + 140, never synced); from 1.11 the
+  // boost the server syncs starts it (c_ride_pig_boost t21 on 1.9.4 and 1.10.2)
+  describe('the 1.9 - 1.10 pig boost (EntityPig.boost)', () => {
+    it('starts on the client when its rider uses the stick', async () => {
+      for (const [version, boosts] of [['1.9.4', true], ['1.10.2', true], ['1.11.2', false]]) {
+        const name = require('minecraft-data')(version).entitiesByName.pig ? 'pig' : 'Pig'
+        const t = await riding(version, name, { setup: (v, t) => holdInHand(t, 'carrot_on_a_stick') })
+        try {
+          t.ticks(1)
+          await settle()
+          t.bot._riddenMobPhysics.boostLength = () => 230
+          t.bot.activateItem()
+          t.ticks(1)
+          await settle()
+          const state = t.bot._riddenMobPhysics.getCtx()?.state
+          assert.strictEqual(!!state?.boosting, boosts, version)
+          if (boosts) assert.strictEqual(state.boostTimeTotal, 230, version)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
