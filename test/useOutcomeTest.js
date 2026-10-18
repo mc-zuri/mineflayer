@@ -464,7 +464,7 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       bot.food = 10
       assert.strictEqual(use.useItem(), 'consume')
       bot.hold('ender_pearl')
-      bot._itemCooldowns.ender_pearl = performance.now() + 1000
+      bot._itemCooldowns.ender_pearl = 20
       assert.strictEqual(use.useItem(), 'pass')
     })
   })
@@ -1032,9 +1032,43 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       bot.activateItem()
       assert.strictEqual(bot.usingHeldItem, true)
       bot.deactivateItem()
-      bot._itemCooldowns.goat_horn = performance.now() + 1000
+      bot._itemCooldowns.goat_horn = 20
       bot.activateItem()
       assert.strictEqual(bot.usingHeldItem, false)
+    })
+
+    it('a cooldown lasts the player\'s ticks, however long they take (ItemCooldowns.tick)', async () => {
+      if (!registry.version['>=']('1.9')) return
+      const cooldown = (ticks) => client.write('set_cooldown', registry.version['>=']('1.21.2')
+        ? { cooldownGroup: 'minecraft:ender_pearl', cooldownTicks: ticks }
+        : { itemID: registry.itemsByName.ender_pearl.id, cooldownTicks: ticks })
+      // the player's ticks (a client tick the player does not tick leaves the cooldowns)
+      let playerTicks = 0
+      bot.on('physicsTickBegin', () => playerTicks++)
+      const tickPlayer = () => {
+        const before = playerTicks
+        for (let i = 0; i < 5; i++) {
+          bot.physicsTick()
+          if (playerTicks !== before) break
+        }
+        assert.strictEqual(playerTicks, before + 1)
+      }
+      hold('ender_pearl', 1)
+      cooldown(2)
+      // longer than the 2 ticks would take at 20 a second, without a tick
+      await sleep(300)
+      assert.strictEqual(bot._predictUse.useItem(), 'pass')
+      tickPlayer()
+      assert.strictEqual(bot._predictUse.useItem(), 'pass')
+      tickPlayer()
+      assert.strictEqual(bot._predictUse.useItem(), 'success')
+      cooldown(20)
+      await settle()
+      assert.strictEqual(bot._predictUse.useItem(), 'pass')
+      // 0 ticks ends it (ClientPacketListener.handleItemCooldown)
+      cooldown(0)
+      await settle()
+      assert.strictEqual(bot._predictUse.useItem(), 'success')
     })
 
     it('a dig goes on (and swings) in a tick the player itself does not tick', async () => {
