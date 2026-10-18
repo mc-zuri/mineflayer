@@ -1148,4 +1148,26 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AS: on 1.16 the server's teleport of the player takes it off its vehicle, once the player has ticked
+  // (ClientPacketListener.handleMovePlayer: tickCount > 0, removeVehicle); from 1.17 only where it asks to
+  // (requestDismountVehicle), before 1.16 never (c_ride_pig_dismount t12 on 1.16.5)
+  describe('the server\'s teleport of a rider (ClientPacketListener.handleMovePlayer)', () => {
+    it('takes it off its vehicle on 1.16', async () => {
+      for (const [version, off] of [['1.15.2', false], ['1.16.5', true], ['1.17.1', false]]) {
+        const t = await riding(version, 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x06 } })
+        try {
+          t.ticks(1)
+          await settle()
+          const position = { x: 0.5, y: 65, z: 0.5, yaw: 0, pitch: 0, flags: 0, teleportId: 1 }
+          if (t.registry.version['>=']('1.17')) position.dismountVehicle = false
+          t.client.write('position', position)
+          await settle()
+          assert.strictEqual(t.bot.vehicle == null, off, version)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
