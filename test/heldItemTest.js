@@ -36,6 +36,26 @@ describe('the selected slot (MultiPlayerGameMode.ensureHasSentCarriedItem)', fun
     })
   }
 
+  for (const version of ['1.12.2', '1.20.4', '26.1']) {
+    it(`a slot picked just before a block is placed goes to the server before the placement, ${version}`, async () => {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.bot.inventory.updateSlot(39, new Item(t.registry.itemsByName.cobblestone.id, 1))
+        t.bot.setQuickBarSlot(3)
+        t.written.length = 0
+        // the place goes out without a look (and so without a tick) in between
+        t.bot._genericPlace(t.bot.blockAt(new (require('vec3').Vec3)(0, 64, 0)), new (require('vec3').Vec3)(0, 1, 0), { forceLook: 'ignore' })
+        await settle()
+        const order = t.written.filter(p => p.name === 'held_item_slot' || /block_place|use_item_on/.test(p.name)).map(p => p.name)
+        assert.strictEqual(order[0], 'held_item_slot', order.join(', '))
+        assert.ok(order.length === 2, order.join(', '))
+      } finally {
+        await t.close()
+      }
+    })
+  }
+
   it('the slot the server selects is answered at the start of the next tick, not at once', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
