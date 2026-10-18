@@ -1318,4 +1318,27 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AZ: from 1.19.3 VecDeltaCodec.encode rounds the packet position to 1/4096 (Math.round), on 1.19 - 1.19.2 it floors
+  // it (Mth.lfloor): a move from a base off the grid lands by it (m_c_mount_click_mule on 1.19.3)
+  describe('the packet position of a move (VecDeltaCodec)', () => {
+    it('is rounded from 1.19.3, floored before', async () => {
+      for (const [version, round] of [['1.19.2', false], ['1.19.3', true]]) {
+        const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+        try {
+          // (0.9 / 4096 past the grid)
+          const x = 3.5 + 0.9 / 4096
+          const pig = entityAt(t, 100, 'pig', new Vec3(x, 65, 1.5))
+          t.client.write('rel_entity_move', { entityId: 100, dX: 4096, dY: 0, dZ: 0, onGround: true })
+          await settle()
+          t.ticks(4)
+          await settle()
+          const expected = ((round ? Math.round(x * 4096) : Math.floor(x * 4096)) + 4096) / 4096
+          assert.strictEqual(pig.interpolatedPosition.x, expected, version)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
