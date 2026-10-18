@@ -1292,4 +1292,30 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AY: before 1.15 a rotation-only move lerps the entity to its packet position like any move (1.14's
+  // ClientPacketListener.handleMoveEntity); from 1.15 to where it is shown (m_c_mount_click_pig t94 on 1.14.4)
+  describe('a rotation-only move before 1.15 (ClientPacketListener.handleMoveEntity)', () => {
+    it('goes on to the packet position', async () => {
+      for (const [version, onward] of [['1.14.4', true], ['1.15.2', false]]) {
+        const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+        try {
+          const pig = entityAt(t, 100, 'pig', new Vec3(3.5, 65, 1.5))
+          t.client.write('rel_entity_move', { entityId: 100, dX: 4096, dY: 0, dZ: 0, onGround: true })
+          await settle()
+          t.ticks(1)
+          await settle()
+          const shown = pig.interpolatedPosition.x
+          t.client.write('entity_look', { entityId: 100, yaw: 0, pitch: 0, onGround: true })
+          await settle()
+          t.ticks(3)
+          await settle()
+          const x = pig.interpolatedPosition.x
+          assert.ok(Math.abs(x - (onward ? 4.5 : shown)) < 1e-9, `${version}: ${shown} ${x}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
