@@ -2121,14 +2121,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
       async function ridingManualBot (name = 'horse') {
         const riding = await standingManualBot()
         const { manual, client } = riding
-        const mounted = once(manual, 'mount')
-        if (manual.registry.version['>=']('1.9')) client.write('set_passengers', { entityId: 100, passengers: [manual.entity.id] })
-        else client.write('attach_entity', { entityId: manual.entity.id, vehicleId: 100, leash: false })
-        await mounted
-        const vehicle = manual.entities[100]
-        Object.assign(vehicle, { name, height: 1.6, width: 1.3964844, onGround: true })
-        vehicle.position.set(1.5, pos.y + 1, 1.5)
-        // ServerPlayer.startRiding teleports the player to its seat
+        // ServerPlayer.startRiding teleports the player to its seat, before the tracker tells the passengers (a teleport
+        // of a passenger would take it off its vehicle on 1.16: ClientPacketListener.handleMovePlayer)
         const reply = once(client, teleportAnswer)
         client.write('position', {
           x: 1.5,
@@ -2140,6 +2134,13 @@ for (const supportedVersion of mineflayer.testedVersions) {
           teleportId: 2
         })
         await reply
+        const mounted = once(manual, 'mount')
+        if (manual.registry.version['>=']('1.9')) client.write('set_passengers', { entityId: 100, passengers: [manual.entity.id] })
+        else client.write('attach_entity', { entityId: manual.entity.id, vehicleId: 100, leash: false })
+        await mounted
+        const vehicle = manual.entities[100]
+        Object.assign(vehicle, { name, height: 1.6, width: 1.3964844, onGround: true })
+        vehicle.position.set(1.5, pos.y + 1, 1.5)
         riding.written.length = 0
         return { ...riding, vehicle }
       }
