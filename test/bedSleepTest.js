@@ -3,27 +3,29 @@
 // Player.startSleepInBed / trySleep).
 
 const assert = require('assert')
+const { Vec3 } = require('vec3')
 const { once, sleep } = require('../lib/promise_utils')
 const nbt = require('prismarine-nbt')
 const { fakeServerBot } = require('./common/fakeServer')
 
-// a bed facing east, its foot at 2, 65, 1 and its head at 3, 65, 1, the bot at 0.5, 65, 0.5, at night
-async function bedBot (version, options = {}) {
+// a bed facing east, its foot at 2, 65, 1 (or x, 65, 1) and its head east of it, the bot at 0.5, 65, 0.5, at night
+async function bedBot (version, { foot: x = 2, ...options } = {}) {
   const floor = []
-  for (let x = -1; x <= 5; x++) for (let z = -1; z <= 3; z++) floor.push([x, 64, z, 'stone'])
+  for (let fx = 0; fx <= 12; fx++) for (let z = -1; z <= 3; z++) floor.push([fx, 64, z, 'stone'])
   const flattened = require('prismarine-registry')(version).version['>=']('1.13')
   const beds = flattened
-    ? [[2, 65, 1, 'red_bed', { facing: 'east', part: 'foot', occupied: false }], [3, 65, 1, 'red_bed', { facing: 'east', part: 'head', occupied: false }]]
+    ? [[x, 65, 1, 'red_bed', { facing: 'east', part: 'foot', occupied: false }], [x + 1, 65, 1, 'red_bed', { facing: 'east', part: 'head', occupied: false }]]
     : []
   const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: [...floor, ...beds], ...options })
   if (!flattened) {
     // (before 1.13 the metadata: the facing, 4 occupied, 8 the head)
     const id = t.registry.blocksByName.bed.id
-    t.client.write('block_change', { location: { x: 2, y: 65, z: 1 }, type: id << 4 | 3 })
-    t.client.write('block_change', { location: { x: 3, y: 65, z: 1 }, type: id << 4 | 8 | 3 })
-    await once(t.bot, 'blockUpdate:(3, 65, 1)')
+    t.client.write('block_change', { location: { x, y: 65, z: 1 }, type: id << 4 | 3 })
+    t.client.write('block_change', { location: { x: x + 1, y: 65, z: 1 }, type: id << 4 | 8 | 3 })
+    await once(t.bot, `blockUpdate:(${x + 1}, 65, 1)`)
   }
   t.bot.time.timeOfDay = 18000
+  t.foot = new Vec3(x, 65, 1)
   return t
 }
 
@@ -50,7 +52,7 @@ function spawnMob (t, name, x, y, z) {
 
 // bot.sleep: the monsters near the bed refuse it at once, else the bot clicks the bed
 async function sleepOutcome (t) {
-  const bed = t.bot.blockAt(t.bot.entity.position.offset(1.5, 0, 0.5))
+  const bed = t.bot.blockAt(t.foot)
   const sleeping = t.bot.sleep(bed)
   const clicked = once(t.client, 'block_place').then(() => 'clicked')
   const settled = { outcome: null }
@@ -67,7 +69,7 @@ async function sleepOutcome (t) {
 // the bot clicks the bed (a tick or two to look at it): its sleep's outcome, a promise of 'slept' or the error, and
 // the ticks it took
 async function clickBed (t) {
-  const bed = t.bot.blockAt(t.bot.entity.position.offset(1.5, 0, 0.5))
+  const bed = t.bot.blockAt(t.foot)
   const state = { clicked: false }
   t.client.once('block_place', () => { state.clicked = true })
   const sleeping = t.bot.sleep(bed).then(() => 'slept', err => err)
@@ -162,6 +164,22 @@ describe('going to sleep (ServerPlayer.startSleepInBed)', function () {
         assert.strictEqual(settled.outcome?.message, 'bot is not sleeping', version)
       } finally {
         await t.close()
+      }
+    }
+  })
+
+  it('the bed within reach: 3 blocks across and 2 up or down of its head or, from 1.11, its foot; from 1.15 of the block\'s bottom center, before of its corner', async () => {
+    // (the foot at 6, 65, 1, the head at 7, 65, 1)
+    for (const [version, cases] of [['1.9.4', [[10, true], [10.0625, false], [3.5, false]]], ['1.12.2', [[10, true], [10.0625, false], [3, true], [2.9375, false]]],
+      ['1.14.4', [[10, true], [10.0625, false]]], ['1.15.2', [[10.5, true], [10.5625, false], [3.5, true], [3.4375, false]]],
+      ['1.21.11', [[10.5, true], [10.5625, false], [3.5, true], [3.4375, false]]]]) {
+      for (const [x, reachable] of cases) {
+        const t = await bedBot(version, { foot: 6, spawn: { x, y: 65, z: 0.5 } })
+        try {
+          assert.strictEqual(await sleepOutcome(t), reachable ? 'clicked' : 'the bed is too far', `${version}: at ${x}`)
+        } finally {
+          await t.close()
+        }
       }
     }
   })
