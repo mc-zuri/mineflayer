@@ -713,6 +713,17 @@ describe('the crosshair (Minecraft.pick, Item.getPlayerPOVHitResult)', () => {
       assert.ok(Math.abs(bot._entityHitPoint(hit.entity).x - x) < 1e-6, version)
     }
   })
+
+  it('1.8\'s item frame is picked by its own box, its border 0 (EntityItemFrame.getCollisionBorderSize)', () => {
+    const bot = fakeBot('1.8.8', { pitch: 0 })
+    rayTrace(bot)
+    // a frame facing west at eye height, its box 1/16 thick along x (as the entities plugin puts it)
+    const frame = { id: 2, name: 'ItemFrame', type: 'object', position: new Vec3(2.96875, 102.62, 0.5), facing: [-1, 0, 0], width: 0.5, height: 0.5, isValid: true }
+    bot.entities[2] = frame
+    const hit = bot.raycastHitResult(4.5, 3)
+    assert.strictEqual(hit.entity, frame)
+    assert.ok(Math.abs(hit.intersect.x - 2.9375) < 1e-9, `${hit.intersect.x}`)
+  })
 })
 
 // What the bot writes for a use, against a fake server: the swing goes with what the use comes to
