@@ -1131,6 +1131,41 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('from 26.1 runs the world clocks on by the game time of the time syncs that carry no clock (ClientClockManager.tick)', async function () {
+        if (!registry.version['>=']('26.1')) return this.skip()
+        const { manual, client } = await standingManualBot()
+        try {
+          // the login's full sync: the overworld clock at 6000 running at 1, the End's stopped at 5
+          let told = once(manual, 'time')
+          client.write('update_time', { age: [0, 100], clockUpdates: [{ id: 0, totalTicks: 6000, partialTick: 0, rate: 1 }, { id: 1, totalTicks: 5, partialTick: 0, rate: 0 }] })
+          await told
+          assert.strictEqual(manual.time.time, 6000)
+          // MinecraftServer.forceGameTimeSynchronization every 20 ticks: the game time, no clock
+          for (const age of [120, 140]) {
+            told = once(manual, 'time')
+            client.write('update_time', { age: [0, age], clockUpdates: [] })
+            await told
+          }
+          assert.deepStrictEqual([manual.time.time, manual.time.timeOfDay, manual.time.doDaylightCycle], [6040, 6040, true])
+          // a clock at half rate keeps its partial tick: 10 game ticks are 5 of its own
+          told = once(manual, 'time')
+          client.write('update_time', { age: [0, 150], clockUpdates: [{ id: 0, totalTicks: 7000, partialTick: 0.5, rate: 0.5 }] })
+          await told
+          told = once(manual, 'time')
+          client.write('update_time', { age: [0, 161], clockUpdates: [] })
+          await told
+          assert.strictEqual(manual.time.time, 7006)
+          // the stopped End clock stays
+          manual.game.dimension = 'the_end'
+          told = once(manual, 'time')
+          client.write('update_time', { age: [0, 181], clockUpdates: [] })
+          await told
+          assert.deepStrictEqual([manual.time.time, manual.time.doDaylightCycle], [5, false])
+        } finally {
+          manual.end()
+        }
+      })
+
       it('an attack is a packet of its own from 26.1, where an entity use says where on the entity it is (ServerboundAttackPacket, ServerboundInteractPacket)', async () => {
         const { manual, client, runTicks } = await standingManualBot()
         try {
