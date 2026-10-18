@@ -1193,4 +1193,25 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AU: 1.20.2 - 1.20.4 a living vehicle seats its rider turned by its body (LivingEntity.getPassengerRidingPosition:
+  // rotateY(-yBodyRot)), which a camel its rider does not steer (unsaddled) turns as the client turns it; from 1.20.5
+  // Camel.getPassengerAttachmentPoint turns it by its yRot (m_c_open_camel_riding t50 on 1.20.2 and 1.20.4)
+  describe('the seat of a camel its rider does not steer (LivingEntity.getPassengerRidingPosition)', () => {
+    it('turns with its body on 1.20.2 - 1.20.4', async () => {
+      for (const [version, byBody] of [['1.20.2', true], ['1.20.4', true], ['1.20.6', false]]) {
+        const t = await riding(version, 'camel', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x02; v.yawDegrees = 270; v.bodyYawDegrees = 0; v.headYawDegrees = 0 } })
+        try {
+          t.ticks(1)
+          await settle()
+          const { x, z } = t.bot.entity.position
+          // (its body faces south, +z; its yRot west, -x)
+          if (byBody) assert.ok(z > t.vehicle.position.z + 0.4 && Math.abs(x - t.vehicle.position.x) < 0.01, `${version}: ${x} ${z}`)
+          else assert.ok(Math.abs(z - t.vehicle.position.z) < 0.01, `${version}: ${x} ${z}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
