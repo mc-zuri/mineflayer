@@ -1239,4 +1239,35 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AW: before 1.21.9 a move without a rotation turns a living entity toward the rotation it has now (the packet handler
+  // passes its yRot to LivingEntity.lerpTo): a turn still running stops there; from 1.21.9 it keeps heading to its target
+  // (m_c_mount_click_llama t64 on 1.11.2)
+  describe('a move without a rotation (ClientPacketListener.handleMoveEntity)', () => {
+    it('stops the turn the entity was in before 1.21.9', async () => {
+      const { JavaFloat } = require('../lib/javamath')
+      for (const [version, stops] of [['1.11.2', true], ['1.20.1', true], ['1.21.9', false]]) {
+        const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+        try {
+          const pig = entityAt(t, 100, 'pig', new Vec3(3.5, 65, 1.5))
+          pig.yawDegrees = new JavaFloat(0)
+          // (turning to 90 degrees, byte 64)
+          t.client.write('entity_move_look', { entityId: 100, dX: 0, dY: 0, dZ: 0, yaw: 64, pitch: 0, onGround: true })
+          await settle()
+          t.ticks(1)
+          await settle()
+          const turned = Number(pig.yawDegrees)
+          t.client.write('rel_entity_move', { entityId: 100, dX: 256, dY: 0, dZ: 0, onGround: true })
+          await settle()
+          t.ticks(3)
+          await settle()
+          const yaw = Number(pig.yawDegrees)
+          if (stops) assert.ok(Math.abs(yaw - turned) < 1e-4, `${version}: ${turned} ${yaw}`)
+          else assert.ok(Math.abs(yaw - 90) < 1e-4, `${version}: ${turned} ${yaw}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
