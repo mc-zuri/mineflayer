@@ -1270,4 +1270,26 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AX: from 26.3 a stepped interpolation turns the entity too, each step toward the rotation it came with, by the float
+  // Mth.rotLerp of the step's share (SteppedInterpolationHandler: getNewPositionAndRotation, Entity.setRot): a llama's
+  // rider sits along it (m_c_mount_click_llama t90 on 26.3)
+  describe('the turn of a 26.3 stepped interpolation (SteppedInterpolationHandler)', () => {
+    it('turns the entity along its steps', async () => {
+      const { JavaFloat } = require('../lib/javamath')
+      const t = await fakeServerBot('26.3', { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+      try {
+        const pig = entityAt(t, 100, 'pig', new Vec3(3.5, 65, 1.5))
+        pig.yawDegrees = new JavaFloat(0)
+        // (one step of 3 ticks, turning to 90 degrees: byte 64)
+        t.client.write('entity_move_look', { entityId: 100, delta: { onGround: true, steps: [{ ticks: 3, dX: 0, dY: 0, dZ: 0 }] }, yaw: 64, pitch: 0 })
+        await settle()
+        t.ticks(1)
+        await settle()
+        assert.ok(Math.abs(Number(pig.yawDegrees) - 30) < 1e-4, String(Number(pig.yawDegrees)))
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
