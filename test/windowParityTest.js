@@ -473,6 +473,68 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('bot.craft in the player\'s grid opens the inventory screen and closes it after, as vanilla\'s player does: before 1.12 its opening is a client command (OPEN_INVENTORY_ACHIEVEMENT), its closing the close of menu 0', async () => {
+    for (const version of ['1.8.8', '1.11.2', '1.12.2', '1.21.11']) {
+      const t = await clickingBot(version)
+      try {
+        const table = t.registry.itemsByName.crafting_table.id
+        const planks = t.registry.itemsByName.oak_planks ?? t.registry.itemsByName.planks
+        if (t.registry.version['>=']('1.17')) {
+          // the result slot each change of the grid sends (CraftingMenu.slotChangedCraftingGrid), with its state id
+          let stateId = 0
+          const grid = new Set()
+          t.client.on('window_click', (packet) => {
+            const before = grid.size
+            for (const { location, item } of packet.changedSlots) {
+              if (location < 1 || location > 4) continue
+              if (item != null && item.present !== false && (item.itemCount ?? 1) > 0) grid.add(location)
+              else grid.delete(location)
+            }
+            const changes = packet.slot === 0 ? before : packet.slot >= 1 && packet.slot <= 4 ? 1 : 0
+            for (let i = 0; i < changes; i++) {
+              const item = t.Item.toNotch(grid.size === 4 ? new t.Item(table, 1) : null)
+              const id = ++stateId
+              setTimeout(() => t.client.write('set_slot', { windowId: 0, stateId: id, slot: 0, item }), 20)
+            }
+          })
+          t.client.write('set_slot', { windowId: 0, stateId, slot: 0, item: t.Item.toNotch(null) })
+          await sleep(50)
+        }
+        t.bot.inventory.updateSlot(36, new t.Item(planks.id, 4))
+        const opened = []
+        t.bot.on('inventoryScreenOpen', () => opened.push('open'))
+        t.bot.on('inventoryScreenClose', () => opened.push('close'))
+        const ticking = setInterval(() => t.bot.physicsTick(), 50)
+        try {
+          const recipe = t.bot.recipesFor(table, null, 1, null)[0]
+          await t.bot.craft(recipe, 1, null)
+        } finally {
+          clearInterval(ticking)
+        }
+        // (what the server has got)
+        await sleep(100)
+        const sent = t.written.filter(p => ['client_command', 'window_click', 'close_window'].includes(p.name))
+        const clicks = sent.filter(p => p.name === 'window_click')
+        assert.ok(clicks.length > 0, version)
+        const command = sent.findIndex(p => p.name === 'client_command')
+        if (t.registry.version['>=']('1.12')) {
+          assert.strictEqual(command, -1, version)
+        } else {
+          assert.strictEqual(command, 0, version)
+          assert.strictEqual(sent[0].data.payload ?? sent[0].data.actionId, 2, version)
+        }
+        const last = sent.at(-1)
+        assert.strictEqual(last.name, 'close_window', version)
+        assert.strictEqual(last.data.windowId, 0, version)
+        assert.strictEqual(sent.filter(p => p.name === 'close_window').length, 1, version)
+        assert.deepStrictEqual(opened, ['open', 'close'], version)
+        assert.strictEqual(t.bot.inventoryScreenOpen, false, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('bot.clickEnchantment clicks an offer of the open enchanting screen (ServerboundContainerButtonClickPacket)', async () => {
     const t = await clickingBot('1.16.5')
     try {

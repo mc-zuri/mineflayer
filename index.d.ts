@@ -156,6 +156,8 @@ export interface BotEvents {
   dismount: (vehicle: Entity) => Promise<void> | void
   windowOpen: (window: Window) => Promise<void> | void
   windowClose: (window: Window) => Promise<void> | void
+  inventoryScreenOpen: () => Promise<void> | void
+  inventoryScreenClose: () => Promise<void> | void
   sleep: () => Promise<void> | void
   wake: () => Promise<void> | void
   experience: () => Promise<void> | void
@@ -474,6 +476,14 @@ export interface Bot extends TypedEmitter<BotEvents> {
   putAway: (slot: number) => Promise<void>
 
   closeWindow: (window: Window) => void
+
+  /** the player's inventory screen opened for clicks in the player's menu (before 1.12 it tells the server) */
+  openInventoryScreen: () => void
+
+  /** closes the inventory screen opened with openInventoryScreen: the close of menu 0 */
+  closeInventoryScreen: () => void
+
+  inventoryScreenOpen: boolean
 
   transfer: (options: TransferOptions) => Promise<void>
 
