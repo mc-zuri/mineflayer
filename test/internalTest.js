@@ -1580,6 +1580,25 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a bot respawned into another level is its own entity there (ClientPacketListener.handleRespawn adds the new LocalPlayer to the new ClientLevel)', async function () {
+        const respawn = respawnPacket({ level: 'minecraft:the_nether' })
+        if (!respawn) return this.skip()
+        const { manual, client } = await standingManualBot()
+        try {
+          let gone = false
+          manual.on('entityGone', e => { if (e === manual.entity) gone = true })
+          const respawned = once(manual, 'respawn')
+          client.write('respawn', respawn)
+          await respawned
+          // what the server sends of the player in the new level (its effects, data, hurts) finds the bot's entity
+          assert.strictEqual(manual.entities[manual.entity.id], manual.entity)
+          assert.strictEqual(gone, false)
+          assert.notStrictEqual(manual.entity.isValid, false)
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a bot ticks in a chunk the client has not loaded as vanilla does (World.updateEntityWithOptionalForce, ClientLevel.tickNonPassenger)', async () => {
         const { manual, client, written, runTicks } = await standingManualBot()
         try {
