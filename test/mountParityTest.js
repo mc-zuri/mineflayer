@@ -1341,4 +1341,32 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // BA: from 1.14 the passenger's pose follows its shift key at the end of its tick (Player.updatePlayerPose: a
+  // passenger crouches whatever room it has), and its first tick on foot starts from it: on 1.14 - 1.16 that tick moves
+  // the crouching box its last seat built, refitted on its lower corner when the pose stands up (Entity.refreshDimensions:
+  // maxX = minX + width) (m_c_mount_click_pig t93 on 1.15.2)
+  describe('the pose of a passenger (Player.updatePlayerPose)', () => {
+    it('crouches on the shift key and its first tick on foot starts from it', async () => {
+      const { PlayerPoses } = require('@nxg-org/mineflayer-physics-util')
+      const t = await riding('1.15.2', 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x06 } })
+      try {
+        t.bot.setControlState('sneak', true)
+        t.ticks(1)
+        await settle()
+        assert.strictEqual(t.bot.entity.pose, PlayerPoses.SNEAKING)
+        t.client.write('set_passengers', { entityId: 100, passengers: [] })
+        await settle()
+        t.bot.setControlState('sneak', false)
+        t.ticks(1)
+        await settle()
+        const kept = t.bot.physicsEngineCtx.state.keptBoundingBox
+        // (the crouching box, 1.5F high, moved)
+        assert.ok(Math.abs(kept.bb.maxY - kept.bb.minY - 1.5) < 1e-6, JSON.stringify(kept.bb))
+        assert.strictEqual(t.bot.entity.pose, PlayerPoses.STANDING)
+      } finally {
+        await t.close()
+      }
+    })
+  })
 })
