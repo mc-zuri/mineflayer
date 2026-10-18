@@ -4,6 +4,7 @@
 
 const assert = require('assert')
 const { once, sleep } = require('../lib/promise_utils')
+const nbt = require('prismarine-nbt')
 const { fakeServerBot } = require('./common/fakeServer')
 
 // a bed facing east, its foot at 2, 65, 1 and its head at 3, 65, 1, the bot at 0.5, 65, 0.5, at night
@@ -63,6 +64,35 @@ async function sleepOutcome (t) {
   return settled.outcome
 }
 
+// the bot clicks the bed (a tick or two to look at it): its sleep's outcome, a promise of 'slept' or the error, and
+// the ticks it took
+async function clickBed (t) {
+  const bed = t.bot.blockAt(t.bot.entity.position.offset(1.5, 0, 0.5))
+  const state = { clicked: false }
+  t.client.once('block_place', () => { state.clicked = true })
+  const sleeping = t.bot.sleep(bed).then(() => 'slept', err => err)
+  let ticked = 0
+  for (let i = 0; i < 3 && !state.clicked; i++) {
+    await sleep(50)
+    if (!state.clicked) {
+      t.ticks(1)
+      ticked++
+    }
+  }
+  await sleep(50)
+  assert.ok(state.clicked, 'the bed clicked')
+  return { sleeping, ticked }
+}
+
+// a message above the hotbar, as BedBlock.use sends it (Player.displayClientMessage), before 1.12 in the chat
+function writeOverlay (t, translate) {
+  const json = JSON.stringify({ translate })
+  if (t.registry.version['>=']('1.20.3')) t.client.write('system_chat', { content: nbt.comp({ translate: nbt.string(translate) }), isActionBar: true })
+  else if (t.registry.version['>=']('1.19.2')) t.client.write('system_chat', { content: json, isActionBar: true })
+  else if (t.registry.version['>=']('1.19')) t.client.write('system_chat', { content: json, type: 2 })
+  else t.client.write('chat', { message: json, position: t.registry.version['>=']('1.12') ? 2 : 1, sender: '00000000-0000-0000-0000-000000000000' })
+}
+
 describe('going to sleep (ServerPlayer.startSleepInBed)', function () {
   this.timeout(120 * 1000)
 
@@ -90,6 +120,46 @@ describe('going to sleep (ServerPlayer.startSleepInBed)', function () {
       try {
         await spawnMob(t, name, 5.5, 65, 1.5)
         assert.strictEqual(await sleepOutcome(t), nearby ? 'there are monsters nearby' : 'clicked', `${version}: a ${name} (${gameMode})`)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
+  it('the server\'s refusal (BedBlock.use: the problem\'s message) rejects at once with its reason, without a tick', async () => {
+    for (const [version, key, reason] of [['1.8.8', 'tile.bed.notSafe', 'there are monsters nearby'], ['1.12.2', 'tile.bed.noSleep', "it's not night and it's not a thunderstorm"],
+      ['1.13.2', 'block.minecraft.bed.too_far_away', 'the bed is too far'], ['1.16.5', 'block.minecraft.bed.obstructed', 'the bed is obstructed'],
+      ['1.19.2', 'block.minecraft.bed.not_safe', 'there are monsters nearby'], ['1.20.4', 'block.minecraft.bed.occupied', 'the bed is occupied'],
+      ['1.21.11', 'block.minecraft.bed.not_safe', 'there are monsters nearby']]) {
+      const t = await bedBot(version)
+      try {
+        const { sleeping } = await clickBed(t)
+        writeOverlay(t, key)
+        const err = await sleeping
+        assert.ok(err instanceof Error, `${version}: ${err}`)
+        assert.deepStrictEqual([err.message, err.translate], [reason, key], version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
+  it('without an answer the bot gives up in 60 of its ticks (physicsManual: not 3 seconds); another message does not refuse', async () => {
+    for (const version of ['1.12.2', '1.15.2', '1.21.11']) {
+      const t = await bedBot(version)
+      try {
+        const settled = { outcome: null }
+        const { sleeping, ticked } = await clickBed(t)
+        sleeping.then(outcome => { settled.outcome = outcome })
+        // (1.15: the spawn set at the bed, no refusal)
+        writeOverlay(t, version === '1.15.2' ? 'block.minecraft.bed.set_spawn' : 'sleep.not_possible')
+        await sleep(3200)
+        t.ticks(59 - ticked)
+        await sleep(50)
+        assert.strictEqual(settled.outcome, null, version)
+        t.ticks(1)
+        await sleep(50)
+        assert.strictEqual(settled.outcome?.message, 'bot is not sleeping', version)
       } finally {
         await t.close()
       }
