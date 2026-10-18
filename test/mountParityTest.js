@@ -1214,4 +1214,29 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AV: a living entity's interpolation turns it modulo 360 (Entity.setRot: yRot % 360.0F): a turn past 360 starts
+  // again from 0, where its body and its rider's seat go by it (m_c_open_camel_riding t51 on 1.21.4)
+  describe('the turn of an interpolating entity (Entity.setRot)', () => {
+    it('is modulo 360', async () => {
+      const { JavaFloat } = require('../lib/javamath')
+      for (const version of ['1.12.2', '1.21.4']) {
+        const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 }, blocks: ground() })
+        try {
+          const pig = entityAt(t, 100, t.registry.entitiesByName.pig ? 'pig' : 'Pig', new Vec3(3.5, 65, 1.5))
+          pig.yawDegrees = new JavaFloat(350)
+          // (a move turning it to 30 degrees: byte 21, 29.53125)
+          const scale = t.registry.version['<']('1.9') ? 32 : 4096
+          t.client.write('entity_move_look', { entityId: 100, dX: scale / 16, dY: 0, dZ: 0, yaw: 21, pitch: 0, onGround: true })
+          await settle()
+          t.ticks(1)
+          await settle()
+          const yaw = Number(pig.yawDegrees)
+          assert.ok(yaw >= 0 && yaw < 360 && Math.abs(yaw - (350 + (29.53125 + 10) / 3 - 360)) < 1e-3, `${version}: ${yaw}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
