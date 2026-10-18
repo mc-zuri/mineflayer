@@ -1170,4 +1170,27 @@ describe('mount parity (vanilla\'s client, version by version)', function () {
       }
     })
   })
+
+  // AT: before 1.20.2 a rearing horse seats its rider back along its body, which an unsaddled horse its rider does not
+  // turn keeps its own (AbstractHorse.positionRider: yBodyRot) (m_c_use_entity_horse_saddle t73 on 1.10.2)
+  describe('the rider of an unsaddled rearing horse (AbstractHorse.positionRider)', () => {
+    it('sits back along the horse\'s own body', async () => {
+      const conv = require('../lib/conversions')
+      for (const version of ['1.10.2', '1.16.5']) {
+        // (tame, rearing: bit 64 before 1.11, 32 since)
+        const rearing = require('minecraft-data')(version).version['<']('1.11') ? 0x40 : 0x20
+        const t = await riding(version, 'horse', { setup: (v, { registry }) => { v.metadata[horseFlags(registry)] = 0x02 | rearing; v.bodyYawDegrees = 0 } })
+        try {
+          await t.bot.look(conv.fromNotchianYaw(270), 0, true)
+          t.ticks(3)
+          await settle()
+          // (its body faces south: the rider sits back to the north, -z; the rider looks west)
+          assert.ok(t.bot.entity.position.z < t.vehicle.position.z - 0.1, `${version}: ${t.bot.entity.position} ${t.vehicle.position}`)
+          assert.ok(Math.abs(t.bot.entity.position.x - t.vehicle.position.x) < 1e-6, `${version}: ${t.bot.entity.position} ${t.vehicle.position}`)
+        } finally {
+          await t.close()
+        }
+      }
+    })
+  })
 })
