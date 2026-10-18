@@ -3467,11 +3467,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
             }
             const block = add(90, 'falling_block')
             const snowball = add(91, 'snowball')
-            // the bot has not spawned: its physics ticks are run here, a tick each 50 ms
-            for (let i = 0; i < 30; i++) {
-              await sleep(50)
-              bot.emit('physicsTick')
-            }
+            // the bot has not spawned: its physics ticks are run here, back to back (a tick's move each, not 50 ms')
+            for (let i = 0; i < 30; i++) bot.emit('physicsTick')
             assert.strictEqual(block.position.y, 65)
             assert.strictEqual(block.velocity.y, 0)
             assert.ok(snowball.position.y < 64, `the snowball at ${snowball.position.y}`)
