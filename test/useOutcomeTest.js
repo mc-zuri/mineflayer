@@ -404,6 +404,33 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(use.useItemOn(pumpkin, WEST, center).result, 'success')
     })
 
+    it('a shield in the off hand keeps the main hand\'s axe (1.21), hoe and shovel (26.3) off the block, unless sneaking', () => {
+      // (AxeItem.playerHasShieldUseIntent from 1.21, playerHasBlockingItemUseIntent from 1.21.5; from 26.3
+      // BlockTransformer.transformBlock for the hoe, the shovel and the axe)
+      for (const [version, axe, hoe] of [['1.20.6', 'success', 'success'], ['1.21.1', 'pass', 'success'], ['1.21.11', 'pass', 'success'], ['26.2', 'pass', 'success'], ['26.3', 'pass', 'pass']]) {
+        const bot = fakeBot(version)
+        const use = createUsePrediction(bot)
+        const grass = bot.set(new Vec3(2, 100, 0), 'grass_block')
+        const log = bot.set(new Vec3(3, 101, 0), 'oak_log')
+        bot.inventory.slots[45] = bot.item('shield')
+        bot.hold('iron_hoe')
+        assert.strictEqual(use.useItemOn(grass, UP, center).result, hoe, `${version} hoe`)
+        bot.hold('iron_shovel')
+        assert.strictEqual(use.useItemOn(grass, UP, center).result, hoe, `${version} shovel`)
+        bot.hold('iron_axe')
+        assert.strictEqual(use.useItemOn(log, WEST, center).result, axe, `${version} axe`)
+        // (sneaking, the tools act)
+        bot.setControlState('sneak', true)
+        assert.strictEqual(use.useItemOn(log, WEST, center).result, 'success', `${version} axe sneaking`)
+        bot.hold('iron_hoe')
+        assert.strictEqual(use.useItemOn(grass, UP, center).result, 'success', `${version} hoe sneaking`)
+        bot.setControlState('sneak', false)
+        // (with something else in the off hand, they act)
+        bot.inventory.slots[45] = bot.item('torch')
+        assert.strictEqual(use.useItemOn(grass, UP, center).result, 'success', `${version} hoe with a torch`)
+      }
+    })
+
     it('1.8\'s firework on a block passes on the client (ItemFirework.onItemUse: the server launches it)', () => {
       const bot = fakeBot('1.8.8')
       bot.hold('fireworks')
