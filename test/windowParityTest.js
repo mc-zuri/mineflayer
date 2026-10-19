@@ -336,6 +336,26 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('from 1.21.2 the server sets a slot of the player\'s inventory by its index in the Inventory: the hotbar 0 - 8, the armor 36 - 39 from the feet, the off hand 40 (ClientPacketListener.handleSetPlayerInventory)', async () => {
+    for (const version of ['1.21.4', '1.21.11', '26.3']) {
+      const t = await clickingBot(version)
+      try {
+        const set = (slotId, name, count) => t.client.write('set_player_inventory', { slotId, contents: t.Item.toNotch(t.item(name, count)) })
+        // (what the grid held, put back as the inventory screen closed: Inventory.placeItemBackInInventory)
+        set(2, 'oak_log', 61)
+        set(20, 'dirt', 3)
+        set(36, 'iron_boots', 1)
+        set(39, 'iron_helmet', 1)
+        set(40, 'shield', 1)
+        await sleep(50)
+        const items = t.bot.inventory.slots.map((item, slot) => item ? `${slot} ${item.name} ${item.count}` : null).filter(Boolean)
+        assert.deepStrictEqual(items, ['5 iron_helmet 1', '8 iron_boots 1', '20 dirt 3', '38 oak_log 61', '45 shield 1'], version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('a creative slot set again before the server answered is sent again, as the creative screen sends every change', async () => {
     for (const version of ['1.20.4', '1.21.4']) {
       const t = await fakeServerBot(version, { gameMode: 'creative', blocks: [[0, 64, 0, 'stone']] })
