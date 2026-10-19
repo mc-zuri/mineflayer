@@ -473,6 +473,37 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
     }
   })
 
+  it('from 1.17.1 each menu has its own state id: a click sends the open menu\'s, and the inventory\'s again once a chest closed (AbstractContainerMenu.stateId, ClientPacketListener.handleContainerSetSlot)', async () => {
+    for (const version of ['1.17.1', '1.21.11', '26.3']) {
+      const t = await clickingBot(version)
+      try {
+        const notch = (name, count) => t.Item.toNotch(name ? t.item(name, count) : null)
+        const inventory = new Array(46).fill(notch(null))
+        inventory[36] = notch('oak_planks', 8)
+        t.client.write('window_items', { windowId: 0, stateId: 40, items: inventory, carriedItem: notch(null) })
+        await sleep(50)
+        // a chest (generic_9x3), its menu's state ids from 1
+        const title = t.registry.version['>=']('1.20.3') ? { type: 'string', value: 'Chest' } : JSON.stringify({ text: 'Chest' })
+        const opened = new Promise(resolve => t.bot.once('windowOpen', resolve))
+        t.client.write('open_window', { windowId: 1, inventoryType: 2, windowTitle: title })
+        t.client.write('window_items', { windowId: 1, stateId: 1, items: [...new Array(27).fill(notch(null)), ...inventory.slice(9, 45)], carriedItem: notch(null) })
+        await opened
+        await t.click(0, 0, 0)
+        // the player's inventory menu goes on with the chest open (an item picked up)
+        t.client.write('set_slot', { windowId: 0, stateId: 41, slot: 37, item: notch('dirt', 1) })
+        t.client.write('set_slot', { windowId: 1, stateId: 2, slot: 0, item: notch(null) })
+        await sleep(50)
+        await t.click(1, 0, 0)
+        t.bot.closeWindow(t.bot.currentWindow)
+        await t.click(36, 0, 0)
+        assert.deepStrictEqual(t.clicks().map(c => [c.windowId, c.slot, c.stateId]), [[1, 0, 1], [1, 1, 2], [0, 36, 41]], version)
+        assert.strictEqual(t.bot._stateId, 41, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('bot.craft in the player\'s grid opens the inventory screen and closes it after, as vanilla\'s player does: before 1.12 its opening is a client command (OPEN_INVENTORY_ACHIEVEMENT), its closing the close of menu 0', async () => {
     for (const version of ['1.8.8', '1.11.2', '1.12.2', '1.21.11']) {
       const t = await clickingBot(version)
