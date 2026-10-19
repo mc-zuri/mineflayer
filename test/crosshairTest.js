@@ -85,6 +85,24 @@ describe('the crosshair (GameRenderer.pick)', () => {
     }
   })
 
+  for (const version of ['1.20.4', '1.21.11', '26.3']) {
+    it(`meets a crop by its outline, which grows with its age (CropBlock, CarrotBlock): ${version}`, () => {
+      // down by 30: the ray is at y 101.75 over the crop's west face at x 2, and meets the floor at x 3.3
+      const bot = fakeBot(version, 30)
+      bot.set(new Vec3(2, 101, 0), 'wheat', { age: 7 })
+      let hit = bot.raycastHitResult(4.5, 3)
+      assert.deepStrictEqual([hit.block.name, hit.face, hit.block.position.x], ['wheat', 4, 2])
+      // a young one, 2 sixteenths high: the ray goes over it (101.17 at its east side) to the floor beyond
+      bot.set(new Vec3(2, 101, 0), 'wheat', { age: 0 })
+      hit = bot.raycastHitResult(4.5, 3)
+      assert.deepStrictEqual([hit.block.name, hit.block.position.x], ['stone', 3])
+      // carrots grown are 9 sixteenths high: under the ray at x 2 (101.75), which meets their top further on
+      bot.set(new Vec3(2, 101, 0), 'carrots', { age: 7 })
+      hit = bot.raycastHitResult(4.5, 3)
+      assert.deepStrictEqual([hit.block.name, hit.face], ['carrots', 1])
+    })
+  }
+
   it('before 1.13 grass is the grass block: its top is met, not a plant\'s outline', () => {
     // the ray meets y 101 at x 3.9, over the grass block's east edge: a plant's outline (0.8125 high, to 0.875) it misses
     const bot = fakeBot('1.12.2', 25.5)
