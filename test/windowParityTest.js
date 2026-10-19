@@ -8,9 +8,9 @@ const { fakeServerBot } = require('./common/fakeServer')
 const { Vec3 } = require('vec3')
 
 // A bot of the version against a fake server that confirms every click before 1.17 (ClientboundContainerAckPacket)
-async function clickingBot (version) {
+async function clickingBot (version, options = {}) {
   // (a block in the chunk: an empty one does not load before 1.17)
-  const t = await fakeServerBot(version, { blocks: [[0, 64, 0, 'stone']] })
+  const t = await fakeServerBot(version, { blocks: [[0, 64, 0, 'stone']], ...options })
   if (!t.registry.version['>=']('1.17')) {
     t.client.on('window_click', (packet) => {
       t.client.write('transaction', { windowId: packet.windowId, action: packet.action, accepted: true })
@@ -467,6 +467,105 @@ describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInv
         }
         assert.deepStrictEqual(stale, [], version)
         assert.strictEqual(t.bot.inventory.items().find(item => item.name === 'crafting_table')?.count, 2, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
+  it('from 1.17.1 bot.craft goes on from the whole menu the server answers a click behind its state id with (an item picked up as the clicks went), not from what its clicks made of the grid (ServerGamePacketListenerImpl.handleContainerClick: broadcastFullState)', async () => {
+    for (const version of ['1.17.1', '1.21.11', '26.3']) {
+      // (spawned: the bot's ticks run)
+      const t = await clickingBot(version, { spawn: new Vec3(0.5, 65, 0.5) })
+      try {
+        // a server that plays the player's menu as vanilla's does: a click is played whatever its state id; each change
+        // of the grid sends the result slot (CraftingMenu.slotChangedCraftingGrid); a click behind the menu's state id
+        // is answered with the whole menu, one in step with it with the slots the client got wrong
+        // (AbstractContainerMenu.broadcastChanges against the click's changed slots)
+        const simulate = require('../lib/inventory_simulator')(t.Item, t.registry)
+        const menu = t.windows.createWindow(0, 'minecraft:inventory', 'Inventory')
+        const log = t.registry.itemsByName.oak_log.id
+        const planks = t.registry.itemsByName.oak_planks.id
+        const notch = item => t.Item.toNotch(item ?? null)
+        const same = (item, sent) => {
+          const id = sent == null || sent.present === false || (sent.itemCount ?? 1) <= 0 ? null : (sent.itemId ?? sent.blockId)
+          return (item?.type ?? null) === id && (id == null || item.count === sent.itemCount)
+        }
+        let stateId = 0
+        const sendSlot = (slot) => t.client.write('set_slot', { windowId: 0, stateId: ++stateId, slot, item: notch(menu.slots[slot]) })
+        const sendResult = () => {
+          const grid = menu.slots.slice(1, 5).filter(item => item != null)
+          menu.updateSlot(0, grid.length === 1 && grid[0].type === log ? new t.Item(planks, 4) : null)
+          sendSlot(0)
+        }
+        const play = (packet) => {
+          const stale = packet.stateId !== stateId
+          if (packet.slot === 0) {
+            // ResultSlot.onTake: one off each stack of the grid, each a change
+            const result = menu.slots[0]
+            const carried = menu.selectedItem
+            if (result && (!carried || (carried.type === result.type && carried.count + result.count <= carried.stackSize))) {
+              menu.selectedItem = new t.Item(result.type, (carried?.count ?? 0) + result.count)
+              for (let i = 1; i <= 4; i++) {
+                const item = menu.slots[i]
+                if (!item) continue
+                menu.updateSlot(i, item.count > 1 ? new t.Item(item.type, item.count - 1) : null)
+                sendResult()
+              }
+            }
+          } else if (packet.slot !== -1) {
+            simulate(menu, { slot: packet.slot, mouseButton: packet.mouseButton, mode: packet.mode, item: packet.slot === -999 ? null : menu.slots[packet.slot] }, 0, menu)
+            if (packet.slot >= 1 && packet.slot <= 4) sendResult()
+          }
+          if (stale) {
+            t.client.write('window_items', { windowId: 0, stateId: ++stateId, items: menu.slots.map(notch), carriedItem: notch(menu.selectedItem) })
+          } else {
+            for (const { location, item } of packet.changedSlots) {
+              if (location !== 0 && !same(menu.slots[location], item)) sendSlot(location)
+            }
+          }
+        }
+        // the server's ticks: an item picked up in two of them (into the last hotbar slot, with its slot update), then the
+        // clicks that came since the last tick; those the bot sent before the pickup's update came are behind
+        let serverTicks = 0
+        const clicks = []
+        t.client.on('window_click', (packet) => clicks.push(packet))
+        const serverTick = async () => {
+          if ([2, 6].includes(++serverTicks)) {
+            menu.updateSlot(44, t.item('dirt', (menu.slots[44]?.count ?? 0) + 1))
+            sendSlot(44)
+          }
+          // (each click's answers a packet of their own on the way, as the server's connection flushes them)
+          for (const packet of clicks.splice(0)) {
+            play(packet)
+            await sleep(2)
+          }
+        }
+        menu.updateSlot(36, t.item('oak_log', 8))
+        t.client.write('window_items', { windowId: 0, stateId, items: menu.slots.map(notch), carriedItem: notch(null) })
+        await sleep(50)
+        // the server's tick, then the bot's
+        let ticking = true
+        const ticks = (async () => {
+          for (;;) {
+            if (!ticking) break
+            await serverTick()
+            t.bot.physicsTick()
+            await sleep(15)
+          }
+        })()
+        try {
+          const recipe = t.bot.recipesFor(planks, null, 1, null)[0]
+          await t.bot.craft(recipe, 3, null)
+          await sleep(200)
+        } finally {
+          ticking = false
+          await ticks
+        }
+        const items = window => window.slots.map((item, slot) => item ? `${slot} ${item.name} ${item.count}` : null).filter(Boolean)
+        assert.deepStrictEqual(items(t.bot.inventory), items(menu), version)
+        const count = name => menu.slots.slice(9, 45).reduce((n, item) => n + (item?.name === name ? item.count : 0), 0)
+        assert.deepStrictEqual([count('oak_planks'), count('oak_log')], [12, 5], version)
       } finally {
         await t.close()
       }
