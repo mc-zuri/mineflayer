@@ -4038,6 +4038,42 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // AbstractHurtingProjectile.tick runs on the client too: between the server's updates (every 10 ticks) a ghast's
+      // fireball flies on, sped up 0.1 a tick and slowed by its inertia 0.95; it stood where the last update put it, and
+      // a player hitting it back aimed at a fireball up to 10 blocks behind the one coming
+      it('flies a ghast\'s fireball on between the server\'s updates as vanilla\'s client does (AbstractHurtingProjectile.tick)', async function () {
+        const atLeast = (version) => registry.version['>='](version)
+        const fireball = registry.entitiesByName.fireball ?? registry.entitiesByName.Fireball
+        // spawned at (0.5, 70, 0.5) going 0.5 a tick along (0.6, 0, 0.8): the motion before 1.21 is the acceleration
+        const velocity = registry.supportFeature('entityVelocityIsLpVec3') ? { x: 0.3, y: 0, z: 0.4 } : { x: 2400, y: 0, z: 3200 }
+        const [client] = await once(server, 'playerJoin')
+        const spawned = once(bot, 'entitySpawn')
+        client.write('spawn_entity', {
+          entityId: 40,
+          objectUUID: '00112233-4455-6677-8899-aabbccddeeff',
+          type: fireball.id,
+          x: 0.5,
+          y: 70,
+          z: 0.5,
+          pitch: 0,
+          yaw: 0,
+          headPitch: 0,
+          objectData: 1,
+          velocity
+        })
+        const [entity] = await spawned
+        // (1.8 puts it at 0, 70, 0: its fixed point position)
+        const from = entity.position.clone()
+        for (let i = 0; i < 3; i++) bot.emit('physicsTick')
+        // the way flown in 3 ticks: from 1.21.2 sped up, then moved (0.57 + 0.6365 + 0.699675); 1.21 - 1.21.1 moved,
+        // then sped up (0.5 + 0.57 + 0.6365); before, from rest sped up by the acceleration 0.1 (0 + 0.095 + 0.18525)
+        const flown = atLeast('1.21.2') ? 1.906175 : atLeast('1.21') ? 1.7065 : 0.28025
+        // (to a thousandth: from 1.21.9 the spawn's motion is an LpVec3, a little off 0.3 and 0.4)
+        assert.ok(Math.abs(entity.position.x - (from.x + 0.6 * flown)) < 1e-3, `x ${entity.position.x}`)
+        assert.ok(Math.abs(entity.position.z - (from.z + 0.8 * flown)) < 1e-3, `z ${entity.position.z}`)
+        assert.strictEqual(entity.position.y, from.y)
+      })
+
       it('\'itemDrop\' event', function (done) {
         const itemData = {
           itemId: 149,
