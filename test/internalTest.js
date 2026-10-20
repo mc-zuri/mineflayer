@@ -3420,6 +3420,38 @@ for (const supportedVersion of mineflayer.testedVersions) {
           await client.write('respawn', respawnPacket)
         })
       })
+
+      it('the biomes the server changes in a loaded chunk are the chunk\'s, its blocks as they were, 1.19.4+ (ClientPacketListener.handleChunksBiomes)', async function () {
+        if (!registry.version['>=']('1.19.4')) return this.skip()
+        const gold = registry.blocksByName.gold_block.id
+        // (two biome ids: what they name is the biome registry the server sent)
+        const plains = registry.biomesByName.plains.id
+        const desert = registry.biomesByName.desert.id
+        const chunk = bot.test.buildChunk()
+        chunk.setBlockType(pos, gold)
+        chunk.setBiome(pos, plains)
+        const changed = bot.test.buildChunk() // as /fillbiome left it
+        changed.setBiome(pos, desert)
+        const [client] = await once(server, 'playerJoin')
+        client.write('login', bot.test.generateLoginPacket())
+        client.write('map_chunk', generateChunkPacket(chunk))
+        await once(bot, 'chunkColumnLoad')
+        assert.strictEqual(bot.blockAt(pos).biome.id, plains)
+
+        const handled = once(bot._client, 'chunk_biomes')
+        client.write('chunk_biomes', {
+          biomes: [
+            { position: { x: 0, z: 0 }, data: changed.dumpBiomes() },
+            { position: { x: 3, z: -2 }, data: changed.dumpBiomes() } // not loaded: passed over
+          ]
+        })
+        await handled
+        const block = bot.blockAt(pos)
+        assert.strictEqual(block.biome.id, desert)
+        assert.strictEqual(block.type, gold)
+        assert.strictEqual(bot.blockAt(pos.offset(4, 0, 0)).biome.id, changed.getBiome(pos.offset(4, 0, 0)))
+        assert.strictEqual(bot.world.getColumn(3, -2), undefined)
+      })
     })
 
     describe('health', () => {
