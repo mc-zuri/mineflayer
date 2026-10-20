@@ -31,6 +31,33 @@ async function clickingBot (version, options = {}) {
 describe('container clicks (AbstractContainerMenu, MultiPlayerGameMode.handleInventoryMouseClick)', function () {
   this.timeout(20 * 1000)
 
+  it('a screen closed leaves the inventory with the stacks it showed, their components too: a potion brewed where a water bottle was (the menus share the one Inventory)', async () => {
+    for (const version of ['1.20.6', '1.21.11', '26.3']) {
+      const t = await clickingBot(version)
+      try {
+        const potion = (id) => t.Item.toNotch(t.Item.fromNotch({ itemId: t.registry.itemsByName.potion.id, itemCount: 1, components: [{ type: 'potion_contents', data: { potionId: id, customEffects: [] } }], removeComponents: [] }))
+        const empty = t.Item.toNotch(null)
+        const inventory = new Array(46).fill(empty)
+        inventory[36] = potion(0)
+        t.client.write('window_items', { windowId: 0, stateId: 40, items: inventory, carriedItem: empty })
+        await sleep(50)
+        const title = t.registry.version['>=']('1.20.3') ? { type: 'string', value: 'Chest' } : JSON.stringify({ text: 'Chest' })
+        const opened = new Promise(resolve => t.bot.once('windowOpen', resolve))
+        t.client.write('open_window', { windowId: 1, inventoryType: 2, windowTitle: title })
+        // the hotbar's first slot (the chest's 54) a potion of fire resistance now
+        const shown = [...new Array(27).fill(empty), ...inventory.slice(9, 45)]
+        shown[54] = potion(11)
+        t.client.write('window_items', { windowId: 1, stateId: 1, items: shown, carriedItem: empty })
+        await opened
+        await sleep(50)
+        t.bot.closeWindow(t.bot.currentWindow)
+        assert.strictEqual(t.bot.inventory.slots[36]?.componentMap.get('potion_contents')?.data.potionId, 11, version)
+      } finally {
+        await t.close()
+      }
+    }
+  })
+
   it('component hashes: CRC32C over HashOps, as vanilla\'s HashedPatchMap hashes them', () => {
     const componentHash = require('../lib/component_hash')
     // CRC32C's check value (Guava's Hashing.crc32c), as a signed int
