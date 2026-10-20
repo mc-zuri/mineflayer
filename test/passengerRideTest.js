@@ -1,7 +1,7 @@
 /* eslint-env mocha */
 // A passenger the client doesn't drive rides on its vehicle each client tick (Entity.rideTick: vehicle.positionRider):
 // the server sends no moves of a passenger (ServerEntity.sendChanges), so a chicken jockey's zombie or a spider
-// jockey's skeleton is wherever its mount is.
+// jockey's skeleton is wherever its mount is. And a baby's box is half the adult's.
 
 const assert = require('assert')
 const { fakeServerBot } = require('./common/fakeServer')
@@ -40,6 +40,25 @@ for (const version of ['1.20.4', '1.21.11', '26.3']) {
         t.ticks(1)
         assert.deepStrictEqual(zombie.position.toArray(), [6.5, 65 + chicken.height, 2.5])
         await sleep(1)
+      } finally {
+        await t.close()
+      }
+    })
+
+    it('a baby zombie has half the adult box (LivingEntity.getDefaultDimensions: getAgeScale 0.5), and grown up again its own', async () => {
+      const t = await fakeServerBot(version, { spawn: { x: 0.5, y: 65, z: 0.5 } })
+      try {
+        const { bot, registry } = t
+        const spawnName = registry.supportFeature('consolidatedEntitySpawnPacket') ? 'spawn_entity' : 'spawn_entity_living'
+        const spawned = once(bot, 'entitySpawn')
+        bot._client.emit(spawnName, { entityId: 42, objectUUID: '00112233-4455-6677-8899-aabbccddee42', entityUUID: '00112233-4455-6677-8899-aabbccddee42', type: registry.entitiesByName.zombie.id, x: 2.5, y: 65, z: 0.5, pitch: 0, yaw: 0, headPitch: 0, objectData: 0, velocity: { x: 0, y: 0, z: 0 }, velocityX: 0, velocityY: 0, velocityZ: 0, metadata: [] })
+        const [zombie] = await spawned
+        const baby = registry.entitiesByName.zombie.metadataKeys.indexOf('baby')
+        bot._client.emit('entity_metadata', { entityId: 42, metadata: [{ key: baby, type: 'boolean', value: true }] })
+        assert.strictEqual(zombie.width, registry.entitiesByName.zombie.width * 0.5)
+        assert.strictEqual(zombie.height, registry.entitiesByName.zombie.height * 0.5)
+        bot._client.emit('entity_metadata', { entityId: 42, metadata: [{ key: baby, type: 'boolean', value: false }] })
+        assert.strictEqual(zombie.height, registry.entitiesByName.zombie.height)
       } finally {
         await t.close()
       }
