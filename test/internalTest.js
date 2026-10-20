@@ -3421,6 +3421,21 @@ for (const supportedVersion of mineflayer.testedVersions) {
         })
       })
 
+      it('a block\'s biome is the one of its id in the biome registry the server sent, which comes after the blocks are loaded', async () => {
+        const plains = registry.biomesByName.plains.id
+        const chunk = bot.test.buildChunk()
+        chunk.setBlockType(pos, registry.blocksByName.gold_block.id) // (a chunk of no sections, 1.9 - 1.16, is unloaded)
+        chunk.setBiome(pos, plains)
+        const [client] = await once(server, 'playerJoin')
+        client.write('login', bot.test.generateLoginPacket())
+        client.write('map_chunk', generateChunkPacket(chunk))
+        await once(bot, 'chunkColumnLoad')
+        const biome = bot.blockAt(pos).biome
+        assert.strictEqual(biome.id, plains)
+        assert.ok(biome.name)
+        assert.strictEqual(biome.name, bot.registry.biomes[plains].name)
+      })
+
       it('the biomes the server changes in a loaded chunk are the chunk\'s, its blocks as they were, 1.19.4+ (ClientPacketListener.handleChunksBiomes)', async function () {
         if (!registry.version['>=']('1.19.4')) return this.skip()
         const gold = registry.blocksByName.gold_block.id
