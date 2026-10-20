@@ -137,3 +137,40 @@ describe('actionsInTick: a click in a menu lets go of the keys (Minecraft.setScr
     })
   }
 })
+
+describe('actionsInTick: the held packets keep their order (a screen\'s clicks, its close, the actions after)', function () {
+  this.timeout(15 * 1000)
+  for (const version of ['1.20.4', '1.21.11']) {
+    it(`a close and a use asked for after a held click go after it: the close after the tick's movement, the use the tick after, ${version}`, async () => {
+      const t = await fakeServerBot(version, { spawn, blocks: floor, options: { actionsInTick: true } })
+      try {
+        for (let i = 0; i < 20 && !t.bot.entity.onGround; i++) t.ticks(1)
+        t.bot.setControlState('forward', true)
+        t.bot.setControlState('sprint', true)
+        t.ticks(5)
+        await settle()
+        t.written.length = 0
+        // an inventory craft's clicks, the menu closed, then a use (the crafting grid's items back in the bag on close)
+        const clicked = t.bot.clickWindow(36, 0, 0).catch(err => err)
+        t.bot.closeWindow(t.bot.inventory)
+        t.bot.activateItem()
+        await settle()
+        assert.deepStrictEqual(t.names(/^(window_click|close_window|use_item|block_place)$/), [])
+        t.ticks(1)
+        await settle()
+        const first = t.names(/^(window_click|close_window|use_item|block_place|position|position_look|look|flying)$/)
+        const click = first.indexOf('window_click')
+        assert.ok(click > 0 && first.indexOf('close_window') === click + 1, first.join(' '))
+        assert.ok(!first.includes('use_item'), first.join(' '))
+        t.written.length = 0
+        t.ticks(1)
+        await settle()
+        const next = t.names(/^(use_item|block_place|position|position_look|look|flying)$/)
+        assert.strictEqual(next[0], 'use_item', next.join(' '))
+        await clicked
+      } finally {
+        await t.close()
+      }
+    })
+  }
+})
