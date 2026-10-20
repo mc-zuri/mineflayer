@@ -32,6 +32,13 @@ export interface BotOptions extends ClientOptions {
   maxCatchupTicks?: number
   /** No timer runs the physics: each tick runs when bot.physicsTick() is called. @default false */
   physicsManual?: boolean
+  /**
+   * The player's actions (dig, use, place, attack, the held slot, a swing, a player command) go at the start of a client
+   * tick, before its movement, as Minecraft.handleKeybinds sends them: one asked for between ticks or after the tick's
+   * movement waits for the next tick, and a dig starts as the attack key held (after the destroy delay). For servers
+   * whose anticheat checks the order (Grim's Post, FastBreak). @default false
+   */
+  actionsInTick?: boolean
   client?: Client
   brand?: string
   defaultChatPatterns?: boolean
@@ -225,6 +232,8 @@ export interface Bot extends TypedEmitter<BotEvents> {
   physics: PhysicsOptions
   entityPhysics: EntityPhysicsOptions
   physicsEnabled: boolean
+  /** BotOptions.actionsInTick, settable */
+  actionsInTick: boolean
   entityPhysicsEnabled: boolean
   time: Time
   worldBorder: WorldBorder
