@@ -174,3 +174,34 @@ describe('actionsInTick: the held packets keep their order (a screen\'s clicks, 
     })
   }
 })
+
+describe('actionsInTick: an action goes with the look it was asked with (the turn before the click)', function () {
+  this.timeout(15 * 1000)
+  for (const version of ['1.20.4', '1.21.11']) {
+    it(`a use asked looking one way, the tick's begin turning another, sends the use's look that tick and the turn the next, ${version}`, async () => {
+      const t = await fakeServerBot(version, { spawn, blocks: floor, options: { actionsInTick: true } })
+      try {
+        for (let i = 0; i < 20 && !t.bot.entity.onGround; i++) t.ticks(1)
+        await t.bot.look(0, 0, true)
+        t.ticks(2)
+        await settle()
+        t.written.length = 0
+        // looking east-ish and down, the use; the next tick's begin turns away (the bot's next target)
+        await t.bot.look(-Math.PI / 2, -0.5, true)
+        t.bot.activateItem()
+        t.bot.once('physicsTickBegin', () => { void t.bot.look(Math.PI, 0, true) })
+        t.ticks(1)
+        await settle()
+        const looks = () => t.written.filter(p => /^(position_look|look)$/.test(p.name)).map(p => [Math.round(p.data.yaw) + 0, Math.round(p.data.pitch) + 0])
+        assert.ok(t.names(/^use_item$/).length === 1, t.names().join(' '))
+        assert.deepStrictEqual([...new Set(looks().map(String))], ['270,29'])
+        t.written.length = 0
+        t.ticks(1)
+        await settle()
+        assert.deepStrictEqual([...new Set(looks().map(String))], ['360,0'])
+      } finally {
+        await t.close()
+      }
+    })
+  }
+})
