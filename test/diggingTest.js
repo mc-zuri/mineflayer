@@ -103,6 +103,31 @@ describe('digging (MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock)
     }
   })
 
+  // no face asked for: the face the crosshair hits once the bot looks at the block (BlockHitResult.getDirection), not
+  // the top whatever the eye sees (Grim's PositionBreakA undid the breaks of blocks at and above the eye: face UP)
+  for (const version of ['1.12.2', '1.20.4', '26.3']) {
+    it(`a dig with no face given goes at the face the crosshair hits, ${version}`, async () => {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone'], [2, 66, 0, 'dirt'], [0, 68, 0, 'dirt'], [0, 64, 2, 'dirt']] })
+      try {
+        for (let i = 0; i < 20 && !t.bot.entity.onGround; i++) t.ticks(1)
+        await settle()
+        const faces = []
+        for (const [x, y, z] of [[2, 66, 0], [0, 68, 0], [0, 64, 2]]) {
+          t.written.length = 0
+          const done = t.bot.dig(t.bot.blockAt(new Vec3(x, y, z)), true).catch(err => err)
+          await settle()
+          faces.push(digs(t).find(d => d.status === 0)?.face)
+          t.bot.stopDigging()
+          await done
+        }
+        // west of the block at the eye's height, under the one over the head, the top of the one on the floor
+        assert.deepStrictEqual(faces, [4, 0, 1])
+      } finally {
+        await t.close()
+      }
+    })
+  }
+
   it('the key held on from a broken block starts the next after the destroy delay of 5 ticks', async () => {
     const t = await standing('1.20.4')
     try {
