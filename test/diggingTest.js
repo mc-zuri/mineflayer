@@ -225,6 +225,36 @@ describe('digging (MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock)
     }
   })
 
+  for (const version of ['1.12.2', '1.20.4', '26.3']) {
+    it(`a dig of a block already broken (its Block kept from before, its place air) fails at once and sends nothing, and stops one held on another (Minecraft.startAttack / continueAttack on a MISS), ${version}`, async () => {
+      const t = await standing(version)
+      try {
+        const stale = t.bot.blockAt(new Vec3(1, 64, 0))
+        t.client.write('block_change', { location: { x: 1, y: 64, z: 0 }, type: 0 })
+        await settle()
+        assert.strictEqual(t.bot.blockAt(stale.position).type, 0)
+        const err = await t.bot.dig(stale, 'ignore', 'auto', 1).then(() => null, err => err)
+        assert.match(err?.message ?? '', /nothing to dig: the block at .* is air/)
+        assert.strictEqual(t.bot.targetDigBlock, null)
+        t.ticks(5)
+        await settle()
+        assert.deepStrictEqual(digs(t), [])
+        // one held on another block: stopped
+        const held = t.bot.dig(t.bot.blockAt(new Vec3(2, 64, 0)), 'ignore', 'auto', 1).catch(err => err)
+        t.ticks(2)
+        const again = await t.bot.dig(stale, 'ignore', 'auto', 1).then(() => null, err => err)
+        assert.match(again?.message ?? '', /is air/)
+        assert.strictEqual((await held).message, 'Digging aborted')
+        assert.strictEqual(t.bot.targetDigBlock, null)
+        await settle()
+        // (ABORT is 2 from 26.3, CHANGE_DESTROY_DIRECTION put at 1)
+        assert.deepStrictEqual(digs(t).map(d => d.status), [0, t.registry.version['>=']('26.3') ? 2 : 1])
+      } finally {
+        await t.close()
+      }
+    })
+  }
+
   it('26.3: a dig turned to another face of its block sends CHANGE_DESTROY_DIRECTION', async () => {
     const t = await standing('26.3')
     try {
