@@ -122,6 +122,35 @@ describe('an item in use (LocalPlayer.isUsingItem)', function () {
     }
   })
 
+  // Grim's NoSlow: the bot walked at full speed while the server had it eating
+  for (const version of ['1.12.2', '1.20.4', '1.21.11']) {
+    it(`another entity's event and more of the same item in the hand leave the use going (Player.handleEntityEvent, LivingEntity.updatingUsingItem), ${version}`, async () => {
+      const t = await fakeServerBot(version, { spawn, blocks: [[0, 64, 0, 'stone']] })
+      try {
+        const Item = require('prismarine-item')(t.registry)
+        t.client.write('set_slot', { windowId: 0, stateId: 1, slot: 36, item: Item.toNotch(new Item(t.registry.itemsByName.bread.id, 3)) })
+        t.client.write('held_item_slot', { slot: 0 })
+        await settle()
+        t.bot.food = 10
+        t.bot.activateItem()
+        assert.strictEqual(t.bot.usingHeldItem, true)
+        // a sheep's eating, another entity's event 9
+        t.client.write('entity_status', { entityId: 99, entityStatus: 10 })
+        t.client.write('entity_status', { entityId: 99, entityStatus: 9 })
+        await settle()
+        assert.strictEqual(t.bot.usingHeldItem, true)
+        // a bread picked up into the stack in the hand
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.bread.id, 4))
+        assert.strictEqual(t.bot.usingHeldItem, true)
+        // another item in the hand ends it
+        t.bot.inventory.updateSlot(36, new Item(t.registry.itemsByName.stone.id, 1))
+        assert.strictEqual(t.bot.usingHeldItem, false)
+      } finally {
+        await t.close()
+      }
+    })
+  }
+
   it('its use complete (entity event 9), a drink leaves its container in the hand and a food one less, 1.20.4', async () => {
     const t = await fakeServerBot('1.20.4', { spawn, blocks: [[0, 64, 0, 'stone']] })
     try {
