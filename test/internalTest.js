@@ -1623,6 +1623,35 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // the client's new player after a respawn has no effects (a new LocalPlayer), the server sending again the ones
+      // it keeps: the bot that kept a fire resistance after a death fought the blazes as if it had it on
+      // (mineflayer-survival's tests/integration/blaze)
+      it('a respawned bot has no effects but the ones the server sends after (ClientPacketListener.handleRespawn)', async function () {
+        const respawn = respawnPacket()
+        if (!respawn) return this.skip()
+        const { manual, client } = await standingManualBot({ levelLoaded: () => true })
+        try {
+          const effect = (effectId) => ({ entityId: manual.entity.id, effectId, amplifier: 0, duration: 600, hideParticles: false, flags: 0 })
+          const got = once(manual, 'entityEffect')
+          client.write('entity_effect', effect(11))
+          await got
+          assert.ok(manual.entity.effects[11] != null)
+          const died = once(manual, 'death')
+          client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+          await died
+          const respawned = once(manual, 'respawn')
+          client.write('respawn', respawn)
+          await respawned
+          assert.deepStrictEqual(manual.entity.effects, {})
+          const again = once(manual, 'entityEffect')
+          client.write('entity_effect', effect(1))
+          await again
+          assert.deepStrictEqual(Object.keys(manual.entity.effects), ['1'])
+        } finally {
+          manual.end()
+        }
+      })
+
       it("a respawned bot stands at its level's spawn until the server moves it (Player, Player.resetPos)", async function () {
         const respawn = respawnPacket()
         if (!respawn) return this.skip()
