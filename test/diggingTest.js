@@ -274,6 +274,48 @@ describe('digging (MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock)
     }
   })
 
+  for (const version of ['1.20.4', '1.21.11', '26.3']) {
+    it(`a break is told predicted (bot._isBlockPredicted) till the server acknowledges it, then the server's block, ${version}`, async () => {
+      const t = await standing(version)
+      try {
+        const { bot, client, registry } = t
+        const position = new Vec3(1, 64, 0)
+        const dirt = registry.blocksByName.dirt.defaultState
+        assert.strictEqual(bot._isBlockPredicted(position), false)
+        const done = bot.dig(bot.blockAt(position), 'ignore', 'auto', 1)
+        for (let i = 0; i < 40 && bot.blockAt(position).type !== 0; i++) t.ticks(1)
+        await done
+        await settle()
+        // air in the client's world, the server's answer to come: a refused break (spawn protection) put back by it
+        assert.strictEqual(bot.blockAt(position).type, 0)
+        assert.strictEqual(bot._isBlockPredicted(position), true)
+        assert.strictEqual(bot._isBlockPredicted(new Vec3(2, 64, 0)), false)
+        // (the STOP's: the last sequence sent)
+        client.write('acknowledge_player_digging', { sequenceId: Math.max(...digs(t).map(d => d.sequence)) })
+        await settle()
+        assert.strictEqual(bot._isBlockPredicted(position), false)
+        assert.strictEqual(bot.blockAt(position).stateId, dirt)
+      } finally {
+        await t.close()
+      }
+    })
+  }
+
+  it('before 1.19 no break is a prediction (bot._isBlockPredicted): the server sends no sequence to acknowledge', async () => {
+    const t = await standing('1.12.2')
+    try {
+      const { bot } = t
+      const position = new Vec3(1, 64, 0)
+      const done = bot.dig(bot.blockAt(position), 'ignore', 'auto', 1)
+      for (let i = 0; i < 40 && bot.blockAt(position).type !== 0; i++) t.ticks(1)
+      await done
+      assert.strictEqual(bot.blockAt(position).type, 0)
+      assert.strictEqual(bot._isBlockPredicted(position), false)
+    } finally {
+      await t.close()
+    }
+  })
+
   for (const version of ['1.12.2', '1.20.4', '26.3']) {
     it(`a dig of a block already broken (its Block kept from before, its place air) fails at once and sends nothing, and stops one held on another (Minecraft.startAttack / continueAttack on a MISS), ${version}`, async () => {
       const t = await standing(version)
