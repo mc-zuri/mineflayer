@@ -208,6 +208,30 @@ describe('digging (MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock)
     }
   })
 
+  for (const version of ['1.20.4', '1.21.11', '26.3']) {
+    it(`a dig the server refused (spawn protection: its START answered with the block, its STOP with the acknowledgement alone) leaves the block, ${version}`, async () => {
+      const t = await standing(version)
+      try {
+        const { bot, client, registry } = t
+        const position = new Vec3(1, 64, 0)
+        const dirt = registry.blocksByName.dirt.defaultState
+        // the server: the START refused with the block as it is (ServerPlayerGameMode.handleBlockBreakAction), every
+        // action acknowledged (ServerGamePacketListenerImpl.ackBlockChangesUpTo)
+        client.on('block_dig', (packet) => {
+          if (packet.status === 0) client.write('block_change', { location: position, type: dirt })
+          client.write('acknowledge_player_digging', { sequenceId: packet.sequence })
+        })
+        const done = bot.dig(bot.blockAt(position), 'ignore', 'auto', 1)
+        for (let i = 0; i < 40 && bot.blockAt(position).type !== 0; i++) t.ticks(1)
+        await done
+        await settle()
+        assert.strictEqual(bot.blockAt(position).stateId, dirt)
+      } finally {
+        await t.close()
+      }
+    })
+  }
+
   it('from 1.19 a break is a prediction until the server acknowledges it (BlockStatePredictionHandler)', async () => {
     const t = await standing('1.20.4')
     try {
