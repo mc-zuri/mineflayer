@@ -1593,6 +1593,36 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      // the server's new player after a death has slot 0 selected, and so has the client's (a new LocalPlayer's
+      // Inventory): the bot that kept its old slot thought it held the pickaxe crafted into it while the server had it
+      // dig by hand (Grim's FastBreak, mineflayer-survival's pnpm e2e --grim, grimls-2)
+      it('a respawned bot holds its first slot and tells the server at its next tick (ClientPacketListener.handleRespawn)', async function () {
+        const respawn = respawnPacket()
+        if (!respawn) return this.skip()
+        const { manual, client, written, runTicks } = await standingManualBot({ levelLoaded: () => true })
+        try {
+          manual.setQuickBarSlot(3)
+          runTicks(2)
+          assert.ok(written.some(p => p.name === 'held_item_slot'), written.map(p => p.name).join())
+          const died = once(manual, 'death')
+          client.write('update_health', { health: 0, food: 20, foodSaturation: 5 })
+          await died
+          runTicks(25)
+          const respawned = once(manual, 'respawn')
+          client.write('respawn', respawn)
+          await respawned
+          assert.strictEqual(manual.quickBarSlot, 0)
+          await teleport(manual, client)
+          const slot = once(client, 'held_item_slot')
+          written.length = 0
+          runTicks(2)
+          const [packet] = await slot
+          assert.strictEqual(packet.slotId, 0)
+        } finally {
+          manual.end()
+        }
+      })
+
       it("a respawned bot stands at its level's spawn until the server moves it (Player, Player.resetPos)", async function () {
         const respawn = respawnPacket()
         if (!respawn) return this.skip()
