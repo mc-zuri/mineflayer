@@ -10,6 +10,7 @@ import {
 
   // Recipe utilities
   parseRecipe,
+  craftingDataRecipes,
   fitsIn2x2,
   getIngredients,
   resolveIngredientId,
@@ -123,7 +124,7 @@ export default function inject(bot: BedrockBot) {
       recipesByNetworkId.clear();
     }
 
-    for (const entry of packet.recipes) {
+    for (const entry of craftingDataRecipes(packet, bot.registry)) {
       const recipe = parseRecipe(entry);
       if (!recipe) continue;
 
@@ -149,7 +150,8 @@ export default function inject(bot: BedrockBot) {
    */
   function parseRecipe(entry: protocolTypes.Recipes[number]): BedrockRecipe | null {
     const type = entry.type;
-    const recipe = entry.recipe;
+    // (its fields depend on type, which the merged protocol types do not narrow it by)
+    const recipe: any = entry.recipe;
 
     if (!recipe) return null;
 

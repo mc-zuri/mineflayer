@@ -440,12 +440,12 @@ export interface Bot extends TypedEmitter<BotEvents> {
  * Bedrock client with typed packet event handlers.
  * Use this for explicit typing when you need typed packet events.
  */
-export interface BedrockClient extends TypedEmitter<protocolTypes.BedrockPacketEventMap & { login: () => void; join: () => void }> {
+export interface BedrockClient extends TypedEmitter<BedrockPacketEventMap & { login: () => void; join: () => void }> {
   username: string;
 
-  write<K extends keyof protocolTypes.BedrockPacketEventMap>(name: K, params: Parameters<protocolTypes.BedrockPacketEventMap[K]>[0]): void;
+  write<K extends keyof BedrockPacketEventMap>(name: K, params: Parameters<BedrockPacketEventMap[K]>[0]): void;
 
-  queue<K extends keyof protocolTypes.BedrockPacketEventMap>(name: K, params: Parameters<protocolTypes.BedrockPacketEventMap[K]>[0]): void;
+  queue<K extends keyof BedrockPacketEventMap>(name: K, params: Parameters<BedrockPacketEventMap[K]>[0]): void;
 }
 
 /**

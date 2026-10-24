@@ -18,9 +18,11 @@ const PHYSICS_TIMESTEP = PHYSICS_INTERVAL_MS / 1000;
 
 interface PhysicsOptions {
   physicsEnabled?: boolean;
+  maxCatchupTicks?: number;
 }
 
-export default function inject(bot: BedrockBot, { physicsEnabled }: PhysicsOptions = {}) {
+export default function inject(bot: BedrockBot, { physicsEnabled, maxCatchupTicks }: PhysicsOptions = {}) {
+  const PHYSICS_CATCHUP_TICKS = maxCatchupTicks ?? 4;
   const world = {
     getBlock: (pos: Vec3) => {
       return bot.blockAt(pos, false);
@@ -61,7 +63,8 @@ export default function inject(bot: BedrockBot, { physicsEnabled }: PhysicsOptio
 
   const inputDataService = new InputDataService();
 
-  const lastSent: protocolTypes.packet_player_auth_input = {
+  // the packet as 1.21.130 lays it out, its input flags an object: the protocol adapter writes it in the version's layout
+  const lastSent: protocolTypes.packet_player_auth_input & { input_data: protocolTypes.InputFlag } = {
     pitch: 0,
     yaw: 0, // change
     position: new Vec3(0, 0, 0), // change
@@ -151,6 +154,7 @@ export default function inject(bot: BedrockBot, { physicsEnabled }: PhysicsOptio
   // This function should be executed each tick (every 0.05 seconds)
   // How it works: https://gafferongames.com/post/fix_your_timestep/
   let timeAccumulator = 0;
+  let catchupTicks = 0;
   let subchunkContainingPlayer: Vec3 | null = null;
 
   function getChunkCoordinates(pos: Vec3) {
@@ -175,6 +179,7 @@ export default function inject(bot: BedrockBot, { physicsEnabled }: PhysicsOptio
     lastPhysicsFrameTime = now;
 
     timeAccumulator += deltaSeconds;
+    catchupTicks = 0;
 
     while (timeAccumulator >= PHYSICS_TIMESTEP) {
       if (bot.physicsEnabled && shouldUsePhysics) {
@@ -190,6 +195,8 @@ export default function inject(bot: BedrockBot, { physicsEnabled }: PhysicsOptio
       }
       updatePosition(PHYSICS_TIMESTEP);
       timeAccumulator -= PHYSICS_TIMESTEP;
+      catchupTicks++;
+      if (catchupTicks >= PHYSICS_CATCHUP_TICKS) break;
     }
   }
 
@@ -374,8 +381,9 @@ export default function inject(bot: BedrockBot, { physicsEnabled }: PhysicsOptio
     const dPitch = bot.entity.pitch - (lastSentPitch || 0);
 
     // Vanilla doesn't clamp yaw, so we don't want to do it either
-    const maxDeltaYaw = dt * physics.yawSpeed;
-    const maxDeltaPitch = dt * physics.pitchSpeed;
+    // (prismarine-physics' Bedrock engine has no turn speeds: the Java engine's 3 radians a second)
+    const maxDeltaYaw = dt * (physics.yawSpeed ?? 3.0);
+    const maxDeltaPitch = dt * (physics.pitchSpeed ?? 3.0);
 
     lastSentYaw = (lastSentYaw ?? 0) + math.clamp(-maxDeltaYaw, dYaw, maxDeltaYaw);
     lastSentPitch = (lastSentPitch ?? 0) + math.clamp(-maxDeltaPitch, dPitch, maxDeltaPitch);

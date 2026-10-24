@@ -34,6 +34,31 @@ export function setStackId(item: Item, stackId: number): void {
   (item as any).stackId = stackId;
 }
 
+// The statuses of an item_stack_response, by number (Mojang's ItemStackNetResult): the protocol names only ok and error
+const STACK_RESULTS = [
+  'Success', 'Error', 'InvalidRequestActionType', 'ActionRequestNotAllowed', 'ScreenHandlerEndRequestFailed',
+  'ItemRequestActionHandlerCommitFailed', 'InvalidRequestCraftActionType', 'InvalidCraftRequest', 'InvalidCraftRequestScreen',
+  'InvalidCraftResult', 'InvalidCraftResultIndex', 'InvalidCraftResultItem', 'InvalidItemNetId', 'MissingCreatedOutputContainer',
+  'FailedToSetCreatedItemOutputSlot', 'RequestAlreadyInProgress', 'FailedToInitSparseContainer', 'ResultTransferFailed',
+  'ExpectedItemSlotNotFullyConsumed', 'ExpectedAnywhereItemNotFullyConsumed', 'ItemAlreadyConsumedFromSlot',
+  'ConsumedTooMuchFromSlot', 'MismatchSlotExpectedConsumedItem', 'MismatchSlotExpectedConsumedItemNetIdVariant',
+  'FailedToMatchExpectedSlotConsumedItem', 'FailedToMatchExpectedAllowedAnywhereConsumedItem', 'ConsumedItemOutOfAllowedSlotRange',
+  'ConsumedItemNotAllowed', 'PlayerNotInCreativeMode', 'InvalidExperimentalRecipeRequest', 'FailedToCraftCreative',
+  'FailedToGetLevelRecipe', 'FailedToFindRecipeByNetId', 'MismatchedCraftingSize', 'MissingInputSparseContainer',
+  'MismatchedRecipeForInputGridItems', 'EmptyCraftResults', 'FailedToEnchant', 'MissingInputItem',
+  'InsufficientPlayerLevelToEnchant', 'MissingMaterialItem', 'MissingActor', 'UnknownPrimaryEffect', 'PrimaryEffectOutOfRange',
+  'PrimaryEffectUnavailable', 'SecondaryEffectOutOfRange', 'SecondaryEffectUnavailable', 'DstContainerEqualToCreatedOutputContainer',
+  'DstContainerAndSlotEqualToSrcContainerAndSlot', 'FailedToValidateSrcSlot', 'FailedToValidateDstSlot', 'InvalidAdjustedAmount',
+  'InvalidItemSetType', 'InvalidTransferAmount', 'CannotSwapItem', 'CannotPlaceItem', 'UnhandledItemSetType', 'InvalidRemovedAmount',
+  'InvalidRegion', 'CannotDropItem', 'CannotDestroyItem', 'InvalidSourceContainer', 'ItemNotConsumed', 'InvalidNumCrafts',
+  'InvalidCraftResultStackSize', 'CannotRemoveItem', 'CannotConsumeItem', 'ScreenStackError',
+];
+
+/** the name of an item_stack_response status (a number where the protocol has no name for it) */
+export function stackResultName(status: string | number): string {
+  return typeof status === 'number' ? (STACK_RESULTS[status] ?? `unknown status ${status}`) : status;
+}
+
 // ============================================================================
 // Container ID Constants
 // ============================================================================

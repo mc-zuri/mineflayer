@@ -41,7 +41,8 @@ export default function inject(bot: BedrockBot, options: GameOptions = {}) {
   function handleStartGamePacketData(packet: any) {
     bot.game.levelType = packet.generator ?? (packet.generator === 2 ? 'flat' : 'default');
     bot.game.hardcore = packet.player_gamemode === 'hardcore';
-    bot.game.gameMode = packet.player_gamemode;
+    // 'fallback': the player plays the world's game mode (as 1.26 servers say of a player with none of their own)
+    bot.game.gameMode = packet.player_gamemode === 'fallback' ? packet.world_gamemode : packet.player_gamemode;
 
     bot.game.dimension = packet.dimension;
 
@@ -66,9 +67,13 @@ export default function inject(bot: BedrockBot, options: GameOptions = {}) {
         z: 0,
       },
     });
-    bot._client.queue('set_local_player_as_initialized', {
-      runtime_entity_id: `${bot.entity.id}`,
-    });
+    // bedrock-protocol's client sends it itself on player_spawn, as the vanilla client does, unless autoInitPlayer is
+    // off; a second one makes bedrock-protocol's server (3.60+) refuse the login
+    if ((bot._client as any).options?.autoInitPlayer === false) {
+      bot._client.queue('set_local_player_as_initialized', {
+        runtime_entity_id: `${bot.entity.id}`,
+      });
+    }
 
     // CODE BELOW MIGHT BE WRONG
     // if (bot.supportFeature('dimensionIsAnInt')) {

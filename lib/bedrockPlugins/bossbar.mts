@@ -14,6 +14,8 @@ export default function inject(bot: BedrockBot) {
   });
 
   bot._client.on('boss_event', (packet) => {
+    // 1.26.30+ names the boss target_entity_id and writes every field whatever the event is
+    const bossId = packet.boss_entity_id ?? packet.target_entity_id;
     if (packet.type === 'show_bar') {
       let flags = 0;
 
@@ -21,23 +23,29 @@ export default function inject(bot: BedrockBot) {
         flags |= 0x1;
       }
 
-      bars[packet.boss_entity_id] = new BossBar(packet.boss_entity_id, packet.title, getBossHealth(packet.boss_entity_id), 4, packet.color, flags);
+      bars[bossId] = new BossBar(bossId, packet.title, getBossHealth(bossId), 4, packet.color, flags);
 
       bot._client.write('boss_event', {
-        boss_entity_id: packet.boss_entity_id,
+        boss_entity_id: bossId,
+        target_entity_id: bossId,
         type: 'register_player',
         player_id: bot.entity.unique_id,
+        title: '',
+        filtered_title: '',
+        progress: 0,
+        color: 'pink',
+        overlay: 'progress',
       });
 
-      bot.emit('bossBarCreated', bars[packet.boss_entity_id]);
+      bot.emit('bossBarCreated', bars[bossId]);
     } else if (packet.type === 'set_bar_progress') {
-      if (!(packet.boss_entity_id in bars)) {
+      if (!(bossId in bars)) {
         return;
       }
 
-      bars[packet.boss_entity_id].health = getBossHealth(packet.boss_entity_id);
+      bars[bossId].health = getBossHealth(bossId);
 
-      bot.emit('bossBarUpdated', bars[packet.boss_entity_id]);
+      bot.emit('bossBarUpdated', bars[bossId]);
     }
   });
 

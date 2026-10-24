@@ -425,10 +425,12 @@ export default function inject(bot: BedrockBot) {
     //     }
     //   }
     // } else {
-    packet.records.records.forEach((item: any) => {
+    // 1.26.40+: every record carries its own type; before, one type covered the whole list
+    const records = Array.isArray(packet.records) ? packet.records : packet.records.records.map((item: any) => ({ ...item, type: packet.records.type }));
+    records.forEach((item: any) => {
       let player = bot.uuidToUsername[item.uuid] ? bot.players[bot.uuidToUsername[item.uuid]] : null;
 
-      if (packet.records.type === 'add') {
+      if (item.type === 'add') {
         let newPlayer = false;
 
         // New Player
@@ -472,7 +474,7 @@ export default function inject(bot: BedrockBot) {
         if (!newPlayer) {
           bot.emit('playerUpdated', player);
         }
-      } else if (packet.records.type === 'remove') {
+      } else if (item.type === 'remove') {
         if (!player) return;
         if (player.entity === bot.entity) return;
 
@@ -534,7 +536,7 @@ export default function inject(bot: BedrockBot) {
           entity_runtime_id: target.id,
           action_type: typeStr,
           hotbar_slot: bot.quickBarSlot,
-          held_item: bot.heldItem,
+          held_item: Item.toNotch(bot.heldItem, 0),
           player_pos: bot.entity.position,
           click_pos: {
             // in case with interact its pos on hitbox of entity that is being interacted with

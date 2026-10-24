@@ -205,7 +205,8 @@ export default function inject(bot: BedrockBot) {
    */
   async function openVillager(villagerEntity: Entity): Promise<Villager> {
     // Verify entity is a villager or wandering trader
-    const entityType = String(villagerEntity.type || villagerEntity.name || '');
+    // (type is the entity's kind, 'passive', where minecraft-data has it; the name is villager_v2 or wandering_trader)
+    const entityType = String(villagerEntity.name || villagerEntity.type || '');
     if (!entityType.includes('villager') && !entityType.includes('wandering_trader')) {
       throw new Error(`Entity is not a villager or trader: ${entityType}`);
     }

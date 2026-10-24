@@ -94,11 +94,15 @@ export default function inject(bot: BedrockBot, { version, storageBuilder, hideE
   //let points = []
   async function processLevelChunk(packet: any) {
     const cc = new Chunk({ x: packet.x, z: packet.z });
+    // 1.26.40+: the blob hashes are a plain list, and sub chunks are requested when highest_subchunk_count is sent
+    // (before, sub_chunk_count was negative, and highest_subchunk_count came only with -2)
+    const hashes = packet.blobs?.hashes ?? packet.blobs ?? [];
+    const requestSubChunks = packet.sub_chunk_count < 0 || packet.highest_subchunk_count != null;
     if (!cachingEnabled) {
       await cc.networkDecodeNoCache(packet.payload, packet.sub_chunk_count);
     } else if (cachingEnabled) {
-      const misses = await cc.networkDecode(packet.blobs.hashes, blobStore, packet.payload);
-      if (!packet.blobs.hashes.length) return; // no blobs
+      const misses = await cc.networkDecode(hashes, blobStore, packet.payload);
+      if (!hashes.length) return; // no blobs
 
       bot._client.queue('client_cache_blob_status', {
         misses: misses.length,
@@ -107,12 +111,12 @@ export default function inject(bot: BedrockBot, { version, storageBuilder, hideE
         missing: misses,
       });
 
-      if (packet.sub_chunk_count < 0) {
+      if (requestSubChunks) {
         // 1.18+
         for (const miss of misses) blobStore.addPending(miss, new BlobEntry({ type: BlobType.Biomes, x: packet.x, z: packet.z }));
       } else {
         // 1.17-
-        const lastBlob = packet.blobs.hashes[packet.blobs.hashes.length - 1];
+        const lastBlob = hashes[hashes.length - 1];
         for (const miss of misses) {
           blobStore.addPending(
             miss,
@@ -128,19 +132,19 @@ export default function inject(bot: BedrockBot, { version, storageBuilder, hideE
 
       blobStore.once(misses, async () => {
         // The things we were missing have now arrived
-        const now = await cc.networkDecode(packet.blobs.hashes, blobStore, packet.payload);
+        const now = await cc.networkDecode(hashes, blobStore, packet.payload);
         fs.writeFileSync(
           `fixtures/${version}/level_chunk CacheMissResponse ${packet.x},${packet.z}.json`,
           serialize({
-            blobs: Object.fromEntries(packet.blobs.hashes.map((h: any) => [h.toString(), blobStore.get(h).buffer])),
+            blobs: Object.fromEntries(hashes.map((h: any) => [h.toString(), blobStore.get(h).buffer])),
           })
         );
         assert.strictEqual(now.length, 0);
 
         bot._client.queue('client_cache_blob_status', {
           misses: 0,
-          haves: packet.blobs.hashes.length,
-          have: packet.blobs.hashes,
+          haves: hashes.length,
+          have: hashes,
           missing: [],
         });
 
@@ -148,7 +152,7 @@ export default function inject(bot: BedrockBot, { version, storageBuilder, hideE
       });
     }
 
-    if (packet.sub_chunk_count < 0) {
+    if (requestSubChunks) {
       // 1.18.0+
       // 1.18+ handling, we need to send a SubChunk request
       const maxSubChunkCount = packet.highest_subchunk_count || 5; // field is set if sub_chunk_count=-2 (1.18.10+) meaning all air

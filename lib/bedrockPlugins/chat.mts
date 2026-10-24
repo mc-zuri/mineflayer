@@ -190,8 +190,10 @@ export default function inject(bot: BedrockBot, options: ChatOptions = {}) {
     }
 
     if (['chat', 'whisper', 'announcement', 'json_whisper', 'json_announcement'].includes(data.type)) {
-      (bot.emit as any)('message', msg, 'chat', data.source_name, null);
-      (bot.emit as any)('messagestr', msg.toString(), data.type, msg, data.source_name, null);
+      // the sender without formatting codes (1.26 servers end the name with a reset, §r)
+      const sender = data.source_name?.replace(/§./g, '');
+      (bot.emit as any)('message', msg, 'chat', sender, null);
+      (bot.emit as any)('messagestr', msg.toString(), data.type, msg, sender, null);
     } else if (['popup', 'jukebox_popup'].includes(data.type)) {
       (bot.emit as any)('actionBar', msg, null);
     } else if (data.type === 'json') {

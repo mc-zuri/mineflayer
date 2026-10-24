@@ -6,11 +6,13 @@ import windowLoader, { type Window, type WindowsExports } from 'prismarine-windo
 import type { EventEmitter } from 'events';
 import itemLoader, { type Item } from 'prismarine-item';
 import assert from 'assert';
+import { windowIdName } from '../bedrock/protocol-adapter.mts';
 
 // Import shared utilities from lib/bedrock/
 import {
   getNextItemStackRequestId,
   getStackId,
+  stackResultName,
   SlotRanges,
   getContainerForCursorOp,
   actions,
@@ -117,14 +119,16 @@ export default function inject(bot: BedrockBot) {
     function handle() {
       for (const action of transaction.actions) {
         if (action.source_type === 'container') {
-          let window = getWindow(action.inventory_id);
+          // 1.26.30+ gives the window's number (window_id) where it gave its name (inventory_id)
+          const windowId = (action as any).inventory_id ?? windowIdName((bot.registry as any).protocol?.types, (action as any).window_id);
+          let window = getWindow(windowId);
           if (!window) continue; // Skip if window not found (e.g., 'ui' type)
           const newItem = Item.fromNotch(action.new_item);
           // Preserve stack_id from Bedrock protocol
           if (newItem && action.new_item.stack_id !== undefined) {
             (newItem as any).stackId = action.new_item.stack_id;
           }
-          const slotIndex = getSlotIndex(action.inventory_id, action.slot);
+          const slotIndex = getSlotIndex(windowId, action.slot);
           window.updateSlot(slotIndex, newItem);
           updateHeldItem();
 
@@ -365,7 +369,8 @@ export default function inject(bot: BedrockBot) {
       const { status, request_id, containers } = response;
 
       if (status === 'ok') {
-        for (const container of containers) {
+        // 1.26.40+ leaves containers out when no container changed
+        for (const container of containers ?? []) {
           const containerId = container.slot_type?.container_id;
 
           // Skip cursor updates - cursor is temporary and not a real inventory slot
@@ -409,6 +414,7 @@ export default function inject(bot: BedrockBot) {
         bot.emit(`itemStackResponse:${request_id}`, true);
       } else {
         // Transaction was rejected by the server
+        bot.logger.debug(`item_stack_request ${request_id} rejected: ${stackResultName(status)}`);
         bot.emit(`itemStackResponse:${request_id}`, false);
       }
 
@@ -519,25 +525,10 @@ export default function inject(bot: BedrockBot) {
       swing_source: 'build',
     });
 
-    // 3. Send inventory_transaction with item_use
+    // 3. Send inventory_transaction with item_use. Like the vanilla client it predicts no inventory change (no actions):
+    // a predicted count that is stale (an item picked up meanwhile) makes the server refuse the whole use. The
+    // server sends the held item's new count itself.
     const heldItemNotch = formatItemForPacket(heldItem);
-    const newCount = heldItem ? heldItem.count - 1 : 0;
-    const newItemNotch = newCount > 0 ? formatItemForPacket({ ...heldItem!, count: newCount } as typeof heldItem) : { network_id: 0 };
-
-    // Build actions array if we have a held item that will be consumed
-    // Use heldItem.slot for accuracy (hotbarSlot might differ)
-    const itemSlot = heldItem?.slot ?? hotbarSlot;
-    const actions = heldItem
-      ? [
-          {
-            source_type: 'container',
-            inventory_id: 'inventory',
-            slot: itemSlot,
-            old_item: heldItemNotch,
-            new_item: newItemNotch,
-          },
-        ]
-      : [];
 
     bot._client.write('inventory_transaction', {
       transaction: {
@@ -545,7 +536,7 @@ export default function inject(bot: BedrockBot) {
           legacy_request_id: 0,
         },
         transaction_type: 'item_use',
-        actions: actions,
+        actions: [],
         transaction_data: {
           action_type: 'click_block',
           trigger_type: 'player_input',
@@ -573,18 +564,7 @@ export default function inject(bot: BedrockBot) {
       },
     });
 
-    // 4. Send mob_equipment to update server with new held item count
-    const updatedItemNotch = newCount > 0 ? formatItemForPacket({ ...heldItem!, count: newCount } as typeof heldItem) : { network_id: 0 };
-
-    bot._client.write('mob_equipment', {
-      runtime_entity_id: entityId,
-      item: updatedItemNotch,
-      slot: itemSlot,
-      selected_slot: hotbarSlot,
-      window_id: 'inventory',
-    });
-
-    // 5. Send stop_item_use_on to signal end of placement
+    // 4. Send stop_item_use_on to signal end of placement
     bot._client.write('player_action', {
       runtime_entity_id: entityId,
       action: 'stop_item_use_on',
@@ -597,7 +577,7 @@ export default function inject(bot: BedrockBot) {
       face: 0,
     });
 
-    // 6. Wait for server to confirm the placement via inventory_content
+    // 5. Wait for server to confirm the placement via inventory_content
     // This ensures the server has processed our transaction before we return
     await waitForInventorySync(200);
   }
@@ -752,7 +732,7 @@ export default function inject(bot: BedrockBot) {
     const position = bot.entity.position;
     const blockPos = position.floored();
 
-    // For Bedrock, we use inventory_transaction with item_use action type 'use'
+    // For Bedrock, an item used in the air is an item_use transaction of type click_air
     bot._client.write('inventory_transaction', {
       transaction: {
         legacy: {
@@ -761,7 +741,7 @@ export default function inject(bot: BedrockBot) {
         transaction_type: 'item_use',
         actions: [],
         transaction_data: {
-          action_type: 'use',
+          action_type: 'click_air',
           trigger_type: 'player_input',
           block_position: {
             x: blockPos.x,

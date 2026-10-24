@@ -3,7 +3,7 @@ import type { Block } from 'prismarine-block';
 import type { Vec3 } from 'vec3';
 import { performance } from 'perf_hooks';
 // @ts-ignore
-import { createDoneTask, createTask } from '../promise_utils.js';
+import { createTask } from '../promise_utils.js';
 
 const BlockFaces = {
   BOTTOM: 0,
@@ -18,7 +18,6 @@ export default function inject(bot: BedrockBot) {
   let swingInterval: ReturnType<typeof setInterval> | null = null;
   let continueBreakInterval: ReturnType<typeof setInterval> | null = null;
   let waitTimeout: ReturnType<typeof setTimeout> | null = null;
-  let diggingTask = createDoneTask();
 
   bot.targetDigBlock = null;
   bot.targetDigFace = null;
@@ -71,9 +70,13 @@ export default function inject(bot: BedrockBot) {
     // Cancel any existing dig
     if (bot.targetDigBlock) bot.stopDigging();
 
-    diggingTask = createTask();
+    // This dig's own task: the dig resolves on the block's update, while its finishing packets still go out, and the
+    // next dig can start meanwhile
+    const task = createTask();
     const pos = block.position;
     const face = bot.targetDigFace;
+    // a later dig has started (its block is the target now)
+    const superseded = () => bot.targetDigBlock !== null && bot.targetDigBlock !== block;
 
     bot.targetDigBlock = block;
 
@@ -171,6 +174,8 @@ export default function inject(bot: BedrockBot) {
     }
 
     async function finishInstantDigging(pos: { x: number; y: number; z: number }, face: number) {
+      // (the block's update may have finished this dig and a later one started: its break is not aborted)
+      if (superseded()) return;
       clearTimeout(waitTimeout!);
       waitTimeout = null;
 
@@ -188,11 +193,13 @@ export default function inject(bot: BedrockBot) {
         false
       );
 
-      bot.targetDigBlock = null;
-      bot.targetDigFace = null;
+      if (!superseded()) {
+        bot.targetDigBlock = null;
+        bot.targetDigFace = null;
+      }
       bot.lastDigTime = performance.now();
-      bot.emit('diggingCompleted', block);
-      diggingTask.finish();
+      if (!task.done) bot.emit('diggingCompleted', block);
+      task.finish();
     }
 
     async function finishDigging(pos: { x: number; y: number; z: number }, face: number) {
@@ -203,7 +210,7 @@ export default function inject(bot: BedrockBot) {
       continueBreakInterval = null;
       waitTimeout = null;
 
-      if (bot.targetDigBlock) {
+      if (bot.targetDigBlock === block) {
         // Send continue_break + predict_break together with item_stack_request for tool durability
         const heldItem = bot.heldItem;
         const itemStackRequest = heldItem
@@ -239,9 +246,11 @@ export default function inject(bot: BedrockBot) {
 
         // Update local block state - use air block's stateId (not 0!)
         const airStateId = bot.registry.blocksByName.air?.defaultState ?? 0;
-        bot._updateBlockState(bot.targetDigBlock.position, airStateId);
+        bot._updateBlockState(block.position, airStateId);
 
         await bot.waitForTicks(3);
+        // (the local update above finished this dig: a later dig may have started, its break is not aborted)
+        if (superseded()) return;
         await bot.sendPlayerAuthInputTransaction(
           {
             block_action: [
@@ -256,6 +265,7 @@ export default function inject(bot: BedrockBot) {
         );
       }
 
+      if (superseded()) return;
       bot.targetDigBlock = null;
       bot.targetDigFace = null;
       bot.lastDigTime = performance.now();
@@ -298,7 +308,7 @@ export default function inject(bot: BedrockBot) {
       bot.lastDigTime = performance.now();
       bot.emit('diggingAborted', abortedBlock);
       bot.stopDigging = noop;
-      diggingTask.cancel(new Error('Digging aborted'));
+      task.cancel(new Error('Digging aborted'));
     };
 
     function onBlockUpdate(oldBlock: Block | null, newBlock: Block | null) {
@@ -316,10 +326,10 @@ export default function inject(bot: BedrockBot) {
       bot.targetDigFace = null;
       bot.lastDigTime = performance.now();
       bot.emit('diggingCompleted', newBlock);
-      diggingTask.finish();
+      task.finish();
     }
 
-    await diggingTask.promise;
+    await task.promise;
   }
 
   bot.on('death', () => {

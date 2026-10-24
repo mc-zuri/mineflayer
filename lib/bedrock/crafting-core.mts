@@ -78,12 +78,71 @@ export const CraftingSlots = {
 // Recipe Parsing
 // ============================================================================
 
+// The recipe kinds crafting_data lists in arrays of their own from 1.26.40, by the array's name
+const RECIPE_LISTS = {
+  shaped_recipes: 'shaped',
+  shapeless_recipes: 'shapeless',
+  multi_recipes: 'multi',
+  shulker_box_recipes: 'shulker_box',
+  shapeless_chemistry_recipes: 'shapeless_chemistry',
+  shaped_chemistry_recipes: 'shaped_chemistry',
+  smithing_transform_recipes: 'smithing_transform',
+  smithing_trim_recipes: 'smithing_trim',
+} as const;
+
+/**
+ * The recipes of a crafting_data packet as one list of { type, recipe }, laid out as before 1.26.40. From 1.26.40
+ * each kind of recipe comes in an array of its own, a shaped recipe's input is flat and the ingredients name their
+ * items (descriptor_type) where they numbered them (int_id_meta).
+ */
+export function craftingDataRecipes(packet: any, registry: any): protocolTypes.Recipes {
+  if (packet.recipes) return packet.recipes;
+  const ingredient = (ing: any) => legacyIngredient(ing, registry);
+  const recipes: any[] = [];
+  for (const [list, type] of Object.entries(RECIPE_LISTS)) {
+    for (const recipe of packet[list] ?? []) {
+      const out = { ...recipe };
+      if (Array.isArray(recipe.input)) {
+        const flat = recipe.input.map(ingredient);
+        // a shaped recipe's input as before: width lists of height ingredients, in the order they are sent
+        out.input = recipe.width ? Array.from({ length: recipe.width }, (_, i) => flat.slice(i * recipe.height, (i + 1) * recipe.height)) : flat;
+      } else if (recipe.input) {
+        out.input = ingredient(recipe.input);
+      }
+      for (const key of ['template', 'base', 'addition']) {
+        if (recipe[key]) out[key] = ingredient(recipe[key]);
+      }
+      recipes.push({ type, recipe: out });
+    }
+  }
+  return recipes;
+}
+
+/** a crafting_data ingredient of 1.26.40+ as the RecipeIngredient before it: a named item by its network id */
+function legacyIngredient(ing: any, registry: any): RecipeIngredient {
+  if (ing.type !== 'valid') return ing.type === 'invalid' ? ({ type: 'invalid', count: ing.count ?? 0 } as any) : ing;
+  switch (ing.descriptor_type) {
+    case 'name': {
+      const item = registry.itemsByName[ing.name.replace(/^minecraft:/, '')];
+      if (item) return { type: 'int_id_meta', network_id: item.id, metadata: ing.metadata, count: ing.count } as any;
+      return { type: 'complex_alias', name: ing.name, count: ing.count } as any;
+    }
+    case 'molang':
+      return { type: 'molang', expression: ing.expression, version: ing.version, count: ing.count } as any;
+    case 'item_tag':
+      return { type: 'item_tag', tag: ing.tag, count: ing.count } as any;
+    default:
+      return { type: 'invalid', count: ing.count ?? 0 } as any;
+  }
+}
+
 /**
  * Parse a recipe from the crafting_data packet
  */
 export function parseRecipe(entry: protocolTypes.Recipes[number]): BedrockRecipe | null {
   const type = entry.type;
-  const recipe = entry.recipe;
+  // (its fields depend on type, which the merged protocol types do not narrow it by)
+  const recipe: any = entry.recipe;
 
   if (!recipe) return null;
 

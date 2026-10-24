@@ -15,6 +15,7 @@ export {
   // Stack ID helpers
   getStackId,
   setStackId,
+  stackResultName,
 
   // Container ID constants
   ContainerIds,
@@ -83,6 +84,7 @@ export {
 
   // Recipe parsing
   parseRecipe,
+  craftingDataRecipes,
 
   // Recipe utilities
   fitsIn2x2,
