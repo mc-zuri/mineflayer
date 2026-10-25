@@ -39,10 +39,22 @@ export interface BotOptions extends ClientOptions {
    * whose anticheat checks the order (Grim's Post, FastBreak). @default false
    */
   actionsInTick?: boolean
+  /**
+   * minecraft-physics-native's module: the player, the boat it steers and the mob it rides move through its native
+   * engine (NativePhysics, NativeBoatPhysics, NativeRiddenMobPhysics) instead of mineflayer-physics-utils' BotcraftPhysics,
+   * BoatPhysics and RiddenMobPhysics.
+   */
+  nativePhysics?: NativePhysicsModule
   client?: Client
   brand?: string
   defaultChatPatterns?: boolean
   respawn?: boolean
+}
+
+export interface NativePhysicsModule {
+  NativePhysics: new (registry: Registry) => object
+  NativeBoatPhysics: new (registry: Registry) => object
+  NativeRiddenMobPhysics: new (registry: Registry) => object
 }
 
 export type ChatLevel = 'enabled' | 'commandsOnly' | 'disabled'

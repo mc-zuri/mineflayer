@@ -844,6 +844,7 @@ Create and return an instance of the class bot.
   - pluginName : external plugin inject function : loads external plugin, overrides internal plugin with given name ie. `pluginName`
 - physicsEnabled : true by default, should the bot be affected by physics? can later be modified via bot.physicsEnabled
 - physicsManual : false by default. When true no timer runs the physics: each tick runs when [bot.physicsTick()](#botphysicstick) is called, for replays and tests that step the client tick by tick.
+- nativePhysics : unset by default. The [minecraft-physics-native](https://github.com/mc-zuri/minecraft-physics-native) module (`require('minecraft-physics-native')`): the player, the boat it steers and the mob it rides then move through its native engine instead of mineflayer-physics-utils' BotcraftPhysics, BoatPhysics and RiddenMobPhysics.
 - [chat](#bot.settings.chat)
 - [colorsEnabled](#bot.settings.colorsEnabled)
 - [viewDistance](#bot.settings.viewDistance)
