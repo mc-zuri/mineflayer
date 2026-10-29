@@ -46,7 +46,7 @@ import particle from './plugins/particle.ts'
 import sequence from './plugins/sequence.ts'
 import minecraftData from 'minecraft-data'
 import prismarineRegistry from 'prismarine-registry'
-import { testedVersions, latestSupportedVersion, oldestSupportedVersion } from './version.ts'
+import { testedVersions, latestSupportedVersion, oldestSupportedVersion, latestSupportedProtocolVersionOf } from './version.ts'
 import Location from './location.ts'
 import Painting from './painting.ts'
 import ScoreBoard from './scoreboard.ts'
@@ -99,8 +99,7 @@ const plugins = {
   sequence
 }
 
-const latestSupportedProtocolVersion = minecraftData.versionsByMinecraftVersion.pc[latestSupportedVersion].version
-if (!latestSupportedProtocolVersion) throw new Error(`Version '${latestSupportedVersion}' not supported by minecraft-data - is it up to date?`)
+const latestSupportedProtocolVersion = latestSupportedProtocolVersionOf(minecraftData.versionsByMinecraftVersion.pc)
 
 const supportFeature = (feature, version) => minecraftData(version).supportFeature(feature)
 

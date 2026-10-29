@@ -22,6 +22,12 @@ How a bug was found:
 | A boss bar's `shouldDarkenSky`, `isDragonBar` and `createFog` were the numbers `flags & 0x1`, `flags & 0x2` and `flags & 0x4` (0 / 2 / 4), not the booleans api.md and the typings say, and the `flags` getter shifted them again: a dragon bar's flags read back as 4, fog as 16 | all | typing | `BossBar` / has its flags as booleans, and gives them back as the bits they came from |
 | A boss bar whose 1.20.3+ title is a bare NBT string (what `/bossbar add <id> "<name>"` sends) had a plain string as `title`, not the `ChatMessage` api.md and the typings say (`bar.title.toAnsi()` threw); `ChatMessage.fromNotch` reads that form too | 1.20.3+ | typing | `BossBar` / has its title as a ChatMessage, whichever form the packet gives it |
 
+## loader
+
+| Bug | Versions | Found by | Test |
+| --- | --- | --- | --- |
+| With a minecraft-data older than mineflayer, loading mineflayer threw `TypeError: Cannot read properties of undefined (reading 'version')` before the check meant to say "not supported by minecraft-data - is it up to date?": it read the latest supported version's protocol from an entry that is not there | all | types | `version` / says minecraft-data is outdated when it does not have the latest supported version |
+
 ## ScoreBoard
 
 | Bug | Versions | Found by | Test |

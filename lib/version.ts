@@ -3,4 +3,14 @@ const testedVersions: readonly [string, ...string[]] = ['1.8.8', '1.9.4', '1.10.
 const latestSupportedVersion = testedVersions[testedVersions.length - 1]!
 const oldestSupportedVersion = testedVersions[0]
 
-export { testedVersions, latestSupportedVersion, oldestSupportedVersion }
+/**
+ * The protocol version of the latest supported version, from minecraft-data's table of Java versions
+ * (versionsByMinecraftVersion.pc). A minecraft-data older than mineflayer does not have that version.
+ */
+function latestSupportedProtocolVersionOf (pcVersions: { [minecraftVersion: string]: { version?: number } | undefined }): number {
+  const protocolVersion = pcVersions[latestSupportedVersion]?.version
+  if (!protocolVersion) throw new Error(`Version '${latestSupportedVersion}' not supported by minecraft-data - is it up to date?`)
+  return protocolVersion
+}
+
+export { testedVersions, latestSupportedVersion, oldestSupportedVersion, latestSupportedProtocolVersionOf }

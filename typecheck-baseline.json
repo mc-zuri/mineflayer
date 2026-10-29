@@ -1,6 +1,6 @@
 {
   "index.ts": 3,
-  "lib/loader.ts": 62,
+  "lib/loader.ts": 61,
   "lib/plugins/abilities.ts": 2,
   "lib/plugins/anvil.ts": 20,
   "lib/plugins/bed.ts": 13,
