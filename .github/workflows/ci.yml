@@ -21,6 +21,9 @@ jobs:
       with:
         node-version: 24
     - run: npm i && npm run lint
+    # The suites that do not run per Minecraft version (the jobs below only run "<version>v" ones): unit tests, the
+    # packet trace, the digging death handler.
+    - run: npm run mocha_test -- --invert -g "^(mineflayer_internal|mineflayer_external|api audit) "
   
   PrepareSupportedVersions:
     runs-on: ubuntu-latest
