@@ -1,8 +1,8 @@
-const assert = require('assert')
+import assert from 'assert'
 
-const { onceWithCleanup } = require('../../lib/promise_utils')
+import { onceWithCleanup } from '../../lib/promise_utils.ts'
 
-module.exports = () => async (bot) => {
+export default () => async (bot) => {
   await bot.test.runExample('examples/digger.js', async (name) => {
     assert.strictEqual(name, 'digger')
     // Both commands must be confirmed before digging: the op counteracts

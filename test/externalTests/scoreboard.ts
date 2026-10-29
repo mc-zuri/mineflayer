@@ -1,7 +1,7 @@
 // const assert = require('assert')
 // const { once } = require('../../lib/promise_utils')
 
-module.exports = () => async (bot) => {
+export default () => async (bot) => {
   // TODO: This is failing randomly, investigate and fix
   /* bot.test.sayEverywhere('/scoreboard objectives add test1 health')
   bot.test.sayEverywhere('/scoreboard objectives add test2 deathCount')

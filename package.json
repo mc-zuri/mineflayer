@@ -2,13 +2,14 @@
   "name": "mineflayer",
   "version": "4.39.0",
   "description": "create minecraft bots with a stable, high level API",
-  "main": "index.js",
+  "main": "index.ts",
+  "type": "module",
   "types": "index.d.ts",
   "scripts": {
-    "mocha_test": "mocha --reporter ./test/common/durationsReporter.js --exit",
+    "mocha_test": "mocha --reporter ./test/common/durationsReporter.ts --extension ts --exit",
     "test": "npm run mocha_test",
     "pretest": "npm run lint",
-    "typecheck": "node scripts/typecheck.mts -p .",
+    "typecheck": "node scripts/typecheck.ts -p .",
     "lint": "npm run typecheck && eslint --flag unstable_native_nodejs_ts_config . && standard-markdown",
     "fix": "eslint --flag unstable_native_nodejs_ts_config . --fix && standard-markdown --fix",
     "prepublishOnly": "cp docs/README.md README.md"

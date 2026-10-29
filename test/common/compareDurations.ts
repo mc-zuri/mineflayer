@@ -4,8 +4,8 @@
 // durations are noisy.
 // Then rewrites each <currentDir> file as the history of the last HISTORY runs, which
 // master caches as the next baseline.
-const fs = require('fs')
-const path = require('path')
+import fs from 'fs'
+import path from 'path'
 
 const [baselineDir, currentDir, slowerFile] = process.argv.slice(2)
 const FACTOR = 2

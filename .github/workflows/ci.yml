@@ -36,7 +36,7 @@ jobs:
     - id: set-matrix
       run: |
         node -e "
-          const v = require('./lib/version').testedVersions;
+          const v = require('./lib/version.ts').testedVersions;
           const groups = [];
           const SIZE = 4;
           for (let i = 0; i < v.length; i += SIZE) {
@@ -69,7 +69,7 @@ jobs:
 
       # Per-test durations from the last 10 master runs of this version group, so a PR gets a
       # comment listing tests it made more than 2x slower than all of them
-      # (test/common/compareDurations.js).
+      # (test/common/compareDurations.ts).
       - name: Restore duration baseline
         uses: actions/cache/restore@v4
         with:
@@ -127,7 +127,7 @@ jobs:
         run: |
           mkdir -p slower
           echo "${{ github.event.pull_request.number }}" > slower/pr
-          node test/common/compareDurations.js baseline durations "slower/${{ strategy.job-index }}.txt"
+          node test/common/compareDurations.ts baseline durations "slower/${{ strategy.job-index }}.txt"
 
       # Fork PRs get a read-only token, so the comment is posted by
       # duration-comment.yml from this artifact instead of from here.

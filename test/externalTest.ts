@@ -1,13 +1,15 @@
-const assert = require('assert')
-const mineflayer = require('../')
-const commonTest = require('./externalTests/plugins/testCommon')
-const mc = require('minecraft-protocol')
-const fs = require('fs')
-const path = require('path')
+import assert from 'assert'
+import mineflayer from '../index.ts'
+import commonTest from './externalTests/plugins/testCommon.ts'
+import mc from 'minecraft-protocol'
+import fs from 'fs'
+import path from 'path'
 
-const { getPort } = require('./common/util')
-const trace = require('./common/trace')
-const { once } = require('../lib/promise_utils')
+import { getPort } from './common/util.ts'
+import * as trace from './common/trace.ts'
+import { once } from '../lib/promise_utils.ts'
+import minecraftWrap from 'minecraft-wrap'
+import prismarineRegistry from 'prismarine-registry'
 
 // set this to false if you want to test without starting a server automatically
 const START_THE_SERVER = true
@@ -31,10 +33,15 @@ const propOverrides = {
   'use-native-transport': 'false' // java 16 throws errors without this, https://www.spigotmc.org/threads/unable-to-access-address-of-buffer.311602
 }
 
-const Wrap = require('minecraft-wrap').Wrap
-const download = require('minecraft-wrap').download
+const { Wrap, download } = minecraftWrap
 
-const MC_SERVER_PATH = path.join(__dirname, 'server')
+const MC_SERVER_PATH = path.join(import.meta.dirname, 'server')
+
+// The external tests, by file name. ES modules load asynchronously, so before the suites are declared.
+const externalTestsFolder = path.resolve(import.meta.dirname, './externalTests')
+const externalTests = Object.fromEntries(await Promise.all(fs.readdirSync(externalTestsFolder)
+  .filter(file => fs.statSync(path.join(externalTestsFolder, file)).isFile())
+  .map(async file => [path.basename(file, '.ts'), (await import(`./externalTests/${file}`)).default])))
 
 // wrap's start callback fires on the server's "Done" log line, which precedes
 // the server answering status requests — by ~80ms on 26.1. That gap is version
@@ -54,7 +61,7 @@ async function pingUntilReady (port, host, version, attempts = 5) {
 
 for (const supportedVersion of mineflayer.testedVersions) {
   let PORT = 25565
-  const registry = require('prismarine-registry')(supportedVersion)
+  const registry = prismarineRegistry(supportedVersion)
   const version = registry.version
   const MC_SERVER_JAR_DIR = process.env.MC_SERVER_JAR_DIR || `${process.cwd()}/server_jars`
   const MC_SERVER_JAR = `${MC_SERVER_JAR_DIR}/minecraft_server.${version.minecraftVersion}.jar`
@@ -189,7 +196,6 @@ for (const supportedVersion of mineflayer.testedVersions) {
       await new Promise(resolve => setTimeout(resolve, 2000))
     }
 
-    const externalTestsFolder = path.resolve(__dirname, './externalTests')
     let distinctFailures = 0
     // Sort test files so example tests (which spawn child processes and can
     // crash/disconnect the bot) run last, limiting their blast radius.
@@ -197,15 +203,15 @@ for (const supportedVersion of mineflayer.testedVersions) {
     fs.readdirSync(externalTestsFolder)
       .filter(file => fs.statSync(path.join(externalTestsFolder, file)).isFile())
       .sort((a, b) => {
-        const aName = path.basename(a, '.js')
-        const bName = path.basename(b, '.js')
+        const aName = path.basename(a, '.ts')
+        const bName = path.basename(b, '.ts')
         const aDangerous = dangerousTests.includes(aName) ? 1 : 0
         const bDangerous = dangerousTests.includes(bName) ? 1 : 0
         return aDangerous - bDangerous
       })
       .forEach((test) => {
-        test = path.basename(test, '.js')
-        const testFunctions = require(`./externalTests/${test}`)(supportedVersion)
+        test = path.basename(test, '.ts')
+        const testFunctions = externalTests[test](supportedVersion)
         const runTest = (testName, testFunction) => {
           return function (done) {
             this.timeout(TEST_TIMEOUT_MS)

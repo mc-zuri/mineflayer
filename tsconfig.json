@@ -27,5 +27,5 @@
     "allowUnusedLabels": false,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["index.d.ts", "index.ts", "lib/**/*.ts", "test/**/*.ts", "examples/**/*.ts", "scripts/**/*.ts", "scripts/**/*.mts"]
+  "include": ["index.d.ts", "index.ts", "lib/**/*.ts", "test/**/*.ts", "examples/**/*.ts", "scripts/**/*.ts"]
 }

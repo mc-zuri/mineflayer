@@ -1,69 +1,108 @@
-const mc = require('minecraft-protocol')
-const { EventEmitter } = require('events')
-const pluginLoader = require('./plugin_loader')
+import mc from 'minecraft-protocol'
+import { EventEmitter } from 'events'
+import pluginLoader from './plugin_loader.ts'
+import abilities from './plugins/abilities.ts'
+import bed from './plugins/bed.ts'
+import title from './plugins/title.ts'
+import blockActions from './plugins/block_actions.ts'
+import blocks from './plugins/blocks.ts'
+import book from './plugins/book.ts'
+import bossBar from './plugins/boss_bar.ts'
+import breath from './plugins/breath.ts'
+import chat from './plugins/chat.ts'
+import chest from './plugins/chest.ts'
+import commandBlock from './plugins/command_block.ts'
+import craft from './plugins/craft.ts'
+import creative from './plugins/creative.ts'
+import digging from './plugins/digging.ts'
+import enchantmentTable from './plugins/enchantment_table.ts'
+import entities from './plugins/entities.ts'
+import experience from './plugins/experience.ts'
+import explosion from './plugins/explosion.ts'
+import fishing from './plugins/fishing.ts'
+import furnace from './plugins/furnace.ts'
+import game from './plugins/game.ts'
+import health from './plugins/health.ts'
+import inventory from './plugins/inventory.ts'
+import kick from './plugins/kick.ts'
+import physics from './plugins/physics.ts'
+import placeBlock from './plugins/place_block.ts'
+import rain from './plugins/rain.ts'
+import rayTrace from './plugins/ray_trace.ts'
+import resourcePack from './plugins/resource_pack.ts'
+import scoreboard from './plugins/scoreboard.ts'
+import team from './plugins/team.ts'
+import settings from './plugins/settings.ts'
+import simpleInventory from './plugins/simple_inventory.ts'
+import sound from './plugins/sound.ts'
+import spawnPoint from './plugins/spawn_point.ts'
+import tablist from './plugins/tablist.ts'
+import time from './plugins/time.ts'
+import villager from './plugins/villager.ts'
+import anvil from './plugins/anvil.ts'
+import placeEntity from './plugins/place_entity.ts'
+import genericPlace from './plugins/generic_place.ts'
+import particle from './plugins/particle.ts'
+import sequence from './plugins/sequence.ts'
+import minecraftData from 'minecraft-data'
+import prismarineRegistry from 'prismarine-registry'
+import { testedVersions, latestSupportedVersion, oldestSupportedVersion } from './version.ts'
+import Location from './location.ts'
+import Painting from './painting.ts'
+import ScoreBoard from './scoreboard.ts'
+import BossBar from './bossbar.ts'
+import Particle from './particle.ts'
+
 const plugins = {
-  abilities: require('./plugins/abilities'),
-  bed: require('./plugins/bed'),
-  title: require('./plugins/title'),
-  block_actions: require('./plugins/block_actions'),
-  blocks: require('./plugins/blocks'),
-  book: require('./plugins/book'),
-  boss_bar: require('./plugins/boss_bar'),
-  breath: require('./plugins/breath'),
-  chat: require('./plugins/chat'),
-  chest: require('./plugins/chest'),
-  command_block: require('./plugins/command_block'),
-  craft: require('./plugins/craft'),
-  creative: require('./plugins/creative'),
-  digging: require('./plugins/digging'),
-  enchantment_table: require('./plugins/enchantment_table'),
-  entities: require('./plugins/entities'),
-  experience: require('./plugins/experience'),
-  explosion: require('./plugins/explosion'),
-  fishing: require('./plugins/fishing'),
-  furnace: require('./plugins/furnace'),
-  game: require('./plugins/game'),
-  health: require('./plugins/health'),
-  inventory: require('./plugins/inventory'),
-  kick: require('./plugins/kick'),
-  physics: require('./plugins/physics'),
-  place_block: require('./plugins/place_block'),
-  rain: require('./plugins/rain'),
-  ray_trace: require('./plugins/ray_trace'),
-  resource_pack: require('./plugins/resource_pack'),
-  scoreboard: require('./plugins/scoreboard'),
-  team: require('./plugins/team'),
-  settings: require('./plugins/settings'),
-  simple_inventory: require('./plugins/simple_inventory'),
-  sound: require('./plugins/sound'),
-  spawn_point: require('./plugins/spawn_point'),
-  tablist: require('./plugins/tablist'),
-  time: require('./plugins/time'),
-  villager: require('./plugins/villager'),
-  anvil: require('./plugins/anvil'),
-  place_entity: require('./plugins/place_entity'),
-  generic_place: require('./plugins/generic_place'),
-  particle: require('./plugins/particle'),
-  sequence: require('./plugins/sequence')
+  abilities,
+  bed,
+  title,
+  block_actions: blockActions,
+  blocks,
+  book,
+  boss_bar: bossBar,
+  breath,
+  chat,
+  chest,
+  command_block: commandBlock,
+  craft,
+  creative,
+  digging,
+  enchantment_table: enchantmentTable,
+  entities,
+  experience,
+  explosion,
+  fishing,
+  furnace,
+  game,
+  health,
+  inventory,
+  kick,
+  physics,
+  place_block: placeBlock,
+  rain,
+  ray_trace: rayTrace,
+  resource_pack: resourcePack,
+  scoreboard,
+  team,
+  settings,
+  simple_inventory: simpleInventory,
+  sound,
+  spawn_point: spawnPoint,
+  tablist,
+  time,
+  villager,
+  anvil,
+  place_entity: placeEntity,
+  generic_place: genericPlace,
+  particle,
+  sequence
 }
 
-const minecraftData = require('minecraft-data')
-const { testedVersions, latestSupportedVersion, oldestSupportedVersion } = require('./version')
 const latestSupportedProtocolVersion = minecraftData.versionsByMinecraftVersion.pc[latestSupportedVersion].version
 if (!latestSupportedProtocolVersion) throw new Error(`Version '${latestSupportedVersion}' not supported by minecraft-data - is it up to date?`)
 
-module.exports = {
-  createBot,
-  Location: require('./location'),
-  Painting: require('./painting'),
-  ScoreBoard: require('./scoreboard'),
-  BossBar: require('./bossbar'),
-  Particle: require('./particle'),
-  latestSupportedVersion,
-  oldestSupportedVersion,
-  testedVersions,
-  supportFeature: (feature, version) => minecraftData(version).supportFeature(feature)
-}
+const supportFeature = (feature, version) => minecraftData(version).supportFeature(feature)
 
 function createBot (options = {}) {
   options.username = options.username ?? 'Player'
@@ -118,7 +157,7 @@ function createBot (options = {}) {
   else bot._client.once('connect_allowed', next)
   function next () {
     const serverPingVersion = bot._client.version
-    bot.registry = require('prismarine-registry')(serverPingVersion)
+    bot.registry = prismarineRegistry(serverPingVersion)
     if (!bot.registry?.version) throw new Error(`Server version '${serverPingVersion}' is not supported, no data for version`)
 
     const versionData = bot.registry.version
@@ -136,4 +175,17 @@ function createBot (options = {}) {
     setTimeout(() => bot.emit('inject_allowed'), 0)
   }
   return bot
+}
+
+export {
+  createBot,
+  Location,
+  Painting,
+  ScoreBoard,
+  BossBar,
+  Particle,
+  latestSupportedVersion,
+  oldestSupportedVersion,
+  testedVersions,
+  supportFeature
 }

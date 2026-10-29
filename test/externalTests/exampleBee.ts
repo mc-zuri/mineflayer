@@ -1,8 +1,8 @@
-const assert = require('assert')
+import assert from 'assert'
 
-const { onceWithCleanup } = require('../../lib/promise_utils')
+import { onceWithCleanup } from '../../lib/promise_utils.ts'
 
-module.exports = () => async (bot) => {
+export default () => async (bot) => {
   await bot.test.runExample('examples/bee.js', async (name) => {
     assert.strictEqual(name, 'bee')
     // Wait for the server to confirm the op instead of sleeping a fixed 2s.
