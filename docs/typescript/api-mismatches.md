@@ -117,3 +117,4 @@ types the thing itself; each is a candidate for a fix upstream.
 | `Team`, `Chest`, `Furnace`, `Dispenser`, `EnchantmentTable`, `Anvil`, `Villager` | the typings declared them as classes, as if mineflayer exported them (`new mineflayer.Chest()` type checked); it exports none of them, they are the types of what the bot gives | the typings: interfaces |
 | `testedVersions`, `latestSupportedVersion`, `oldestSupportedVersion` | declared with `let`, as if they could be assigned, and `testedVersions` as any string array | the typings: constants, a non-empty list |
 | `supportFeature(feature, version)` | any string as the feature, and a boolean result; minecraft-data's features are named, and some have a value | the typings |
+| `bot.time.bigTime`, `bot.time.bigAge` | the typings said `BigInt`, the type of a BigInt wrapper object (`Object(1n)`), which takes no arithmetic (`bot.time.bigAge + 1n` did not type check); the code sets primitive bigints | the typings: `bigint` |

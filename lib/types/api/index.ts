@@ -571,13 +571,13 @@ export interface PhysicsOptions {
 
 export interface Time {
   doDaylightCycle: boolean
-  bigTime: BigInt
+  bigTime: bigint
   time: number
   timeOfDay: number
   day: number
   isDay: boolean
   moonPhase: number
-  bigAge: BigInt
+  bigAge: bigint
   age: number
 }
 
