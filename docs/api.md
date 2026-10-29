@@ -166,6 +166,7 @@
       - ["message" (jsonMsg, position, sender, verified)](#message-jsonmsg-position-sender-verified)
       - ["messagestr" (message, messagePosition, jsonMsg, sender, verified)](#messagestr-message-messageposition-jsonmsg-sender-verified)
       - ["inject_allowed"](#inject_allowed)
+      - ["connect"](#connect)
       - ["login"](#login)
       - ["spawn"](#spawn)
       - ["respawn"](#respawn)
@@ -1252,6 +1253,10 @@ Alias for the "message" event but it calls .toString() on the prismarine-message
 
 #### "inject_allowed"
 Fires when the index file has been loaded, you can load mcData and plugins here but it's better to wait for "spawn" event.
+
+#### "connect"
+
+Fires when the client has connected to the server, before it logs in.
 
 #### "login"
 

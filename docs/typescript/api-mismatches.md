@@ -58,7 +58,6 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | `"physicTick"` | ✗ | ✓ | emitted | the deprecated name of `"physicsTick"` |
 | `"unmatchedMessage"` | ✗ | ✓ | ✗ | nothing emits it |
 | `"entityPlaced"` | ✗ | ✗ | emitted | `bot.placeEntity`'s entity |
-| `"connect"` | ✗ | ✗ | emitted | the client connected |
 | `"setSlot:<window id>"`, `"setWindowItems:<window id>"`, `"confirmTransaction<…>"` | ✗ | ✗ | emitted | the inventory plugins' own coordination |
 
 ### createBot options
@@ -112,3 +111,4 @@ types the thing itself; each is a candidate for a fix upstream.
 | `ScoreBoard.remove()`, `new ScoreBoard()`, `setTitle()`, `add()` | the typings said `remove` always returns an item (it returns `undefined` for a name the scoreboard does not have) and typed the packet's texts as `object` | the typings |
 | `createBot(options)`: `username`, `version` | the typings required `username` (minecraft-protocol's `ClientOptions` does) where api.md and the code default it to `'Player'`, and did not take `version: false` (detect the server's version), which createBot and minecraft-protocol set themselves; `createBot()` takes no options at all too | the typings |
 | `bot.protocolVersion` | a string in the typings; the protocol number in the code (minecraft-data's `version.version`) | the typings |
+| `"connect"` | emitted when the client connects, but neither documented nor typed | api.md and the typings |

@@ -68,7 +68,6 @@
   ],
   "eventsEmittedNotDeclared": [
     "confirmTransaction*",
-    "connect",
     "entityPlaced",
     "setSlot:*",
     "setWindowItems:*"
