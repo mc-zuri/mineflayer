@@ -4,7 +4,16 @@ import neostandard from 'neostandard'
 // Node's type stripping only behind its --flag unstable_native_nodejs_ts_config, which the npm scripts pass.
 export default [
   // generated (pnpm gen:java-types in the workspace)
-  ...neostandard({ ts: true, ignores: ['lib/types/protocol/Java.d.ts'] }),
+  { ignores: ['lib/types/protocol/Java.d.ts'] },
+  ...neostandard({ ts: true }),
+  {
+    files: ['**/*.ts'],
+    rules: {
+      // A type and a value of the same name are separate declarations to TypeScript (an instance interface and the
+      // loader exported under its name); tsc reports a real redeclaration itself.
+      '@typescript-eslint/no-redeclare': 'off'
+    }
+  },
   {
     files: ['test/**'],
     languageOptions: {

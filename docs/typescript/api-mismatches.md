@@ -78,7 +78,7 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | `villager "ready"`, `villager.trades`, `villager.trade(tradeIndex, [times])` | under `mineflayer.anvil` | `Villager` | ✓ | api.md has no `mineflayer.Villager` heading: the villager's members read as the anvil's |
 | `Anvil.rename(item, name)` | ✗ | ✓ | ✓ | |
 | `EnchantmentTable.xpseed` | ✓ | ✗ | ✓ | |
-| `BossBar.shouldCreateFog` | ✗ | ✓ | ✓ | the same flag as `createFog` |
+| `BossBar.shouldCreateFog`, `BossBar.flags` | ✗ | ✓ | ✓ | `shouldCreateFog` is the same flag as `createFog`; `flags` their bits |
 | `Furnace.close()`, `EnchantmentTable.close()` | as `window.close()` | ✓ | ✓ | the typings declare it again on the subclasses |
 | `Location.floored`, `.blockPoint`, `.chunkCorner`, `.blockIndex`, `.biomeBlockIndex`, `.chunkYIndex` | ✗ | ✓ | ✓ | api.md has the class's heading only |
 | `ScoreBoard.add()`, `.remove()`, `.setTitle()` | ✗ | ✓ | ✓ | what the scoreboard plugin updates it with |
@@ -113,3 +113,7 @@ types the thing itself; each is a candidate for a fix upstream.
 | `createBot(options)`: `username`, `version` | the typings required `username` (minecraft-protocol's `ClientOptions` does) where api.md and the code default it to `'Player'`, and did not take `version: false` (detect the server's version), which createBot and minecraft-protocol set themselves; `createBot()` takes no options at all too | the typings |
 | `bot.protocolVersion` | a string in the typings; the protocol number in the code (minecraft-data's `version.version`) | the typings |
 | `"connect"` | emitted when the client connects, but neither documented nor typed | api.md and the typings |
+| `mineflayer.ScoreBoard`, `mineflayer.BossBar`, `mineflayer.Particle` | the typings declared them as the classes (`new mineflayer.Particle(...)` type checked); mineflayer exports their loaders, a bot's or a version's class: `mineflayer.Particle(registry)` | the typings: the instance types are interfaces, the exports loaders returning `ScoreBoardClass` / `BossBarClass` / `ParticleClass` |
+| `Team`, `Chest`, `Furnace`, `Dispenser`, `EnchantmentTable`, `Anvil`, `Villager` | the typings declared them as classes, as if mineflayer exported them (`new mineflayer.Chest()` type checked); it exports none of them, they are the types of what the bot gives | the typings: interfaces |
+| `testedVersions`, `latestSupportedVersion`, `oldestSupportedVersion` | declared with `let`, as if they could be assigned, and `testedVersions` as any string array | the typings: constants, a non-empty list |
+| `supportFeature(feature, version)` | any string as the feature, and a boolean result; minecraft-data's features are named, and some have a value | the typings |

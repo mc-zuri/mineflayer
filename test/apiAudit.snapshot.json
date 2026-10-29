@@ -79,6 +79,7 @@
   ],
   "classTypesNotInDocs": [
     "anvil.rename",
+    "bossbar.flags",
     "bossbar.shouldCreateFog",
     "enchantmenttable.close",
     "furnace.close",

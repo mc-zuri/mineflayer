@@ -10,7 +10,7 @@ import type { Entity } from 'prismarine-entity'
 import type { ChatMessage } from 'prismarine-chat'
 import type { world } from 'prismarine-world'
 import type { Registry } from 'prismarine-registry'
-import type { IndexedData } from 'minecraft-data'
+import type { IndexedData, SupportsFeature } from 'minecraft-data'
 import type { Tags, TagType } from 'prismarine-nbt'
 
 export declare function createBot (options?: BotOptions): Bot
@@ -683,9 +683,7 @@ interface ConditionalStorageEvents extends StorageEvents {
   ready: () => void
 }
 
-export declare class Chest extends Window<StorageEvents> {
-  constructor ()
-
+export interface Chest extends Window<StorageEvents> {
   close (): Promise<void>
 
   deposit (
@@ -701,11 +699,9 @@ export declare class Chest extends Window<StorageEvents> {
   ): Promise<void>
 }
 
-export declare class Furnace extends Window<FurnaceEvents> {
+export interface Furnace extends Window<FurnaceEvents> {
   fuel: number
   progress: number
-
-  constructor ()
 
   close (): Promise<void>
 
@@ -734,9 +730,7 @@ export declare class Furnace extends Window<FurnaceEvents> {
   outputItem (): Item
 }
 
-export declare class Dispenser extends Window<StorageEvents> {
-  constructor ()
-
+export interface Dispenser extends Window<StorageEvents> {
   close (): Promise<void>
 
   deposit (
@@ -752,10 +746,8 @@ export declare class Dispenser extends Window<StorageEvents> {
   ): Promise<void>
 }
 
-export declare class EnchantmentTable extends Window<ConditionalStorageEvents> {
+export interface EnchantmentTable extends Window<ConditionalStorageEvents> {
   enchantments: Enchantment[]
-
-  constructor ()
 
   close (): Promise<void>
 
@@ -772,7 +764,7 @@ export declare class EnchantmentTable extends Window<ConditionalStorageEvents> {
   putLapis (item: Item): Promise<Item>
 }
 
-export declare class Anvil {
+export interface Anvil {
   combine (itemOne: Item, itemTwo: Item, name?: string): Promise<void>
   rename (item: Item, name?: string): Promise<void>
 }
@@ -782,10 +774,8 @@ export interface Enchantment {
   expected: { enchant: number, level: number }
 }
 
-export declare class Villager extends Window<ConditionalStorageEvents> {
+export interface Villager extends Window<ConditionalStorageEvents> {
   trades: VillagerTrade[]
-
-  constructor ()
 
   close (): Promise<void>
 }
@@ -808,14 +798,11 @@ export interface VillagerTrade {
 /** a scoreboard's text as the packets give it: legacy text before 1.13, JSON text from 1.13, an NBT component from 1.20.3 */
 export type ScoreBoardText = string | Tags[TagType]
 
-export declare class ScoreBoard {
+export interface ScoreBoard {
   name: string
   title: ChatMessage
   itemsMap: { [name: string]: ScoreBoardItem }
   items: ScoreBoardItem[]
-
-  /** packet: the objective's name and title, as a scoreboard_objective packet that adds it gives them */
-  constructor (packet: { name: string, displayText: ScoreBoardText })
 
   setTitle (title: ScoreBoardText): void
 
@@ -826,6 +813,24 @@ export declare class ScoreBoard {
   remove (name: string): ScoreBoardItem | undefined
 }
 
+/** the scoreboards shown in each display slot, by the slot's number; list / sidebar / belowName name the first three */
+export interface ScoreBoardPositions {
+  [slot: number]: ScoreBoard | undefined
+  readonly list: ScoreBoard | undefined
+  readonly sidebar: ScoreBoard | undefined
+  readonly belowName: ScoreBoard | undefined
+}
+
+/** a bot's ScoreBoard class */
+export interface ScoreBoardClass {
+  /** packet: the objective's name and title, as a scoreboard_objective packet that adds it gives them */
+  new (packet: { name: string, displayText: ScoreBoardText }): ScoreBoard
+  positions: ScoreBoardPositions
+}
+
+/** mineflayer.ScoreBoard: the ScoreBoard class of a bot (its items' names are formatted by the bot's teams) */
+export declare const ScoreBoard: (bot: Pick<Bot, 'registry' | 'teamMap'>) => ScoreBoardClass
+
 export interface ScoreBoardItem {
   name: string
   displayName: ChatMessage
@@ -835,7 +840,7 @@ export interface ScoreBoardItem {
 /** a team's text as the packets give it: legacy text before 1.13, JSON text from 1.13, an NBT component from 1.20.3 */
 export type TeamText = string | Tags[TagType]
 
-export declare class Team {
+export interface Team {
   team: string
   name: ChatMessage
   /** the packet's bits: 0x1 friendly fire, 0x2 seeing invisible teammates */
@@ -847,8 +852,6 @@ export declare class Team {
   suffix: ChatMessage
   membersMap: { [name: string]: '' }
   members: string[]
-
-  constructor (team: string, name: TeamText, friendlyFire: number, nameTagVisibility: string, collisionRule: string, formatting: number | undefined, prefix: TeamText, suffix: TeamText)
 
   parseMessage (value: TeamText): ChatMessage
 
@@ -884,7 +887,7 @@ export type DisplaySlot =
   | 17
   | 18
 
-export declare class BossBar {
+export interface BossBar {
   entityUUID: string
   title: ChatMessage
   health: number
@@ -896,18 +899,20 @@ export declare class BossBar {
   isDragonBar: boolean
   createFog: boolean
   shouldCreateFog: boolean
-
-  constructor (
-    uuid: string,
-    title: string,
-    health: number,
-    dividers: number,
-    color: number,
-    flags: number
-  )
+  /** the flags' bits: 0x1 darken the sky, 0x2 a dragon bar, 0x4 fog */
+  flags: number
 }
 
-export declare class Particle {
+/** a version's BossBar class */
+export interface BossBarClass {
+  /** dividers and color: the packet's indexes of the bar's style and color; flags: its flags' bits */
+  new (uuid: string, title: string | Tags[TagType], health: number, dividers: number, color: number, flags: number): BossBar
+}
+
+/** mineflayer.BossBar: the BossBar class of a version */
+export declare const BossBar: (registry: Registry) => BossBarClass
+
+export interface Particle {
   id: number
   /** the registry's name of the particle; undefined for an id the registry does not have */
   name: string | undefined
@@ -916,20 +921,23 @@ export declare class Particle {
   count: number
   movementSpeed: number
   longDistanceRender: boolean
-  static fromNetwork (packet: Object): Particle
-
-  constructor (
-    id: number,
-    position: Vec3,
-    offset: Vec3,
-    count?: number,
-    movementSpeed?: number,
-    longDistanceRender?: boolean
-  )
 }
 
-export let testedVersions: string[]
-export let latestSupportedVersion: string
-export let oldestSupportedVersion: string
+/** a version's Particle class */
+export interface ParticleClass {
+  /** id: the particle's id, or its name */
+  new (id: number | string, position: Vec3, offset: Vec3, count?: number, movementSpeed?: number, longDistanceRender?: boolean): Particle
+  /** the particle a world_particles packet shows */
+  fromNetwork (packet: object): Particle
+}
 
-export declare function supportFeature (feature: string, version: string): boolean
+/** mineflayer.Particle: the Particle class of a version */
+export declare const Particle: (registry: Registry) => ParticleClass
+
+/** the versions mineflayer is tested with, oldest first */
+export declare const testedVersions: readonly [string, ...string[]]
+export declare const latestSupportedVersion: string
+export declare const oldestSupportedVersion: string
+
+/** a feature of a version, as minecraft-data has it (whether it has it, or its value) */
+export declare function supportFeature<Feature extends keyof SupportsFeature> (feature: Feature, version: string): SupportsFeature[Feature]
