@@ -34,7 +34,7 @@
   "lib/plugins/rain.ts": 3,
   "lib/plugins/ray_trace.ts": 11,
   "lib/plugins/resource_pack.ts": 13,
-  "lib/plugins/scoreboard.ts": 29,
+  "lib/plugins/scoreboard.ts": 20,
   "lib/plugins/sequence.ts": 1,
   "lib/plugins/settings.ts": 8,
   "lib/plugins/simple_inventory.ts": 15,
@@ -45,7 +45,6 @@
   "lib/plugins/time.ts": 8,
   "lib/plugins/title.ts": 7,
   "lib/plugins/villager.ts": 29,
-  "lib/scoreboard.ts": 18,
   "scripts/api-audit.ts": 3,
   "test/common/compareDurations.ts": 10,
   "test/common/durationsReporter.ts": 6,
@@ -101,6 +100,5 @@
   "test/externalTests/trade.ts": 7,
   "test/externalTests/useChests.ts": 38,
   "test/internalTest.ts": 1051,
-  "test/scoreboardTest.ts": 2,
   "test/traceTest.ts": 3
 }
