@@ -823,6 +823,8 @@ for (const supportedVersion of mineflayer.testedVersions) {
             }
             if (bot.supportFeature('spawnRespawnWorldDataField')) {
               respawnPacket.worldState.dimension = 1
+            } else if (bot.supportFeature('dimensionDataInCodec')) {
+              // 1.19 - 1.20.4: the dimension is a name the login's codec defines; the world name above decides the switch
             } else if (bot.supportFeature('usesLoginPacket')) {
               respawnPacket.dimension.name = 'e'
             } else {
