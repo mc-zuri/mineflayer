@@ -4,7 +4,6 @@
   "lib/conversions.ts": 9,
   "lib/loader.ts": 61,
   "lib/location.ts": 15,
-  "lib/math.ts": 5,
   "lib/painting.ts": 8,
   "lib/particle.ts": 11,
   "lib/plugin_loader.ts": 10,
