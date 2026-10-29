@@ -74,6 +74,21 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | `ScoreBoard.add()`, `.remove()`, `.setTitle()` | ✗ | ✓ | ✓ | what the scoreboard plugin updates it with |
 | `Team.add()`, `.remove()`, `.update()`, `.parseMessage()`, `.displayName()`, `.memberMap`, `.team` | ✗ | ✓ | ✓ | |
 
+## Dependency typings
+
+Typings of mineflayer's dependencies that disagree with what the dependency does at run time. Where mineflayer needs
+them right, `lib/types/vendor/` has corrected typings (`tsconfig.json` maps the package there) or `lib/types/`
+types the thing itself; each is a candidate for a fix upstream.
+
+| Package | Typings say | Runtime | In mineflayer |
+| --- | --- | --- | --- |
+| prismarine-chat | the loader takes a version string | it takes a registry too (mineflayer passes `bot.registry`) | `lib/types/vendor/prismarine-chat.d.ts` |
+| prismarine-chat | `ChatMessage.fromNotch(str: string)` | 1.20.3+ messages are NBT text components, which it takes | `lib/types/vendor/prismarine-chat.d.ts` |
+| prismarine-entity | named exports only (`Entity`) | `module.exports` is the loader `(version) => Entity` | |
+| minecraft-protocol | `once('sessionce', ...)`, `once('end', (reasonce) => ...)` | the events are `session` and `end` (a search and replace of `on` with `once` in the typings) | `TypedClient` |
+| minecraft-protocol | no `connect_allowed` event, no `wait_connect` | autoVersion sets `wait_connect` and emits `connect_allowed` once it knows the server's version | `TypedClient` |
+| minecraft-protocol | `on(event: string, ...)` takes any event name | only the packets of the client's version, and its own events | `TypedClient` (no catch-all) |
+
 ## Resolved
 
 | Member | Was | Fixed in |

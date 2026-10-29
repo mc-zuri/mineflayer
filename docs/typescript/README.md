@@ -52,6 +52,8 @@ the status:
   its JSDoc, a field whose type changed is the union.
 - `lib/types/protocol/client.ts`: `TypedClient`, the minecraft-protocol client typed by those packets, with no
   catch-all overload: listening to or writing a packet no version has is a type error.
+- `lib/types/vendor/`: corrected typings for dependencies whose own typings disagree with their runtime, which
+  `tsconfig.json` maps the package to (listed in [API mismatches](api-mismatches.md#dependency-typings)).
 
 ## Known limitations
 
