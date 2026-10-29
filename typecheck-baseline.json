@@ -54,6 +54,7 @@
   "lib/promise_utils.ts": 28,
   "lib/scoreboard.ts": 19,
   "lib/team.ts": 39,
+  "scripts/api-audit.ts": 4,
   "test/common/compareDurations.ts": 10,
   "test/common/durationsReporter.ts": 6,
   "test/common/trace.ts": 20,

@@ -1,0 +1,104 @@
+{
+  "docsNotInTypes": [
+    "game.height",
+    "game.minY",
+    "rainState",
+    "settings.enableServerListing",
+    "settings.enableTextFiltering",
+    "settings.particleStatus"
+  ],
+  "typesNotInDocs": [
+    "settings.mainHand"
+  ],
+  "docsNotAtRuntime": [
+    "chatPatterns"
+  ],
+  "runtimeNotInDocs": [
+    "QUICK_BAR_START",
+    "currentWindow",
+    "findPlayer",
+    "findPlayers",
+    "isAlive",
+    "jumpQueued",
+    "jumpTicks",
+    "lastDigTime",
+    "majorVersion",
+    "parseBedMetadata",
+    "protocolVersion",
+    "signBook",
+    "targetDigFace",
+    "uuidToUsername",
+    "version"
+  ],
+  "typesNotAtRuntime": [],
+  "runtimeNotInTypes": [
+    "QUICK_BAR_START",
+    "findPlayer",
+    "findPlayers",
+    "isAlive",
+    "jumpQueued",
+    "jumpTicks",
+    "lastDigTime",
+    "parseBedMetadata",
+    "rainState",
+    "signBook",
+    "targetDigFace",
+    "uuidToUsername"
+  ],
+  "kindMismatches": [],
+  "paramMismatches": [
+    "attack: docs (entity, swing), types (entity)",
+    "blockAtCursor: docs (maxDistance), types (maxDistance, matcher)",
+    "blockAtEntityCursor: docs (entity, maxDistance), types (entity, maxDistance, matcher)",
+    "openEntity: docs (entity), types (block, Class)"
+  ],
+  "eventsDocsNotInTypes": [
+    "blockPlaced",
+    "chat:name",
+    "title_clear",
+    "title_times",
+    "weatherUpdate"
+  ],
+  "eventsTypesNotInDocs": [
+    "physicTick",
+    "unmatchedMessage"
+  ],
+  "eventsNeverEmitted": [
+    "unmatchedMessage"
+  ],
+  "eventsEmittedNotDeclared": [
+    "confirmTransaction*",
+    "connect",
+    "entityPlaced",
+    "setSlot:*",
+    "setWindowItems:*"
+  ],
+  "classDocsNotInTypes": [
+    "anvil.trade",
+    "anvil.trades",
+    "enchantmenttable.xpseed",
+    "particle.name"
+  ],
+  "classTypesNotInDocs": [
+    "anvil.rename",
+    "bossbar.shouldCreateFog",
+    "enchantmenttable.close",
+    "furnace.close",
+    "location.biomeBlockIndex",
+    "location.blockIndex",
+    "location.blockPoint",
+    "location.chunkCorner",
+    "location.chunkYIndex",
+    "location.floored",
+    "scoreboard.add",
+    "scoreboard.remove",
+    "scoreboard.setTitle",
+    "team.add",
+    "team.displayName",
+    "team.memberMap",
+    "team.parseMessage",
+    "team.remove",
+    "team.team",
+    "team.update"
+  ]
+}
