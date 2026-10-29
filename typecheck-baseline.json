@@ -46,7 +46,6 @@
   "lib/plugins/title.ts": 7,
   "lib/plugins/villager.ts": 29,
   "lib/scoreboard.ts": 18,
-  "lib/team.ts": 38,
   "scripts/api-audit.ts": 3,
   "test/common/compareDurations.ts": 10,
   "test/common/durationsReporter.ts": 6,

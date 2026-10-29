@@ -1,6 +1,9 @@
 import prismarineChat from 'prismarine-chat'
+import type { ChatMessage } from 'prismarine-chat'
+import type { Registry } from 'prismarine-registry'
+import type { Team as TeamApi, TeamText } from './types/api/index.ts'
 
-function colorString (color) {
+function colorString (color: number | undefined): string {
   const formatting = [
     'black',
     'dark_blue',
@@ -26,21 +29,32 @@ function colorString (color) {
     'reset'
   ]
   if (color === undefined || color > 21 || color === -1) return 'reset'
-  return formatting[color]
+  return formatting[color] ?? 'reset'
 }
 
-function loader (registry) {
+function loader (registry: Registry) {
   const ChatMessage = prismarineChat(registry)
   const MessageBuilder = ChatMessage.MessageBuilder
-  return class Team {
-    constructor (team, name, friendlyFire, nameTagVisibility, collisionRule, formatting, prefix, suffix) {
+  return class Team implements TeamApi {
+    declare team: string
+    declare name: ChatMessage
+    declare friendlyFire: number
+    declare nameTagVisibility: string
+    declare collisionRule: string
+    declare color: string
+    declare prefix: ChatMessage
+    declare suffix: ChatMessage
+    declare membersMap: { [name: string]: '' }
+
+    constructor (team: string, name: TeamText, friendlyFire: number, nameTagVisibility: string, collisionRule: string, formatting: number | undefined, prefix: TeamText, suffix: TeamText) {
       this.team = team
       this.update(name, friendlyFire, nameTagVisibility, collisionRule, formatting, prefix, suffix)
       this.membersMap = {}
     }
 
-    parseMessage (value) {
-      if (registry.supportFeature('teamUsesChatComponents')) { // 1.13+
+    parseMessage (value: TeamText): ChatMessage {
+      // 1.13+ (teamUsesChatComponents): JSON text, from 1.20.3 an NBT component; before: legacy text with § codes
+      if (registry.supportFeature('teamUsesChatComponents') || typeof value !== 'string') {
         return ChatMessage.fromNotch(value)
       } else {
         const result = MessageBuilder.fromString(value, { colorSeparator: '§' })
@@ -51,18 +65,18 @@ function loader (registry) {
       }
     }
 
-    add (name) {
+    add (name: string): '' {
       this.membersMap[name] = ''
-      return this.membersMap[name]
+      return ''
     }
 
-    remove (name) {
+    remove (name: string): '' | undefined {
       const removed = this.membersMap[name]
       delete this.membersMap[name]
       return removed
     }
 
-    update (name, friendlyFire, nameTagVisibility, collisionRule, formatting, prefix, suffix) {
+    update (name: TeamText, friendlyFire: number, nameTagVisibility: string, collisionRule: string, formatting: number | undefined, prefix: TeamText, suffix: TeamText): void {
       this.name = this.parseMessage(name)
       this.friendlyFire = friendlyFire
       this.nameTagVisibility = nameTagVisibility
@@ -73,13 +87,13 @@ function loader (registry) {
     }
 
     // Return a chat component with prefix + color + name + suffix
-    displayName (member) {
+    displayName (member: string): ChatMessage {
       const name = this.prefix.clone()
       name.append(new ChatMessage({ text: member, color: this.color }), this.suffix)
       return name
     }
 
-    get members () {
+    get members (): string[] {
       return Object.keys(this.membersMap)
     }
   }
