@@ -1,7 +1,6 @@
 {
   "index.ts": 3,
   "lib/bossbar.ts": 41,
-  "lib/conversions.ts": 9,
   "lib/loader.ts": 61,
   "lib/location.ts": 15,
   "lib/painting.ts": 8,
