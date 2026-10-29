@@ -14,6 +14,12 @@ How a bug was found:
 - **strict mode**: ES modules always run in strict mode, where what sloppy-mode CommonJS silently ignored throws
   (a write to a property of a primitive, an assignment to an undeclared variable).
 
+## BossBar
+
+| Bug | Versions | Found by | Test |
+| --- | --- | --- | --- |
+| A boss bar's `shouldDarkenSky`, `isDragonBar` and `createFog` were the numbers `flags & 0x1`, `flags & 0x2` and `flags & 0x4` (0 / 2 / 4), not the booleans api.md and the typings say, and the `flags` getter shifted them again: a dragon bar's flags read back as 4, fog as 16 | all | typing | `BossBar` / has its flags as booleans, and gives them back as the bits they came from |
+
 ## Tests
 
 | Bug | Versions | Found by | Test |

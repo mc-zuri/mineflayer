@@ -12,9 +12,7 @@ function loader (registry) {
       this._health = health
       this._dividers = divisions[dividers]
       this._color = colors[color]
-      this._shouldDarkenSky = flags & 0x1
-      this._isDragonBar = flags & 0x2
-      this._createFog = flags & 0x4
+      this.flags = flags
     }
 
     set entityUUID (uuid) {
@@ -49,13 +47,13 @@ function loader (registry) {
     }
 
     set flags (flags) {
-      this._shouldDarkenSky = flags & 0x1
-      this._isDragonBar = flags & 0x2
-      this._createFog = flags & 0x4
+      this._shouldDarkenSky = (flags & 0x1) !== 0
+      this._isDragonBar = (flags & 0x2) !== 0
+      this._createFog = (flags & 0x4) !== 0
     }
 
     get flags () {
-      return (this._shouldDarkenSky) | (this._isDragonBar << 1) | (this._createFog << 2)
+      return (this._shouldDarkenSky ? 0x1 : 0) | (this._isDragonBar ? 0x2 : 0) | (this._createFog ? 0x4 : 0)
     }
 
     set shouldDarkenSky (darkenSky) {
