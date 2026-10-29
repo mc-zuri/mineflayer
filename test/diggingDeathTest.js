@@ -1,5 +1,3 @@
-/* eslint-env mocha */
-
 const EventEmitter = require('events')
 const assert = require('assert')
 const inject = require('../lib/plugins/digging')

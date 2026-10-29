@@ -1,5 +1,3 @@
-/* eslint-env mocha */
-
 const mineflayer = require('../')
 const vec3 = require('vec3')
 const mc = require('minecraft-protocol')
