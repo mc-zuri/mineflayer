@@ -5,7 +5,7 @@ import type { Entity } from 'prismarine-entity'
 import type { Item } from 'prismarine-item'
 import type { Window } from 'prismarine-windows'
 import type { Vec3 } from 'vec3'
-import type { Bot, Player } from './api/index.ts'
+import type { Bot, BotOptions, Plugin, Player } from './api/index.ts'
 import type { TypedClient } from './protocol/client.ts'
 
 /** how a block or an entity is placed against a block's face */
@@ -23,8 +23,15 @@ export interface PlaceOptions {
   showHand?: boolean
 }
 
+/** one of mineflayer's own plugins, which take the plugins' view of the bot */
+export type InternalPlugin = (bot: BotInternal, options: BotOptions) => void
+
 export interface BotInternal extends Omit<Bot, '_client'> {
   _client: TypedClient
+  /** the plugin loader takes mineflayer's own plugins as well as the public ones */
+  loadPlugin: (plugin: Plugin | InternalPlugin) => void
+  loadPlugins: (plugins: Array<Plugin | InternalPlugin>) => void
+  hasPlugin: (plugin: Plugin | InternalPlugin) => boolean
   /** logs a warning unless the bot was created with hideErrors */
   _warn: (...message: string[]) => void
   /** blocks: sets a block's state and emits the block update events */
