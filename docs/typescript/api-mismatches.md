@@ -68,7 +68,6 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | `villager "ready"`, `villager.trades`, `villager.trade(tradeIndex, [times])` | under `mineflayer.anvil` | `Villager` | ✓ | api.md has no `mineflayer.Villager` heading: the villager's members read as the anvil's |
 | `Anvil.rename(item, name)` | ✗ | ✓ | ✓ | |
 | `EnchantmentTable.xpseed` | ✓ | ✗ | ✓ | |
-| `Particle.name` | ✓ | ✗ | ✗ | |
 | `BossBar.shouldCreateFog` | ✗ | ✓ | ✓ | the same flag as `createFog` |
 | `Furnace.close()`, `EnchantmentTable.close()` | as `window.close()` | ✓ | ✓ | the typings declare it again on the subclasses |
 | `Location.floored`, `.blockPoint`, `.chunkCorner`, `.blockIndex`, `.biomeBlockIndex`, `.chunkYIndex` | ✗ | ✓ | ✓ | api.md has the class's heading only |
@@ -79,3 +78,4 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 
 | Member | Was | Fixed in |
 | --- | --- | --- |
+| `Particle.name` | documented and set from the registry's particle (the constructor copies it), not in the typings | the typings |

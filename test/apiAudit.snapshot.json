@@ -76,8 +76,7 @@
   "classDocsNotInTypes": [
     "anvil.trade",
     "anvil.trades",
-    "enchantmenttable.xpseed",
-    "particle.name"
+    "enchantmenttable.xpseed"
   ],
   "classTypesNotInDocs": [
     "anvil.rename",

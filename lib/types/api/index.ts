@@ -888,6 +888,8 @@ export declare class BossBar {
 
 export declare class Particle {
   id: number
+  /** the registry's name of the particle; undefined for an id the registry does not have */
+  name: string | undefined
   position: Vec3
   offset: Vec3
   count: number
