@@ -61,6 +61,18 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | `"connect"` | ✗ | ✗ | emitted | the client connected |
 | `"setSlot:<window id>"`, `"setWindowItems:<window id>"`, `"confirmTransaction<…>"` | ✗ | ✗ | emitted | the inventory plugins' own coordination |
 
+### createBot options
+
+| Option | api.md | typings | code | Note |
+| --- | --- | --- | --- | --- |
+| `username` | optional, defaults to `'Player'` | required (from minecraft-protocol's `ClientOptions`) | defaults to `'Player'` | |
+| `hideErrors` | "true by default" | ✓ | `false` by default | api.md is wrong |
+| `enableServerListing` | ✓ | ✗ | read, but `false` is ignored (`options.enableServerListing \|\| true`) | |
+| `enableTextFiltering`, `skinParts` | ✓ | ✗ | read | |
+| `storageBuilder` | ✓ | ✗ | read | |
+| `particleStatus` | ✓ | ✗ | ignored: the settings always say `'all'` | |
+| `mainHand`, `maxCatchupTicks` | ✗ | ✓ | read | |
+
 ### Classes
 
 | Member | api.md | typings | code | Note |

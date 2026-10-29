@@ -99,5 +99,29 @@
     "team.remove",
     "team.team",
     "team.update"
+  ],
+  "optionsDocsNotInTypes": [
+    "enableServerListing",
+    "enableTextFiltering",
+    "particleStatus",
+    "skinParts",
+    "storageBuilder"
+  ],
+  "optionsTypesNotInDocs": [
+    "mainHand",
+    "maxCatchupTicks"
+  ],
+  "optionsReadNotInDocs": [
+    "mainHand",
+    "maxCatchupTicks"
+  ],
+  "optionsReadNotInTypes": [
+    "enableServerListing",
+    "enableTextFiltering",
+    "skinParts",
+    "storageBuilder"
+  ],
+  "optionsDocsNotRead": [
+    "particleStatus"
   ]
 }

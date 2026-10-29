@@ -36,6 +36,8 @@ export interface ApiSide {
   members: Map<string, Member>
   events: Map<string, string[]>
   classes: Map<string, Map<string, Member>>
+  /** createBot's options: for the typings, whether BotOptions declares it itself (not minecraft-protocol's ClientOptions) */
+  options: Map<string, boolean>
 }
 
 const paramsOf = (list: string): string[] => {
@@ -59,13 +61,18 @@ const paramsOf = (list: string): string[] => {
 
 /** the members, events and classes docs/api.md documents */
 export function docsSide (file = path.join(root, 'docs', 'api.md')): ApiSide {
-  const side: ApiSide = { members: new Map(), events: new Map(), classes: new Map() }
+  const side: ApiSide = { members: new Map(), events: new Map(), classes: new Map(), options: new Map() }
   let section = ''
   let currentClass: Map<string, Member> | undefined
+  let inCreateBot = false
   for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    // the options listed under createBot: ` * name : ...` or ` * [name](#...)`
+    const option = inCreateBot ? /^ \* \[?([A-Za-z]+)/.exec(line) : null
+    if (option?.[1] !== undefined) side.options.set(option[1], true)
     const heading = /^(#{2,5}) (.+)$/.exec(line)
     if (heading === null) continue
     const [, hashes = '', title = ''] = heading
+    inCreateBot = title.startsWith('mineflayer.createBot(')
     if (hashes === '##') { section = title; currentClass = undefined; continue }
     if (section === 'Classes' && hashes === '###') {
       const name = /^(?:mineflayer\.|windows\.)?([A-Za-z]+)/.exec(title)?.[1]
@@ -150,7 +157,7 @@ export function typesSide (file = path.join(root, 'lib', 'types', 'api', 'index.
     }
   }
 
-  const side: ApiSide = { members: new Map(), events: new Map(), classes: new Map() }
+  const side: ApiSide = { members: new Map(), events: new Map(), classes: new Map(), options: new Map() }
   const bot = declaredType('Bot')
   // EventEmitter's own methods (on, once, emit...) are not the bot's API
   const emitterMethods = new Set(['addListener', 'on', 'once', 'prependListener', 'prependOnceListener', 'off', 'removeAllListeners', 'removeListener', 'emit', 'eventNames', 'rawListeners', 'listeners', 'listenerCount', 'getMaxListeners', 'setMaxListeners'])
@@ -175,7 +182,61 @@ export function typesSide (file = path.join(root, 'lib', 'types', 'api', 'index.
     }
     side.classes.set(name.toLowerCase(), members)
   }
+
+  for (const option of checker.getPropertiesOfType(declaredType('BotOptions'))) {
+    const declaredHere = option.declarations?.some(declaration => declaration.getSourceFile().fileName === source.fileName) === true
+    side.options.set(option.getName(), declaredHere)
+  }
   return side
+}
+
+/**
+ * the options the code reads: the properties of createBot's options and of each plugin's (the second parameter of
+ * inject), read as options.<name> or destructured
+ */
+export function optionsReadByCode (dir = path.join(root, 'lib')): Set<string> {
+  const files = [path.join(dir, 'loader.ts'), ...readdirSync(path.join(dir, 'plugins')).filter(file => file.endsWith('.ts')).map(file => path.join(dir, 'plugins', file))]
+  const program = ts.createProgram(files, { module: ts.ModuleKind.Preserve, moduleResolution: ts.ModuleResolutionKind.Bundler, allowImportingTsExtensions: true, noEmit: true })
+  const checker = program.getTypeChecker()
+  const names = new Set<string>()
+  const bindingNames = (pattern: ts.ObjectBindingPattern, source: ts.SourceFile): void => {
+    for (const element of pattern.elements) names.add((element.propertyName ?? element.name).getText(source))
+  }
+  for (const file of files) {
+    const source = program.getSourceFile(file)
+    if (source === undefined) continue
+    const parameters: ts.ParameterDeclaration[] = []
+    const findParameters = (node: ts.Node): void => {
+      if (ts.isFunctionDeclaration(node) && node.name !== undefined) {
+        const parameter = node.name.text === 'inject' ? node.parameters[1] : node.name.text === 'createBot' ? node.parameters[0] : undefined
+        if (parameter !== undefined) parameters.push(parameter)
+      }
+      ts.forEachChild(node, findParameters)
+    }
+    findParameters(source)
+    for (const parameter of parameters) {
+      if (ts.isObjectBindingPattern(parameter.name)) {
+        bindingNames(parameter.name, source)
+        continue
+      }
+      const symbol = checker.getSymbolAtLocation(parameter.name)
+      if (symbol === undefined) continue
+      const isOptions = (node: ts.Node): boolean => ts.isIdentifier(node) && checker.getSymbolAtLocation(node) === symbol
+      const findReads = (node: ts.Node): void => {
+        if (ts.isPropertyAccessExpression(node) && isOptions(node.expression)) {
+          // a read, not an assignment (createBot sets options for minecraft-protocol too)
+          const assigned = ts.isBinaryExpression(node.parent) && node.parent.left === node && node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+          if (!assigned) names.add(node.name.text)
+        }
+        if (ts.isVariableDeclaration(node) && node.initializer !== undefined && isOptions(node.initializer) && ts.isObjectBindingPattern(node.name)) {
+          bindingNames(node.name, source)
+        }
+        ts.forEachChild(node, findReads)
+      }
+      findReads(source)
+    }
+  }
+  return names
 }
 
 /**
@@ -236,6 +297,16 @@ export interface Audit {
   /** class members: <class>.<member> */
   classDocsNotInTypes: string[]
   classTypesNotInDocs: string[]
+  /** createBot's options: documented, but not in BotOptions (nor the ClientOptions it extends) */
+  optionsDocsNotInTypes: string[]
+  /** declared by BotOptions itself, but not documented */
+  optionsTypesNotInDocs: string[]
+  /** read by the code, but not documented */
+  optionsReadNotInDocs: string[]
+  /** read by the code, but not in BotOptions (nor ClientOptions) */
+  optionsReadNotInTypes: string[]
+  /** documented, but neither read by the code nor a minecraft-protocol option it passes on */
+  optionsDocsNotRead: string[]
 }
 
 export type RuntimeBot = Record<string, unknown>
@@ -260,8 +331,11 @@ const has = (object: unknown, memberPath: string): { found: boolean, value?: unk
   return { found: true, value: current }
 }
 
-/** compares the three sides; runtime is a logged-in bot, or undefined to leave the run time out */
-export function audit (docs: ApiSide, types: ApiSide, runtime: RuntimeBot | undefined, emitted: Set<string>): Audit {
+/**
+ * compares the three sides; runtime is a logged-in bot (or undefined to leave the run time out), emitted the events
+ * lib emits and optionsRead the options it reads
+ */
+export function audit (docs: ApiSide, types: ApiSide, runtime: RuntimeBot | undefined, emitted: Set<string>, optionsRead: Set<string>): Audit {
   const sorted = (values: Iterable<string>): string[] => [...values].sort()
   const result: Audit = {
     docsNotInTypes: [],
@@ -277,7 +351,12 @@ export function audit (docs: ApiSide, types: ApiSide, runtime: RuntimeBot | unde
     eventsNeverEmitted: [],
     eventsEmittedNotDeclared: [],
     classDocsNotInTypes: [],
-    classTypesNotInDocs: []
+    classTypesNotInDocs: [],
+    optionsDocsNotInTypes: [],
+    optionsTypesNotInDocs: [],
+    optionsReadNotInDocs: [],
+    optionsReadNotInTypes: [],
+    optionsDocsNotRead: []
   }
 
   for (const [memberPath, member] of docs.members) {
@@ -343,6 +422,18 @@ export function audit (docs: ApiSide, types: ApiSide, runtime: RuntimeBot | unde
     for (const member of members.keys()) if (!documented.has(member)) result.classTypesNotInDocs.push(`${name}.${member}`)
   }
 
+  for (const option of docs.options.keys()) {
+    if (!types.options.has(option)) result.optionsDocsNotInTypes.push(option)
+    // an option of minecraft-protocol's ClientOptions is passed on with the rest (createClient(options))
+    const passedOn = types.options.get(option) === false
+    if (!optionsRead.has(option) && !passedOn) result.optionsDocsNotRead.push(option)
+  }
+  for (const [option, declaredHere] of types.options) if (declaredHere && !docs.options.has(option)) result.optionsTypesNotInDocs.push(option)
+  for (const option of optionsRead) {
+    if (!docs.options.has(option)) result.optionsReadNotInDocs.push(option)
+    if (!types.options.has(option)) result.optionsReadNotInTypes.push(option)
+  }
+
   for (const key of Object.keys(result) as Array<keyof Audit>) result[key] = sorted(result[key])
   return result
 }
@@ -372,7 +463,7 @@ export async function loggedInBot (version = latestSupportedVersion): Promise<{ 
 if (import.meta.main) {
   const { bot, close } = await loggedInBot()
   try {
-    const result = JSON.stringify(audit(docsSide(), typesSide(), bot, emittedEvents()), null, 2) + '\n'
+    const result = JSON.stringify(audit(docsSide(), typesSide(), bot, emittedEvents(), optionsReadByCode()), null, 2) + '\n'
     if (process.argv.includes('--update')) writeFileSync(snapshotFile, result)
     else process.stdout.write(result)
   } finally {
