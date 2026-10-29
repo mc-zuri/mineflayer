@@ -104,9 +104,10 @@ export function docsSide (file = path.join(root, 'docs', 'api.md')): ApiSide {
 
 /** the members, events and classes the public typings declare */
 export function typesSide (file = path.join(root, 'lib', 'types', 'api', 'index.ts')): ApiSide {
+  // the module settings of tsconfig.json
   const program = ts.createProgram([file], {
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    module: ts.ModuleKind.Preserve,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
     target: ts.ScriptTarget.ESNext,
     allowImportingTsExtensions: true,
     noEmit: true,

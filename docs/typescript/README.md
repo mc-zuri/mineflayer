@@ -14,6 +14,9 @@ when it loads a `.ts` file, so there is no build step and no emitted JavaScript.
   as before.
 - Only syntax that stripping erases is allowed (`erasableSyntaxOnly`): no enums, namespaces, parameter properties or
   `import =`. Imports of types only are `import type` (`verbatimModuleSyntax`).
+- `module: preserve` with `moduleResolution: bundler`: the CommonJS prismarine packages' typings `export default`
+  their loader, and their `module.exports` is that loader; `preserve` types the default import as the loader, as
+  Node gives it, where `nodenext` types it as the whole module.
 - ES modules run in strict mode: what sloppy-mode CommonJS ignored (a write to a property of a primitive) throws.
 
 ## Checks

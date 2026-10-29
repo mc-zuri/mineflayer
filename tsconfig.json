@@ -6,8 +6,11 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    // The default import of the CommonJS prismarine packages, whose typings `export default` their loader, types as
+    // that loader, which is what Node gives (their module.exports is the loader; none sets __esModule). nodenext
+    // types it as the whole module.
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "target": "esnext",
     "types": ["node", "mocha"],
     "skipLibCheck": true,
