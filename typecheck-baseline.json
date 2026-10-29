@@ -2,7 +2,6 @@
   "index.ts": 3,
   "lib/bossbar.ts": 41,
   "lib/loader.ts": 61,
-  "lib/particle.ts": 11,
   "lib/plugin_loader.ts": 10,
   "lib/plugins/abilities.ts": 2,
   "lib/plugins/anvil.ts": 21,
