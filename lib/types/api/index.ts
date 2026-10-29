@@ -797,19 +797,25 @@ export interface VillagerTrade {
   realPrice?: number
 }
 
+/** a scoreboard's text as the packets give it: legacy text before 1.13, JSON text from 1.13, an NBT component from 1.20.3 */
+export type ScoreBoardText = string | Tags[TagType]
+
 export declare class ScoreBoard {
   name: string
   title: ChatMessage
   itemsMap: { [name: string]: ScoreBoardItem }
   items: ScoreBoardItem[]
 
-  constructor (packet: object)
+  /** packet: the objective's name and title, as a scoreboard_objective packet that adds it gives them */
+  constructor (packet: { name: string, displayText: ScoreBoardText })
 
-  setTitle (title: string | object): void
+  setTitle (title: ScoreBoardText): void
 
-  add (name: string, value: number, display?: string | object): ScoreBoardItem
+  /** display: the component 1.20.3+ servers may send to draw in place of the item's name */
+  add (name: string, value: number, display?: ScoreBoardText | null): ScoreBoardItem
 
-  remove (name: string): ScoreBoardItem
+  /** removes an item; returns it, undefined if the scoreboard did not have it */
+  remove (name: string): ScoreBoardItem | undefined
 }
 
 export interface ScoreBoardItem {

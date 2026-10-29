@@ -98,3 +98,4 @@ types the thing itself; each is a candidate for a fix upstream.
 | `Particle.name` | documented and set from the registry's particle (the constructor copies it), not in the typings | the typings |
 | `BossBar.color`, `BossBar.dividers` | always one of the colors / divisions in the typings; `undefined` in the code for an index it does not know | the typings |
 | `Team.membersMap`, `Team.add()`, `Team.remove()`, `new Team()` | the typings named the members map `memberMap` (the code's is `membersMap`), gave `add` a second parameter and `add` / `remove` no result (they return the member's value), and the constructor a boolean `friendlyFire` (the property's number: the packet's bits) | the typings |
+| `ScoreBoard.remove()`, `new ScoreBoard()`, `setTitle()`, `add()` | the typings said `remove` always returns an item (it returns `undefined` for a name the scoreboard does not have) and typed the packet's texts as `object` | the typings |
