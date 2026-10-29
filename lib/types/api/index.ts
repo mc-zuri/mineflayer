@@ -867,8 +867,10 @@ export declare class BossBar {
   entityUUID: string
   title: ChatMessage
   health: number
-  dividers: number
-  color: 'pink' | 'blue' | 'red' | 'green' | 'yellow' | 'purple' | 'white'
+  /** the notches the bar is divided in (0, 6, 10, 12 or 20); undefined for a style the bot does not know */
+  dividers: number | undefined
+  /** undefined for a color the bot does not know */
+  color: 'pink' | 'blue' | 'red' | 'green' | 'yellow' | 'purple' | 'white' | undefined
   shouldDarkenSky: boolean
   isDragonBar: boolean
   createFog: boolean

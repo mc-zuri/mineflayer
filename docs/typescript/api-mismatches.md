@@ -94,3 +94,4 @@ types the thing itself; each is a candidate for a fix upstream.
 | Member | Was | Fixed in |
 | --- | --- | --- |
 | `Particle.name` | documented and set from the registry's particle (the constructor copies it), not in the typings | the typings |
+| `BossBar.color`, `BossBar.dividers` | always one of the colors / divisions in the typings; `undefined` in the code for an index it does not know | the typings |
