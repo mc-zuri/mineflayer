@@ -1,9 +1,31 @@
 {
-    "compilerOptions": {
-      "module": "commonjs",
-      "strictNullChecks": true
-    },
-    "files": [
-      "index.d.ts"
-    ]
+  "compilerOptions": {
+    // Node runs the sources as they are (type stripping): nothing is emitted, and only syntax that
+    // stripping can erase is allowed (no enums, namespaces, parameter properties or `import =`).
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "esnext",
+    "types": ["node", "mocha"],
+    "skipLibCheck": true,
+
+    // The strictest checks (the @tsconfig/strictest set).
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["index.d.ts", "index.ts", "lib/**/*.ts", "test/**/*.ts", "examples/**/*.ts", "scripts/**/*.ts", "scripts/**/*.mts"]
 }
