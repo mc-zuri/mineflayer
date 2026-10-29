@@ -101,5 +101,6 @@
   "test/externalTests/trade.ts": 7,
   "test/externalTests/useChests.ts": 38,
   "test/internalTest.ts": 1051,
+  "test/scoreboardTest.ts": 2,
   "test/traceTest.ts": 3
 }

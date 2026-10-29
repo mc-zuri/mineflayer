@@ -1,9 +1,14 @@
 import prismarineChat from 'prismarine-chat'
 
+// the vanilla sidebar's order: higher value first, equal values by name ignoring case
 const sortItems = (a, b) => {
   if (a.value > b.value) return -1
   if (a.value < b.value) return 1
-  return 1
+  const aName = a.name.toLowerCase()
+  const bName = b.name.toLowerCase()
+  if (aName < bName) return -1
+  if (aName > bName) return 1
+  return 0
 }
 
 export default (bot) => {

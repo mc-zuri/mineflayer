@@ -11,6 +11,7 @@ How a bug was found:
 - **typing**: writing the types showed it (a packet field no version has, a branch for a type that never arrives,
   an API type that disagrees with the code).
 - **tests**: running the test suite on every commit showed it (a flaky or wrong test).
+- **review**: reading the code while typing it (not something the types show).
 - **strict mode**: ES modules always run in strict mode, where what sloppy-mode CommonJS silently ignored throws
   (a write to a property of a primitive, an assignment to an undeclared variable).
 
@@ -20,6 +21,12 @@ How a bug was found:
 | --- | --- | --- | --- |
 | A boss bar's `shouldDarkenSky`, `isDragonBar` and `createFog` were the numbers `flags & 0x1`, `flags & 0x2` and `flags & 0x4` (0 / 2 / 4), not the booleans api.md and the typings say, and the `flags` getter shifted them again: a dragon bar's flags read back as 4, fog as 16 | all | typing | `BossBar` / has its flags as booleans, and gives them back as the bits they came from |
 | A boss bar whose 1.20.3+ title is a bare NBT string (what `/bossbar add <id> "<name>"` sends) had a plain string as `title`, not the `ChatMessage` api.md and the typings say (`bar.title.toAnsi()` threw); `ChatMessage.fromNotch` reads that form too | 1.20.3+ | typing | `BossBar` / has its title as a ChatMessage, whichever form the packet gives it |
+
+## ScoreBoard
+
+| Bug | Versions | Found by | Test |
+| --- | --- | --- | --- |
+| `ScoreBoard.items` sorted equal values in an order that depended on when they were added and on the sort algorithm: the comparator returned 1 for two equal values, both ways round. Vanilla's sidebar orders them by name, ignoring case | all | review | `ScoreBoard` / sorts its items like the vanilla sidebar |
 
 ## Tests
 

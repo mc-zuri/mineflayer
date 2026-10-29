@@ -697,7 +697,8 @@ on 1.20.3+, otherwise the item's name formatted by its team.
 
 #### ScoreBoard.items
 
-An array with all sorted items in the scoreboard in it
+An array with all items in the scoreboard in it, sorted like the vanilla sidebar: highest value first, equal values by
+name ignoring case
 ```js
 [
   { name: 'dzikoysk', value: 6 },
