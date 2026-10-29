@@ -1,5 +1,7 @@
 import type { EventEmitter } from 'events'
-import TypedEmitter from 'typed-emitter'
+// typed-emitter is CommonJS and its typings export the interface as default: imported from an ES module, the
+// default import is the whole module (its module.exports), whose default is the interface
+import type TypedEmitter from 'typed-emitter'
 import type { Client, ClientOptions } from 'minecraft-protocol'
 import type { Vec3 } from 'vec3'
 import type { Item } from 'prismarine-item'
@@ -176,7 +178,7 @@ export interface CommandBlockOptions {
   alwaysActive: boolean
 }
 
-export interface Bot extends TypedEmitter<BotEvents> {
+export interface Bot extends TypedEmitter.default<BotEvents> {
   username: string
   protocolVersion: string
   majorVersion: string
