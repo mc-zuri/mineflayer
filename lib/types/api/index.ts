@@ -13,10 +13,14 @@ import type { Registry } from 'prismarine-registry'
 import type { IndexedData } from 'minecraft-data'
 import type { Tags, TagType } from 'prismarine-nbt'
 
-export declare function createBot (options: { client: Client } & Partial<BotOptions>): Bot
-export declare function createBot (options: BotOptions): Bot
+export declare function createBot (options?: BotOptions): Bot
 
-export interface BotOptions extends ClientOptions {
+/** createBot's options: minecraft-protocol's client options (createBot passes them on), and mineflayer's own */
+export interface BotOptions extends Omit<ClientOptions, 'username' | 'version'> {
+  /** @default 'Player' */
+  username?: string
+  /** the server's version (e.g. '1.21.4'); undefined or false: ask the server for it */
+  version?: string | false
   logErrors?: boolean
   hideErrors?: boolean
   loadInternalPlugins?: boolean
