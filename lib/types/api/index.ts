@@ -183,8 +183,11 @@ export interface CommandBlockOptions {
 
 export interface Bot extends TypedEmitter<BotEvents> {
   username: string
-  protocolVersion: string
+  /** the protocol number of the server's version (e.g. 769 for 1.21.4) */
+  protocolVersion: number
+  /** the server's major version (e.g. '1.21') */
   majorVersion: string
+  /** the server's version (e.g. '1.21.4') */
   version: string
   entity: Entity
   entities: { [id: string]: Entity }
