@@ -1461,7 +1461,7 @@ export namespace MCProtocol.Java.Read.Play.Clientbound {
 		entityId: number;
 		/** Versions: 1.9 – 26.1 */
 		properties: {
-			key?: string | "generic.armor" | "generic.armor_toughness" | "generic.attack_damage" | "generic.attack_knockback" | "generic.attack_speed" | "player.block_break_speed" | "player.block_interaction_range" | "player.entity_interaction_range" | "generic.fall_damage_multiplier" | "generic.flying_speed" | "generic.follow_range" | "generic.gravity" | "generic.jump_strength" | "generic.knockback_resistance" | "generic.luck" | "generic.max_absorption" | "generic.max_health" | "generic.movement_speed" | "generic.safe_fall_distance" | "generic.scale" | "zombie.spawn_reinforcements" | "generic.step_height" | number | "camera_distance" | "explosion_knockback_resistance" | "submerged_mining_speed" | "sweeping_damage_ratio" | "tempt_range" | "burning_time" | "water_movement_efficiency" | "waypoint_transmit_range" | "waypoint_receive_range" | undefined;
+			key?: string | "generic.armor" | "generic.armor_toughness" | "generic.attack_damage" | "generic.attack_knockback" | "generic.attack_speed" | "player.block_break_speed" | "player.block_interaction_range" | "player.entity_interaction_range" | "generic.fall_damage_multiplier" | "generic.flying_speed" | "generic.follow_range" | "generic.gravity" | "generic.jump_strength" | "generic.knockback_resistance" | "generic.luck" | "generic.max_absorption" | "generic.max_health" | "generic.movement_speed" | "generic.safe_fall_distance" | "generic.scale" | "zombie.spawn_reinforcements" | "generic.step_height" | number | "generic.burning_time" | "generic.explosion_knockback_resistance" | "player.mining_efficiency" | "generic.movement_efficiency" | "generic.oxygen_bonus" | "player.sneaking_speed" | "player.submerged_mining_speed" | "player.sweeping_damage_ratio" | "generic.water_movement_efficiency" | "burning_time" | "explosion_knockback_resistance" | "mining_efficiency" | "movement_efficiency" | "oxygen_bonus" | "sneaking_speed" | "submerged_mining_speed" | "sweeping_damage_ratio" | "tempt_range" | "water_movement_efficiency" | "camera_distance" | "waypoint_transmit_range" | "waypoint_receive_range" | undefined;
 			value: number;
 			modifiers: {
 				uuid: string;
@@ -4841,9 +4841,10 @@ export namespace MCProtocol.Java.Read.Types {
 				data: JukeboxSongData;
 			} | string | undefined;
 		} | ItemSoundHolder | {
-			variantId: number;
+			hasHolder: boolean;
+			variant?: number | string | undefined;
 		} | {
-			variantData: string;
+			variantId: number;
 		} | {
 			data: EntityMetadataPaintingVariant;
 		} | {
@@ -4880,11 +4881,7 @@ export namespace MCProtocol.Java.Read.Types {
 			speed_multiplier: number;
 		} | {
 			hasHolder: boolean;
-			damageType?: {
-				damageTypeId: number;
-			} | {
-				data: DamageTypeData;
-			} | string | undefined;
+			damageType?: number | string | undefined;
 		} | {
 			minRange: number;
 			maxRange: number;
@@ -4910,12 +4907,21 @@ export namespace MCProtocol.Java.Read.Types {
 		} | {
 			type: "none" | "whack" | "stab" | number;
 			duration: number;
+		} | {
+			hasHolder: boolean;
+			damageType?: {
+				damageTypeId: number;
+			} | {
+				data: DamageTypeData;
+			} | string | undefined;
 		} | ItemStackTemplate | DyeColor | {
 			projectiles: ItemStackTemplate[];
 		} | {
 			contents: ItemStackTemplate[];
 		} | {
 			contents: Array<ItemStackTemplate | undefined>;
+		} | {
+			variantData: string;
 		} | undefined;
 	};
 	/**
@@ -5678,21 +5684,6 @@ export namespace MCProtocol.Java.Read.Types {
 	/**
 	 * Versions: 1.21.11 – 26.1
 	 */
-	export type DamageTypeData = {
-		/** Versions: 1.21.11 – 26.1 */
-		msgId: string;
-		/** Versions: 1.21.11 – 26.1 */
-		scaling: "never" | "when_caused_by_living_non_player" | "always" | number;
-		/** Versions: 1.21.11 – 26.1 */
-		exhaustion: number;
-		/** Versions: 1.21.11 – 26.1 */
-		effects: "hurt" | "thorns" | "drowning" | "burning" | "poking" | "freezing" | number;
-		/** Versions: 1.21.11 – 26.1 */
-		deathMessageType: "default" | "fall_variants" | "intentional_game_design" | number;
-	};
-	/**
-	 * Versions: 1.21.11 – 26.1
-	 */
 	export type KineticWeaponCondition = {
 		/** Versions: 1.21.11 – 26.1 */
 		maxDurationTicks: number;
@@ -5700,6 +5691,21 @@ export namespace MCProtocol.Java.Read.Types {
 		minSpeed: number;
 		/** Versions: 1.21.11 – 26.1 */
 		minRelativeSpeed: number;
+	};
+	/**
+	 * Versions: 26.1
+	 */
+	export type DamageTypeData = {
+		/** Versions: 26.1 */
+		msgId: string;
+		/** Versions: 26.1 */
+		scaling: "never" | "when_caused_by_living_non_player" | "always" | number;
+		/** Versions: 26.1 */
+		exhaustion: number;
+		/** Versions: 26.1 */
+		effects: "hurt" | "thorns" | "drowning" | "burning" | "poking" | "freezing" | number;
+		/** Versions: 26.1 */
+		deathMessageType: "default" | "fall_variants" | "intentional_game_design" | number;
 	};
 	/**
 	 * Versions: 26.1
@@ -7180,7 +7186,7 @@ export namespace MCProtocol.Java.Write.Play.Clientbound {
 		entityId: number;
 		/** Versions: 1.9 – 26.1 */
 		properties: {
-			key?: string | "generic.armor" | "generic.armor_toughness" | "generic.attack_damage" | "generic.attack_knockback" | "generic.attack_speed" | "player.block_break_speed" | "player.block_interaction_range" | "player.entity_interaction_range" | "generic.fall_damage_multiplier" | "generic.flying_speed" | "generic.follow_range" | "generic.gravity" | "generic.jump_strength" | "generic.knockback_resistance" | "generic.luck" | "generic.max_absorption" | "generic.max_health" | "generic.movement_speed" | "generic.safe_fall_distance" | "generic.scale" | "zombie.spawn_reinforcements" | "generic.step_height" | number | "camera_distance" | "explosion_knockback_resistance" | "submerged_mining_speed" | "sweeping_damage_ratio" | "tempt_range" | "burning_time" | "water_movement_efficiency" | "waypoint_transmit_range" | "waypoint_receive_range" | undefined;
+			key?: string | "generic.armor" | "generic.armor_toughness" | "generic.attack_damage" | "generic.attack_knockback" | "generic.attack_speed" | "player.block_break_speed" | "player.block_interaction_range" | "player.entity_interaction_range" | "generic.fall_damage_multiplier" | "generic.flying_speed" | "generic.follow_range" | "generic.gravity" | "generic.jump_strength" | "generic.knockback_resistance" | "generic.luck" | "generic.max_absorption" | "generic.max_health" | "generic.movement_speed" | "generic.safe_fall_distance" | "generic.scale" | "zombie.spawn_reinforcements" | "generic.step_height" | number | "generic.burning_time" | "generic.explosion_knockback_resistance" | "player.mining_efficiency" | "generic.movement_efficiency" | "generic.oxygen_bonus" | "player.sneaking_speed" | "player.submerged_mining_speed" | "player.sweeping_damage_ratio" | "generic.water_movement_efficiency" | "burning_time" | "explosion_knockback_resistance" | "mining_efficiency" | "movement_efficiency" | "oxygen_bonus" | "sneaking_speed" | "submerged_mining_speed" | "sweeping_damage_ratio" | "tempt_range" | "water_movement_efficiency" | "camera_distance" | "waypoint_transmit_range" | "waypoint_receive_range" | undefined;
 			value: number;
 			modifiers: {
 				uuid: string;
@@ -10560,9 +10566,10 @@ export namespace MCProtocol.Java.Write.Types {
 				data: JukeboxSongData;
 			} | string | undefined;
 		} | ItemSoundHolder | {
-			variantId: number;
+			hasHolder: boolean;
+			variant?: number | string | undefined;
 		} | {
-			variantData: string;
+			variantId: number;
 		} | {
 			data: EntityMetadataPaintingVariant;
 		} | {
@@ -10599,11 +10606,7 @@ export namespace MCProtocol.Java.Write.Types {
 			speed_multiplier: number;
 		} | {
 			hasHolder: boolean;
-			damageType?: {
-				damageTypeId: number;
-			} | {
-				data: DamageTypeData;
-			} | string | undefined;
+			damageType?: number | string | undefined;
 		} | {
 			minRange: number;
 			maxRange: number;
@@ -10629,12 +10632,21 @@ export namespace MCProtocol.Java.Write.Types {
 		} | {
 			type: "none" | "whack" | "stab" | number;
 			duration: number;
+		} | {
+			hasHolder: boolean;
+			damageType?: {
+				damageTypeId: number;
+			} | {
+				data: DamageTypeData;
+			} | string | undefined;
 		} | ItemStackTemplate | DyeColor | {
 			projectiles: ItemStackTemplate[];
 		} | {
 			contents: ItemStackTemplate[];
 		} | {
 			contents: Array<ItemStackTemplate | undefined>;
+		} | {
+			variantData: string;
 		} | undefined;
 	};
 	/**
@@ -11397,21 +11409,6 @@ export namespace MCProtocol.Java.Write.Types {
 	/**
 	 * Versions: 1.21.11 – 26.1
 	 */
-	export type DamageTypeData = {
-		/** Versions: 1.21.11 – 26.1 */
-		msgId: string;
-		/** Versions: 1.21.11 – 26.1 */
-		scaling: "never" | "when_caused_by_living_non_player" | "always" | number;
-		/** Versions: 1.21.11 – 26.1 */
-		exhaustion: number;
-		/** Versions: 1.21.11 – 26.1 */
-		effects: "hurt" | "thorns" | "drowning" | "burning" | "poking" | "freezing" | number;
-		/** Versions: 1.21.11 – 26.1 */
-		deathMessageType: "default" | "fall_variants" | "intentional_game_design" | number;
-	};
-	/**
-	 * Versions: 1.21.11 – 26.1
-	 */
 	export type KineticWeaponCondition = {
 		/** Versions: 1.21.11 – 26.1 */
 		maxDurationTicks: number;
@@ -11419,6 +11416,21 @@ export namespace MCProtocol.Java.Write.Types {
 		minSpeed: number;
 		/** Versions: 1.21.11 – 26.1 */
 		minRelativeSpeed: number;
+	};
+	/**
+	 * Versions: 26.1
+	 */
+	export type DamageTypeData = {
+		/** Versions: 26.1 */
+		msgId: string;
+		/** Versions: 26.1 */
+		scaling: "never" | "when_caused_by_living_non_player" | "always" | number;
+		/** Versions: 26.1 */
+		exhaustion: number;
+		/** Versions: 26.1 */
+		effects: "hurt" | "thorns" | "drowning" | "burning" | "poking" | "freezing" | number;
+		/** Versions: 26.1 */
+		deathMessageType: "default" | "fall_variants" | "intentional_game_design" | number;
 	};
 	/**
 	 * Versions: 26.1
