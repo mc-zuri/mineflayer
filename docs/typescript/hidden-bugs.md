@@ -20,3 +20,4 @@ How a bug was found:
 | --- | --- | --- | --- |
 | The scoreboard reset test read `bot.teams` and `bot.scoreboards` right after the mock server's `playerJoin`, which can come before the plugins are injected; it then failed with `{} !== undefined` on a random few versions per run | all | tests | `mineflayer_internal` / scoreboard reset on login |
 | The switchWorld respawn test wrote `respawnPacket.dimension.name` where the dimension is a string (1.19 - 1.20.4): the write never did anything, and in strict mode it throws, so the respawn was never sent | 1.19 - 1.20.4 | strict mode | `mineflayer_internal` / world / switchWorld respawn |
+| The command block test passed `false` as `bot.setCommandBlock`'s options, which the docs and the typings describe as an object: the plugin's writes of its defaults to `false` did nothing, and in strict mode they throw, so the command was never set | all | strict mode | `mineflayer_external` / commandBlock |
