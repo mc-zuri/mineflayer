@@ -94,7 +94,7 @@
     "scoreboard.setTitle",
     "team.add",
     "team.displayName",
-    "team.memberMap",
+    "team.membersMap",
     "team.parseMessage",
     "team.remove",
     "team.team",

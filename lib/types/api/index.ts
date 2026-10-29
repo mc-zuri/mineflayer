@@ -11,6 +11,7 @@ import type { ChatMessage } from 'prismarine-chat'
 import type { world } from 'prismarine-world'
 import type { Registry } from 'prismarine-registry'
 import type { IndexedData } from 'minecraft-data'
+import type { Tags, TagType } from 'prismarine-nbt'
 
 export declare function createBot (options: { client: Client } & Partial<BotOptions>): Bot
 export declare function createBot (options: BotOptions): Bot
@@ -817,27 +818,33 @@ export interface ScoreBoardItem {
   value: number
 }
 
+/** a team's text as the packets give it: legacy text before 1.13, JSON text from 1.13, an NBT component from 1.20.3 */
+export type TeamText = string | Tags[TagType]
+
 export declare class Team {
   team: string
   name: ChatMessage
+  /** the packet's bits: 0x1 friendly fire, 0x2 seeing invisible teammates */
   friendlyFire: number
   nameTagVisibility: string
   collisionRule: string
   color: string
   prefix: ChatMessage
   suffix: ChatMessage
-  memberMap: { [name: string]: '' }
+  membersMap: { [name: string]: '' }
   members: string[]
 
-  constructor (team: string, name: string, friendlyFire: boolean, nameTagVisibility: string, collisionRule: string, formatting: number, prefix: string, suffix: string)
+  constructor (team: string, name: TeamText, friendlyFire: number, nameTagVisibility: string, collisionRule: string, formatting: number | undefined, prefix: TeamText, suffix: TeamText)
 
-  parseMessage (value: string): ChatMessage
+  parseMessage (value: TeamText): ChatMessage
 
-  add (name: string, value: number): void
+  /** adds a member; returns its value in membersMap */
+  add (name: string): ''
 
-  remove (name: string): void
+  /** removes a member; returns its value in membersMap, undefined if it was not one */
+  remove (name: string): '' | undefined
 
-  update (name: string, friendlyFire: boolean, nameTagVisibility: string, collisionRule: string, formatting: number, prefix: string, suffix: string): void
+  update (name: TeamText, friendlyFire: number, nameTagVisibility: string, collisionRule: string, formatting: number | undefined, prefix: TeamText, suffix: TeamText): void
 
   displayName (member: string): ChatMessage
 }
