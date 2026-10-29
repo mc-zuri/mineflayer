@@ -20,18 +20,8 @@ function loader (registry) {
     }
 
     set title (title) {
-      if (title && typeof title === 'object' && title.type === 'string' && 'value' in title) {
-        this._title = title.value
-      } else {
-        const chatMsg = ChatMessage.fromNotch(title)
-        if (chatMsg !== undefined && chatMsg !== null) {
-          this._title = chatMsg
-        } else if (typeof title === 'string') {
-          this._title = title
-        } else {
-          this._title = ''
-        }
-      }
+      // JSON text before 1.20.3, an NBT text component (a bare string tag included) from 1.20.3
+      this._title = ChatMessage.fromNotch(title)
     }
 
     set health (health) {

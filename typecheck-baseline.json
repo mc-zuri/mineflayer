@@ -1,6 +1,6 @@
 {
   "index.ts": 3,
-  "lib/bossbar.ts": 37,
+  "lib/bossbar.ts": 34,
   "lib/loader.ts": 61,
   "lib/plugin_loader.ts": 10,
   "lib/plugins/abilities.ts": 2,

@@ -1,4 +1,5 @@
 import assert from 'assert'
+import nbt from 'prismarine-nbt'
 import prismarineRegistry from 'prismarine-registry'
 import bossBarLoader from '../lib/bossbar.ts'
 import { latestSupportedVersion } from '../lib/version.ts'
@@ -18,6 +19,21 @@ describe('BossBar', () => {
       const updated = new BossBar('uuid', JSON.stringify({ text: 'title' }), 1, 0, 0, 0)
       updated.flags = flags
       assert.strictEqual(updated.flags, flags, `flags set to ${flags}`)
+    }
+  })
+
+  it('has its title as a ChatMessage, whichever form the packet gives it', () => {
+    const titles = [
+      ['1.16.5', JSON.stringify({ text: 'Wither' }), 'Wither'],
+      [latestSupportedVersion, nbt.comp({ text: nbt.string('Wither') }), 'Wither'],
+      // `/bossbar add <id> "<name>"` on 1.20.3+: the title is a bare NBT string
+      [latestSupportedVersion, nbt.string('Ender Dragon'), 'Ender Dragon']
+    ] as const
+    for (const [version, title, text] of titles) {
+      const bar = new (bossBarLoader(prismarineRegistry(version)))('uuid', title, 1, 0, 0, 0)
+      assert.notStrictEqual(typeof bar.title, 'string', `the title of ${JSON.stringify(title)}`)
+      assert.strictEqual(typeof bar.title.toAnsi, 'function', `the title of ${JSON.stringify(title)}`)
+      assert.strictEqual(bar.title.toString(), text)
     }
   })
 })
