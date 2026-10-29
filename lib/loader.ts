@@ -52,8 +52,11 @@ import Painting from './painting.ts'
 import ScoreBoard from './scoreboard.ts'
 import BossBar from './bossbar.ts'
 import Particle from './particle.ts'
+import type { SupportsFeature } from 'minecraft-data'
+import type { Bot, BotOptions } from './types/api/index.ts'
+import type { BotInternal, InternalPlugin } from './types/internal.ts'
 
-const plugins = {
+const plugins: { [name: string]: InternalPlugin } = {
   abilities,
   bed,
   title,
@@ -101,20 +104,23 @@ const plugins = {
 
 const latestSupportedProtocolVersion = latestSupportedProtocolVersionOf(minecraftData.versionsByMinecraftVersion.pc)
 
-const supportFeature = (feature, version) => minecraftData(version).supportFeature(feature)
+/** a feature of a version, as minecraft-data has it (whether it has it, or its value) */
+const supportFeature = <Feature extends keyof SupportsFeature> (feature: Feature, version: string): SupportsFeature[Feature] => minecraftData(version).supportFeature(feature)
 
-function createBot (options = {}) {
-  options.username = options.username ?? 'Player'
-  options.version = options.version ?? false
-  options.plugins = options.plugins ?? {}
-  options.hideErrors = options.hideErrors ?? false
-  options.logErrors = options.logErrors ?? true
-  options.loadInternalPlugins = options.loadInternalPlugins ?? true
-  options.client = options.client ?? null
-  options.brand = options.brand ?? 'vanilla'
-  options.respawn = options.respawn ?? true
-  const bot = new EventEmitter()
-  bot._client = options.client
+function createBot (botOptions: BotOptions = {}): Bot {
+  // The defaults go on the caller's object itself: the plugins and minecraft-protocol share it.
+  const options = Object.assign(botOptions, {
+    username: botOptions.username ?? 'Player',
+    version: botOptions.version ?? false,
+    plugins: botOptions.plugins ?? {},
+    hideErrors: botOptions.hideErrors ?? false,
+    logErrors: botOptions.logErrors ?? true,
+    loadInternalPlugins: botOptions.loadInternalPlugins ?? true,
+    brand: botOptions.brand ?? 'vanilla',
+    respawn: botOptions.respawn ?? true
+  })
+  // The plugins fill the bot in: it is all of a BotInternal once they are injected.
+  const bot: BotInternal = new EventEmitter() as EventEmitter & BotInternal
   bot.end = (reason) => bot._client.end(reason)
   bot._warn = function (...message) {
     if (options.hideErrors) return
@@ -129,20 +135,18 @@ function createBot (options = {}) {
   }
 
   pluginLoader(bot, options)
-  const internalPlugins = Object.keys(plugins)
-    .filter(key => {
+  const internalPlugins = Object.entries(plugins)
+    .filter(([key]) => {
       if (typeof options.plugins[key] === 'function') return false
       if (options.plugins[key] === false) return false
       return options.plugins[key] || options.loadInternalPlugins
-    }).map(key => plugins[key])
-  const externalPlugins = Object.keys(options.plugins)
-    .filter(key => {
-      return typeof options.plugins[key] === 'function'
-    }).map(key => options.plugins[key])
+    }).map(([, plugin]) => plugin)
+  const externalPlugins = Object.values(options.plugins)
+    .filter(plugin => typeof plugin === 'function')
   bot.loadPlugins([...internalPlugins, ...externalPlugins])
 
   options.validateChannelProtocol = false
-  bot._client = bot._client ?? mc.createClient(options)
+  bot._client = options.client ?? mc.createClient(options)
   bot._client.on('connect', () => {
     bot.emit('connect')
   })
@@ -154,7 +158,7 @@ function createBot (options = {}) {
   })
   if (!bot._client.wait_connect) next()
   else bot._client.once('connect_allowed', next)
-  function next () {
+  function next (): void {
     const serverPingVersion = bot._client.version
     bot.registry = prismarineRegistry(serverPingVersion)
     if (!bot.registry?.version) throw new Error(`Server version '${serverPingVersion}' is not supported, no data for version`)
@@ -166,10 +170,15 @@ function createBot (options = {}) {
       throw new Error(`Server version '${serverPingVersion}' is not supported. Oldest supported version is '${oldestSupportedVersion}'.`)
     }
 
-    bot.protocolVersion = versionData.version
-    bot.majorVersion = versionData.majorVersion
-    bot.version = versionData.minecraftVersion
-    options.version = versionData.minecraftVersion
+    // minecraft-data types them as optional; a version it has data for has them all
+    const { version: protocolVersion, majorVersion, minecraftVersion } = versionData
+    if (protocolVersion === undefined || majorVersion === undefined || minecraftVersion === undefined) {
+      throw new Error(`minecraft-data has no version numbers for server version '${serverPingVersion}'`)
+    }
+    bot.protocolVersion = protocolVersion
+    bot.majorVersion = majorVersion
+    bot.version = minecraftVersion
+    options.version = minecraftVersion
     bot.supportFeature = bot.registry.supportFeature
     setTimeout(() => bot.emit('inject_allowed'), 0)
   }

@@ -221,7 +221,22 @@ export function optionsReadByCode (dir = path.join(root, 'lib')): Set<string> {
       }
       const symbol = checker.getSymbolAtLocation(parameter.name)
       if (symbol === undefined) continue
-      const isOptions = (node: ts.Node): boolean => ts.isIdentifier(node) && checker.getSymbolAtLocation(node) === symbol
+      // the parameter, and the variables that are the same object: `const options = Object.assign(botOptions, defaults)`
+      const symbols = new Set([symbol])
+      const findAliases = (node: ts.Node): void => {
+        if (ts.isVariableDeclaration(node) && node.initializer !== undefined && ts.isCallExpression(node.initializer) &&
+            node.initializer.expression.getText(source) === 'Object.assign' && node.initializer.arguments[0] !== undefined) {
+          const target = checker.getSymbolAtLocation(node.initializer.arguments[0])
+          const alias = checker.getSymbolAtLocation(node.name)
+          if (target !== undefined && symbols.has(target) && alias !== undefined) symbols.add(alias)
+        }
+        ts.forEachChild(node, findAliases)
+      }
+      findAliases(source)
+      const isOptions = (node: ts.Node): boolean => {
+        const nodeSymbol = ts.isIdentifier(node) ? checker.getSymbolAtLocation(node) : undefined
+        return nodeSymbol !== undefined && symbols.has(nodeSymbol)
+      }
       const findReads = (node: ts.Node): void => {
         if (ts.isPropertyAccessExpression(node) && isOptions(node.expression)) {
           // a read, not an assignment (createBot sets options for minecraft-protocol too)

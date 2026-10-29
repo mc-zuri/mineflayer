@@ -1,6 +1,6 @@
 {
   "index.ts": 3,
-  "lib/loader.ts": 61,
+  "lib/loader.ts": 6,
   "lib/plugins/abilities.ts": 2,
   "lib/plugins/anvil.ts": 20,
   "lib/plugins/bed.ts": 13,
@@ -50,7 +50,7 @@
   "test/common/trace.ts": 20,
   "test/common/util.ts": 1,
   "test/diggingDeathTest.ts": 12,
-  "test/externalTest.ts": 56,
+  "test/externalTest.ts": 51,
   "test/externalTests/activateItem.ts": 6,
   "test/externalTests/anvil.ts": 48,
   "test/externalTests/bed.ts": 5,
@@ -98,6 +98,6 @@
   "test/externalTests/title.ts": 7,
   "test/externalTests/trade.ts": 7,
   "test/externalTests/useChests.ts": 38,
-  "test/internalTest.ts": 1051,
+  "test/internalTest.ts": 1052,
   "test/traceTest.ts": 3
 }

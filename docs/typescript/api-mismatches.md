@@ -99,6 +99,7 @@ types the thing itself; each is a candidate for a fix upstream.
 | prismarine-entity | named exports only (`Entity`) | `module.exports` is the loader `(version) => Entity` | |
 | minecraft-protocol | `once('sessionce', ...)`, `once('end', (reasonce) => ...)` | the events are `session` and `end` (a search and replace of `on` with `once` in the typings) | `TypedClient` |
 | minecraft-protocol | no `connect_allowed` event, no `wait_connect` | autoVersion sets `wait_connect` and emits `connect_allowed` once it knows the server's version | `TypedClient` |
+| minecraft-protocol | `createClient(options)` takes a string `version` | it sets `version: false` itself when none is given (ask the server for its version), and takes it | `lib/types/vendor/minecraft-protocol.d.ts` |
 | minecraft-protocol | `on(event: string, ...)` takes any event name | only the packets of the client's version, and its own events | `TypedClient` (no catch-all) |
 
 ## Resolved
