@@ -6,7 +6,7 @@
   "type": "module",
   "types": "index.d.ts",
   "scripts": {
-    "mocha_test": "mocha --reporter ./test/common/durationsReporter.ts --extension ts --exit",
+    "mocha_test": "mocha --reporter ./test/common/durationsReporter.ts --extension ts --exit test test/bedrock",
     "test": "npm run mocha_test",
     "pretest": "npm run lint",
     "typecheck": "node scripts/typecheck.ts -p .",

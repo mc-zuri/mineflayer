@@ -47,6 +47,7 @@ import sequence from './plugins/sequence.ts'
 import minecraftData from 'minecraft-data'
 import prismarineRegistry from 'prismarine-registry'
 import { testedVersions, latestSupportedVersion, oldestSupportedVersion, latestSupportedProtocolVersionOf } from './version.ts'
+import { testedBedrockVersions, latestSupportedBedrockVersion, oldestSupportedBedrockVersion } from './bedrock/version.ts'
 import Location from './location.ts'
 import Painting from './painting.ts'
 import ScoreBoard from './scoreboard.ts'
@@ -195,5 +196,8 @@ export {
   latestSupportedVersion,
   oldestSupportedVersion,
   testedVersions,
+  testedBedrockVersions,
+  latestSupportedBedrockVersion,
+  oldestSupportedBedrockVersion,
   supportFeature
 }

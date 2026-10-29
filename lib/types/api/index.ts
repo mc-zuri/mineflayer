@@ -939,5 +939,11 @@ export declare const testedVersions: readonly [string, ...string[]]
 export declare const latestSupportedVersion: string
 export declare const oldestSupportedVersion: string
 
+export type BedrockVersion = `bedrock_${string}`
+
+export declare const testedBedrockVersions: readonly [BedrockVersion, ...BedrockVersion[]]
+export declare const latestSupportedBedrockVersion: BedrockVersion
+export declare const oldestSupportedBedrockVersion: BedrockVersion
+
 /** a feature of a version, as minecraft-data has it (whether it has it, or its value) */
 export declare function supportFeature<Feature extends keyof SupportsFeature> (feature: Feature, version: string): SupportsFeature[Feature]
