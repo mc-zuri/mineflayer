@@ -9,6 +9,7 @@ import { Session } from './modules/session.ts'
 import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
 import bossBar from './plugins/boss_bar.ts'
+import particle from './plugins/particle.ts'
 import scoreboard from './plugins/scoreboard.ts'
 import sound from './plugins/sound.ts'
 import tablist from './plugins/tablist.ts'
@@ -27,7 +28,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   tablist,
   title,
   boss_bar: bossBar,
-  sound
+  sound,
+  particle
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

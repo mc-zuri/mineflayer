@@ -2,7 +2,7 @@
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
-the titles, the boss bars, the sounds and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls
+the titles, the boss bars, the sounds, the particles and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls
 and looks as the vanilla client does, telling the server every tick, follows the server's corrections, and ends; the
 rest of the API is Java's only so far.
 
@@ -82,6 +82,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   `bossBarUpdated (bossBar)`, `bossBarDeleted (bossBar)` (see boss bars below),
   `soundEffectHeard (soundName, position, volume, pitch)`,
   `hardcodedSoundEffectHeard (soundId, soundCategory, position, volume, pitch)` (see sounds below),
+  `particle (particle)` (see particles below),
   `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`,
   `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
@@ -127,7 +128,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar and sound events, `kicked`, `end`, `error` | the packet pass |
+| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error` | the packet pass |
 | `chunkColumnLoad` | the start of a tick |
 | `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -503,6 +504,18 @@ The server's sounds act in the packet pass, as Java's sound packets; the bot ans
   (Java's master: Bedrock has no categories), and volume and pitch 1.
 - **Not yet:** `noteHeard`, which no recording of a note block shows yet. stop_sound and the music have no Java event.
 
+## Particles
+
+The server's spawn_particle_effect (`/particle`) acts in the packet pass, as Java's particle packet: it emits
+`particle (particle)`; the bot answers none, as the vanilla client.
+
+- **A `Particle`** has Java's shape, for an effect Bedrock names: `name` is the effect's (`minecraft:heart_particle`),
+  `id` -1 (Bedrock has no particle ids, and minecraft-data no Bedrock particles), `position` where the server puts it,
+  one particle (`count` 1) without `offset` (0, 0, 0), `movementSpeed` 0 or `longDistanceRender`: the effect itself
+  spreads and moves its particles. When the packet names an entity, the position is relative to it: the bot gives it
+  as sent (no recording has one).
+- **Not yet:** the particles of level events, which no recording has: no command makes a server send one.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -534,7 +547,8 @@ The server's sounds act in the packet pass, as Java's sound packets; the bot ans
   the sounds: by level_sound_event's layout and names, numbers 1.16.201 – 1.16.210, misaligned names
   1.16.220 – 1.17.40, names 1.18.0 – 1.21.60, with the entity 1.21.70 – 1.26.10, with where it fires 1.26.20, the
   server's names 1.26.30+, and by play_sound's, a varint y 1.16.201 – 1.26.0, a signed y 1.26.10, a handle
-  1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+). The
+  1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+; the particles: by
+  spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+). The
   physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
