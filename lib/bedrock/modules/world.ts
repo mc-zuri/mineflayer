@@ -101,6 +101,7 @@ export class NetworkWorld {
       core.emit(this.bot, `blockUpdate:(${x}, ${y}, ${z})`, oldBlock, newBlock)
     })
     core.observe(OWNER, 'start_game', packet => { this.start(packet) })
+    core.observe(OWNER, 'change_dimension', packet => { this.changeDimension(packet.dimension) })
     core.handle(OWNER, 'level_chunk', packet => { this.receiveColumn(core, packet) })
     core.handle(OWNER, 'subchunk', packet => { this.receiveSections(core, packet) })
     core.handle(OWNER, 'update_block', packet => {
@@ -175,6 +176,15 @@ export class NetworkWorld {
     this.sections = sectionsOf(this.dimension)
   }
 
+  /** as Java's: the columns of the dimension left are unloaded, in the same world */
+  private changeDimension (dimension: number): void {
+    this.dimension = dimension
+    this.sections = sectionsOf(dimension)
+    for (const { x, z } of this.shown.values()) this.world.unloadColumn(x, z)
+    this.shown.clear()
+    this.latest.clear()
+  }
+
   private startRegistry (registry: RegistryBedrock, packet: BedrockClientboundPackets['start_game']): void {
     // the block states are numbered by their hash when the packet says so
     registry.handleStartGame(packet)
@@ -202,6 +212,8 @@ export class NetworkWorld {
     const column: Column = { x, z, chunk, requestMode, unrequested: new Set(requestMode ? this.sections : []), known: new Set() }
     this.latest.set(keyOf(x, z), column)
     core.stage(() => {
+      // replaced before it showed: sent again, or of the dimension left
+      if (this.latest.get(keyOf(x, z)) !== column) return
       this.shown.set(keyOf(x, z), column)
       this.world.setColumn(x, z, chunk)
     })
@@ -249,7 +261,7 @@ export class NetworkWorld {
     else column.chunk.setBlockStateId(position, stateId)
   }
 
-  private requestSections (outbox: OutboxWriter): void {
+  requestSections (outbox: OutboxWriter): void {
     const feet = this.playerFeet()
     const [originX, originZ] = [chunkCoordinate(feet.x), chunkCoordinate(feet.z)]
     const distance = (column: Column): number => Math.max(Math.abs(column.x - originX), Math.abs(column.z - originZ))

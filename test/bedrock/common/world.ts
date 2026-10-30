@@ -206,11 +206,11 @@ export class ServerWorld {
     return this.server.sentOf('subchunk_request').flatMap(request => sectionsOf(request).map(([x, y, z]) => ({ dimension: request.dimension, x, y, z })))
   }
 
-  /** answers the sections the bot asked for since the last answer, as the version's servers do */
+  /** answers the sections of its dimension the bot asked for since the last answer, as the version's servers do */
   async answer (): Promise<void> {
     const requests = this.server.sentOf('subchunk_request').slice(this.answered)
     this.answered += requests.length
-    for (const request of requests) {
+    for (const request of requests.filter(({ dimension }) => dimension === this.dimensionId)) {
       const { dimension, x, y, z, origin } = request
       if (x !== undefined && y !== undefined && z !== undefined) {
         this.server.send('subchunk', { dimension, x, y, z, data: await this.encodedSection(x, y, z, true), request_result: 'success', heightmap_type: 'no_data' })

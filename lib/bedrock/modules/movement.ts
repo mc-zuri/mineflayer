@@ -13,7 +13,7 @@ import type { BedrockPlayer, BedrockVersion } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockClientboundPackets } from '../../types/protocol/bedrock-client.ts'
 import { authInput } from './auth_input.ts'
-import type { Movement, Rotation, Vec3f } from './auth_input.ts'
+import type { Latch, Movement, Rotation, Vec3f } from './auth_input.ts'
 import { agrees, applied, Corrections, rewindsUnder } from './corrections.ts'
 import type { Filing, MovementInput } from './corrections.ts'
 import type { Controls } from './input.ts'
@@ -23,6 +23,15 @@ const PLAYER_HEIGHT = 1.8
 const PLAYER_WIDTH = 0.6
 const STILL = Object.freeze({ x: 0, y: 0, z: 0 })
 const NO_ACTIONS: TickActions = Object.freeze({ startSprinting: false, stopSprinting: false, startSneaking: false, stopSneaking: false, startJumping: false })
+const RELEASED: Latch = Object.freeze({ level: false, down: false, up: false })
+/** a frozen player's movement: no key, no move; it reports the collisions of the last tick it moved */
+const FROZEN = Object.freeze({
+  keys: Object.freeze({ forward: RELEASED, back: RELEASED, left: RELEASED, right: RELEASED, jump: RELEASED, sprint: RELEASED, sneak: RELEASED }),
+  move: Object.freeze({ x: 0, z: 0 }),
+  direction: Object.freeze({ x: 0, z: 0 }),
+  actions: NO_ACTIONS,
+  autoJumping: false
+})
 /** a held player: still, moving into nothing, its eye reported over its feet, no auto-jump asked for after */
 const HELD = Object.freeze({ velocity: STILL, horizontalCollision: false, verticalCollision: false, stepSlide: 0, reportedFeetY: null, autoJumpNext: false })
 /** a teleport this far, or farther, starts the ring again */
@@ -108,6 +117,10 @@ export class LocalPlayer {
   private turned: DueWait[] = []
   /** looks asked for and not sent yet */
   private looking = 0
+  /** held by a dimension change (from 1.19.50): it sends its auth inputs, still where the server put it */
+  private frozen = false
+  /** the collisions of the last tick the player moved */
+  private collided: Pick<Movement, 'horizontalCollision' | 'verticalCollision'> = { horizontalCollision: false, verticalCollision: false }
 
   constructor (bot: BedrockBotInternal, controls: Controls, settings: MovementSettings) {
     this.bot = bot
@@ -172,6 +185,7 @@ export class LocalPlayer {
     core.handle(OWNER, 'set_entity_data', packet => {
       if (this.isLocalPlayer(packet.runtime_entity_id)) this.echo(packet)
     })
+    core.observe(OWNER, 'change_dimension', packet => { this.placeNow(packet.position) })
     core.handle(OWNER, 'set_movement_authority', packet => { this.corrections.rewinds = rewindsUnder(packet.movement_authority) })
     core.system(OWNER, { name: 'movement.rewind', place: { at: 'LocalPlayerRewindSystem' }, gate: 'active', replay: false, run: () => { this.rewind(core) } })
     core.system(OWNER, { name: 'movement.simulate', place: { at: 'PredictedMovementSystem' }, gate: 'active', replay: true, run: ctx => { this.simulate(ctx) } })
@@ -192,6 +206,20 @@ export class LocalPlayer {
       this.moved = undefined
       if (previous !== undefined) core.emit(this.bot, 'move', previous)
     })
+  }
+
+  /** a dimension change holds the player: its auth inputs report no key, and answer no teleport */
+  freeze (): void {
+    this.frozen = true
+  }
+
+  release (): void {
+    this.frozen = false
+  }
+
+  /** by the runtime id's low 32 bits: move_player's (and 1.16.201's set_entity_motion's) is a varint */
+  isLocalPlayer (runtimeId: number | bigint): boolean {
+    return BigInt.asUintN(32, BigInt(runtimeId)) === this.runtimeId
   }
 
   private createEntity (): BedrockPlayer {
@@ -215,11 +243,6 @@ export class LocalPlayer {
     return wait.promise
   }
 
-  /** by the runtime id's low 32 bits: move_player's (and 1.16.201's set_entity_motion's) is a varint */
-  private isLocalPlayer (runtimeId: number | bigint): boolean {
-    return BigInt.asUintN(32, BigInt(runtimeId)) === this.runtimeId
-  }
-
   private turn (rotation: Rotation): void {
     this.rotation = rotation
     this.entity.yaw = fromNotchianYaw(rotation.yaw)
@@ -232,7 +255,7 @@ export class LocalPlayer {
     this.show()
   }
 
-  /** respawn: the ring would lead elsewhere, so it starts again */
+  /** respawn, and a dimension change (whose position is the feet): the ring would lead elsewhere, so it starts again */
   private placeNow (feet: Vec3Data): void {
     this.corrections.history.clear()
     this.place(feet)
@@ -413,14 +436,19 @@ export class LocalPlayer {
   }
 
   private sendInput (core: BedrockCore, { tick, outbox }: TickContext): void {
-    const { teleport, rotation, state } = this
-    const movement = this.movement()
+    const { teleport, rotation, state, frozen } = this
+    const movement = frozen ? this.frozenMovement() : this.movement()
     const position = teleport ?? reportedEyePosition(state)
     const delta = teleport === undefined ? state.velocity : STILL
-    outbox.queue('player_auth_input', authInput(this.bot.version, { tick, rotation, position, delta, active: core.activation.active, movement, teleportAck: teleport !== undefined }))
+    // a frozen player's camera is set up, as a moving one's
+    outbox.queue('player_auth_input', authInput(this.bot.version, { tick, rotation, position, delta, active: core.activation.active || frozen, movement, teleportAck: teleport !== undefined && !frozen }))
     if (teleport !== undefined && this.atLeast('bedrock_1.21.70')) outbox.queue('client_camera_aim_assist', { preset_id: '', action: 'clear', allow_aim_assist: false })
     this.teleport = undefined
-    if (movement !== undefined) this.controls.clearEdges()
+    // the keys pressed or released while frozen are reported once the player moves
+    if (movement !== undefined && !frozen) {
+      this.controls.clearEdges()
+      this.collided = movement
+    }
     for (const wait of this.turned) wait.due(tick)
     this.looking -= this.turned.length
     this.turned = []
@@ -435,6 +463,11 @@ export class LocalPlayer {
     if (input === undefined || input === 'held') return undefined
     const { keys, direction } = this.controls.cooked
     return { keys, move: input.move, direction, actions: this.actions, autoJumping: state.autoJumping, horizontalCollision: state.horizontalCollision, verticalCollision: state.verticalCollision }
+  }
+
+  private frozenMovement (): Movement {
+    const { horizontalCollision, verticalCollision } = this.collided
+    return { ...FROZEN, horizontalCollision, verticalCollision }
   }
 
   private atLeast (since: BedrockVersion): boolean {

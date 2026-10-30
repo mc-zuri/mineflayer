@@ -86,8 +86,9 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   `bot.removeChatPattern`, `bot.chatAddPattern`, `bot.awaitMessage(...)`; `bot.tabComplete` rejects (see chat below).
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
 - Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `game` (`bot.game`
-  changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn: see health), `respawn`, `health`, `death`
-  (see health), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
+  changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn or a
+  dimension change: see health and dimension changes), `respawn` (a respawn, or a dimension change), `health`,
+  `death` (see health), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities
@@ -138,6 +139,8 @@ packet arrived before:
 | boss_event hide_bar of a bar the bot shows | boss_event unregister_player |
 | start_game | request_chunk_radius (the view distance; from 1.19.80 with the vanilla client's maximum, 28), tick_sync (up to 1.20.50), serverbound_loading_screen 1 (from 1.21.20); when the player's game type falls back to the world's, set_player_game_type fallback after tick_sync (up to 1.26.10), from 1.26.20 first |
 | respawn, ready (its state 1), but the join's | player_action respawn (see health) |
+| change_dimension | serverbound_loading_screen 1 with its loading screen, when it names one (from 1.21.20); a dead player's player_action dimension_change_ack, up to 1.19.40 (see dimension changes) |
+| show_credits of the player, starting | show_credits, ended: at once, as Java answers the end of the game (the vanilla client once the credits rolled) |
 
 In its ticks the bot sends its auth input (player_auth_input), then asks for the sections of the columns sent without
 them (subchunk_request, from 1.18.0), as the vanilla client does, from when the server shows the player: see the local
@@ -397,8 +400,9 @@ Where the bot differs from the vanilla client:
 
 `game` is emitted again on each set_player_game_type and update_player_game_type of the player, and on
 set_default_game_type while the player's game type falls back to the world's. A player whose game type falls back to the
-world's says so as start_game is answered (see the answers above), as the vanilla client does. Dimension changes are
-not followed yet (see the world below).
+world's says so as start_game is answered (see the answers above), as the vanilla client does. A dimension change
+(change_dimension) sets `dimension`, `minY` and `height`, and emits `respawn`, then `game`, in the packet pass, as
+Java's respawn packet (see dimension changes below).
 
 ## Health
 
@@ -412,8 +416,9 @@ health falls to 0, when `death` is emitted after `health`, and `true` again once
 tell a death with update_attributes, health 0 (never set_health), in the batch that also has the death message and
 respawn's searching state at the place of death. Then, as the vanilla client does on its death screen:
 
-1. **Dead**: the bot sends nothing from that frame on: no auth input, and no section asked for (the vanilla client
-   still asks for them). With the `respawn` option (the default) it asks to respawn in that frame's input pass
+1. **Dead**: the bot sends no auth input from that frame on; it still asks for the sections of the columns sent, as the
+   vanilla client does (but while a dimension change up to 1.19.40 hides the player). With the `respawn` option (the
+   default) it asks to respawn in that frame's input pass
    (respawn, its state 2, at 0, 0, 0 with the player's runtime id), where the vanilla client asks when its button is
    clicked. `bot.respawn()` asks so in the next frame's input pass, while the player is dead (again on each call, as
    each click does); it does nothing while the player lives.
@@ -427,8 +432,39 @@ respawn's searching state at the place of death. Then, as the vanilla client doe
    and the attributes with its health some ticks after respawn's ready state (the vanilla client moves before them up
    to 1.18.30). Java emits it once the health comes back.
 
-The recorded respawns change the dimension (see the world below): the bot follows the death and the respawn, not the
-dimension yet. A respawn in the same dimension is not recorded.
+The recorded respawns change the dimension: the server sends change_dimension before respawn's ready state, and the
+respawn is that change's (see dimension changes below), whose `respawn` and `game` the ready state does not emit again;
+nor does the ready state after a change for the credits. A respawn in the same dimension is not recorded.
+
+## Dimension changes
+
+change_dimension puts the player's feet at its position, in the dimension it names: `bot.game` changes (see game state),
+the world is emptied (see the world), and `respawn`, then `game`, are emitted. The vanilla client then holds the player
+until the server placed it there, as the version does (these are the recorded changes through a portal, and to the
+world's spawn after a death, of every version):
+
+| Versions | While held | The client's dimension_change_ack (player_action) | Then |
+| --- | --- | --- | --- |
+| 1.16.201 – 1.17.40 | no auth input | once the column under the feet is shown; a dead player's at once, in the change's frame | auth inputs from the tick after the ack and the server's placement (move_player, or respawn's ready state), the player moving at once |
+| 1.18.0 – 1.19.40 | as above | as above | as above, the player held until the 3 × 3 columns around it are loaded, as at the join; a respawned one moves at once |
+| 1.19.50 – 1.21.2 | frozen auth inputs: the eye over change_dimension's position, then over the server's placement, no key, no move | after the server's dimension_change_ack (it comes with its placement), once the 3 × 3 columns around the player are loaded, after that tick's auth input; a dead player's once respawned; one that died during the change while dead | the player moves from the tick after the ack (one that died, once respawned) |
+| 1.21.20 + | as above | as above | as above; with a loading screen, serverbound_loading_screen 1 at once, then 2 two ticks after the ack, and the player moves from the tick after it |
+
+- The frozen auth inputs report the player's camera (from 1.21.42), and the collisions of the last tick it moved, as
+  the vanilla client's; a move_player placing the frozen player is not answered as a teleport (no `handled_teleport`),
+  as the vanilla client's. The keys pressed or released while frozen are reported once the player moves.
+- `spawn` is emitted at the end of the first tick the player moves after the change, with health (see health).
+- From 1.19.50 a player that dies during the change still ends it, as the vanilla client does: its acknowledgement, and
+  the end of its loading screen, come once the server's acknowledgement has and the columns around it are loaded. Its
+  respawn is asked for only then (the vanilla client shows its death screen once the change ended), with the `respawn`
+  option or when `bot.respawn()` was called meanwhile. Up to 1.19.40 the change waits for the respawn (not recorded).
+- After 200 ticks without what the bot waits for (the column under the feet, the server's placement, its
+  acknowledgement, the columns around the player), it goes on, emitting an `error` that names what is missing.
+- Where the vanilla client differs: up to 1.19.40 it asks for the new dimension's sections while the player is hidden;
+  the bot from when it shows it. From 1.19.50 it acknowledges a dead player's change at once when the columns around the
+  spawn are loaded already (its cache keeps them); the bot, which keeps none, once respawned and loaded. Its loading
+  screen hides 2 ticks after the ack (on 1.26.20 1, on 1.26.60 4 to 7); the bot's 2. Where 1.19.1 – 1.19.62 stand is not recorded:
+  the hidden player is recorded up to 1.18.30, the frozen one from 1.19.63; 1.19.50 is the boundary the bot takes.
 
 ## Settings
 
@@ -505,7 +541,9 @@ Dropped (and counted): a column of another dimension (level_chunk names it from 
 client cache, which the bot keeps none of, and a section or block change of a column the bot was not sent. A column
 sent without its sections before 1.18.0 (a negative count) cannot be asked for, and is an error.
 
-Dimension changes are not followed yet: the world stays in start_game's dimension.
+A dimension change (change_dimension) unloads every column in the packet pass, in the same `bot.world`, as Java's: the
+bot asks for the new dimension's sections from then (see dimension changes), and a column received before the change
+is not shown.
 
 ## Entities
 
@@ -822,7 +860,9 @@ the hotbar and sends of what is typed:
   answered; the game state: by how start_game names the engine, the dimension and whether the world is hardcore, how
   high the overworld is, how the game type is stamped, which game types are spectator, and where the start_game answer
   says the game type falls back to the world's; the health: by how update_attributes writes an attribute, how the
-  player action respawn is written and when a respawned player moves; the settings: by how the chunk radius is asked for and the vanilla
+  player action respawn is written and when a respawned player moves; the dimension changes: by whether the player
+  is hidden or frozen, when it moves, how the acknowledgement is written and whether a loading screen is named; the
+  settings: by how the chunk radius is asked for and the vanilla
   client's radius; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
   sent and how a correction acts; the entities: by the layouts of the add packets, move_entity_delta, set_entity_motion,

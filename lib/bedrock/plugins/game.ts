@@ -115,14 +115,25 @@ export default function inject (bot: BedrockBotInternal): void {
 
   bot._core.handle(OWNER, 'set_difficulty', packet => { setDifficulty(packet.difficulty) })
 
+  /** a dimension change is Java's respawn packet: the ready state after a dead player's, or the credits', is part of it */
+  let respawnTold = false
+  bot._core.observe(OWNER, 'change_dimension', packet => {
+    const dimension = bedrockDimension(packet.dimension)
+    Object.assign(bot.game, { dimension, ...boundsOf(dimension, bot.version) })
+    respawnTold = packet.respawn || !bot.isAlive
+    bot._core.emit(bot, 'respawn')
+    bot._core.emit(bot, 'game')
+  })
+
   /** the join's respawn ready state spawns the player; each one after respawns it */
   let spawned = false
   bot._core.observe(OWNER, 'respawn', packet => {
     if (packet.state !== 1) return
-    if (spawned) {
+    if (spawned && !respawnTold) {
       bot._core.emit(bot, 'respawn')
       bot._core.emit(bot, 'game')
     }
     spawned = true
+    respawnTold = false
   })
 }

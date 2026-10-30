@@ -302,6 +302,18 @@ describe('bedrock health', () => {
       bot.end()
     })
 
+    it('asks for the sections of the columns sent while the player is dead, as the vanilla client', async () => {
+      const { bot, server, driver, world } = await alive(codec, { respawn: false })
+      server.send('set_health', { health: 0 })
+      await driver.tick()
+      const asked = world.asked().length
+      world.column(2, 0)
+      await world.sendColumn(2, 0)
+      await driver.tick()
+      assert.deepStrictEqual([...new Set(world.asked().slice(asked).map(({ x, z }) => `${x},${z}`))], ['2,0'])
+      bot.end()
+    })
+
     it("answers a living player's respawn too (after the credits), which changes nothing else", async () => {
       const testBot = await alive(codec)
       const { bot, internal, server, driver, events } = testBot
@@ -370,7 +382,7 @@ describe('bedrock health', () => {
       let spawned: number | undefined
       bot.once('spawn', () => { spawned = testBot.internal._core.tick })
       await driver.runUntil(() => spawned !== undefined, 210)
-      assert.deepStrictEqual([spawned, errors], [ready + 200, ['the columns (2, -1), (2, 0), (2, 1), (3, -1), (3, 0), (3, 1) around the player were not loaded 200 ticks after it respawned']])
+      assert.deepStrictEqual([spawned, errors], [ready + 200, ['the columns (2, -1), (2, 0), (2, 1), (3, -1), (3, 0), (3, 1) around the player were not loaded 200 ticks after it showed again']])
       bot.end()
     })
   })
