@@ -24,7 +24,6 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | Member | api.md | typings | code | Note |
 | --- | --- | --- | --- | --- |
 | `bot.chatPatterns` | ✓ | ✓ `ChatPattern[]` | ✗ | nothing assigns it: the chat plugin keeps its patterns to itself |
-| `bot.rainState` | ✓ | ✗ | ✓ | |
 | `bot.settings.enableServerListing` | ✓ | ✗ | ✓ | |
 | `bot.settings.enableTextFiltering` | ✓ | ✗ | ✓ | |
 | `bot.settings.particleStatus` | ✓ | ✗ | ✓ | |
@@ -50,7 +49,6 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | --- | --- | --- | --- | --- |
 | `"blockPlaced"` | ✓ | ✗ | emitted | |
 | `"chat:name"` | ✓ | ✗ | emitted | a chat pattern's `chat:<name>` |
-| `"weatherUpdate"` | ✓ | ✗ | emitted | |
 | `"blockUpdate:(x, y, z)"` | ✓ | ✓ | emitted as `blockUpdate:(1, 64, 2)` | the typings name it with its placeholders, so no real block's event type checks |
 | `"physicTick"` | ✗ | ✓ | emitted | the deprecated name of `"physicsTick"` |
 | `"unmatchedMessage"` | ✗ | ✓ | ✗ | nothing emits it |
@@ -135,3 +133,4 @@ types the thing itself; each is a candidate for a fix upstream.
 | `Player.entity` | always an `Entity` in the typings; `null` in the code once the player's entity is gone | the typings |
 | `"entityHurt" (entity, source)` | the typings required the source; the code emits none before 1.20 (entity_status), and an undefined one when the damage has no source entity | the typings |
 | `bot.game.minY`, `bot.game.height` | documented and set (the dimension's lowest block and its height), not in the typings' `GameState` | the typings |
+| `bot.rainState`, `"weatherUpdate"` | documented, set and emitted (the rain's level, and a change of the rain's or the thunder's), not in the typings | the typings |

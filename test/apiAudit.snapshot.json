@@ -1,6 +1,5 @@
 {
   "docsNotInTypes": [
-    "rainState",
     "settings.enableServerListing",
     "settings.enableTextFiltering",
     "settings.particleStatus"
@@ -38,7 +37,6 @@
     "jumpTicks",
     "lastDigTime",
     "parseBedMetadata",
-    "rainState",
     "signBook",
     "targetDigFace",
     "uuidToUsername"
@@ -52,8 +50,7 @@
   ],
   "eventsDocsNotInTypes": [
     "blockPlaced",
-    "chat:name",
-    "weatherUpdate"
+    "chat:name"
   ],
   "eventsTypesNotInDocs": [
     "physicTick",

@@ -98,7 +98,7 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'game' | 'spawn' | 'respawn' | 'death' | 'health' | 'breath' | 'experience' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'game' | 'spawn' | 'respawn' | 'death' | 'health' | 'breath' | 'experience' | 'spawnReset' | 'rain' | 'weatherUpdate' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
   | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
   | 'teamCreated' | 'teamRemoved' | 'teamUpdated' | 'teamMemberAdded' | 'teamMemberRemoved'
   | 'title' | 'title_times' | 'title_clear' | 'bossBarCreated' | 'bossBarUpdated' | 'bossBarDeleted'
@@ -156,6 +156,12 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   experience: Experience | ExperienceNotKnown
   /** from set_entity_data's air, once the server tells it */
   oxygenLevel: number
+  /** the world's spawn: start_game's, then set_spawn_position's; y 32767 where it has no height */
+  spawnPoint: Vec3
+  /** from start_game and level_event */
+  isRaining: boolean
+  rainState: number
+  thunderState: number
   /** asks the server to respawn the dead player, in the next frame; nothing while it lives */
   respawn: () => void
   /** Java's; only the view distance reaches the server */
@@ -246,6 +252,7 @@ export interface BotEvents {
   title_times: (fadeIn: number, stay: number, fadeOut: number) => Promise<void> | void
   title_clear: () => Promise<void> | void
   rain: () => Promise<void> | void
+  weatherUpdate: () => Promise<void> | void
   time: () => Promise<void> | void
   kicked: (reason: string, loggedIn: boolean) => Promise<void> | void
   end: (reason: string) => Promise<void> | void
@@ -366,6 +373,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
   player: Player
   players: { [username: string]: Player }
   isRaining: boolean
+  rainState: number
   thunderState: number
   chatPatterns: ChatPattern[]
   settings: GameSettings

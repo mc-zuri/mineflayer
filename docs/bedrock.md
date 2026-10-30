@@ -72,6 +72,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   below).
 - `bot.health`, `bot.food`, `bot.foodSaturation`, `bot.isAlive`, `bot.respawn()`: as Java's (see health below).
 - `bot.experience`, `bot.oxygenLevel`: as Java's (see experience and breath below).
+- `bot.spawnPoint`, `bot.isRaining`, `bot.rainState`, `bot.thunderState`: as Java's (see spawn point and weather
+  below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
 - `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
@@ -89,7 +91,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `game` (`bot.game`
   changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn or a
   dimension change: see health and dimension changes), `respawn` (a respawn, or a dimension change), `health`,
-  `death` (see health), `experience`, `breath` (see experience and breath), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
+  `death` (see health), `experience`, `breath` (see experience and breath), `spawnReset`, `rain`, `weatherUpdate`
+  (see spawn point and weather), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities
@@ -151,7 +154,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -481,6 +484,23 @@ again with the other attributes).
 `bot.oxygenLevel` is the player's air (set_entity_data's `air`, 300 when full) in Java's 20 bubbles,
 `Math.round(air / 15)`: undefined until the server tells it, as Java's. `breath` is emitted when the air changes (as
 recorded, servers send it a point a tick under water, then 4 a tick back up).
+
+## Spawn point and weather
+
+`bot.spawnPoint` is the world's spawn, where compasses point, as Java's: `(0, 0, 0)` until start_game, then its spawn
+position (set before `login`), then set_spawn_position's world position when the server moves the world's spawn, with
+`game`, as Java's. Its y is 32767 where the spawn has no height (its highest block), as in most recorded worlds.
+set_spawn_position also tells the player's own spawn (a bed's), which no member has: `spawnReset` is emitted when the
+server unsets it (every coordinate −2147483648) after it was set, where Java tells that a respawn found no respawn
+block. The login's set_spawn_position, recorded on every version, unsets it: no event.
+
+`bot.isRaining`, `bot.rainState` and `bot.thunderState` are clear (`false`, 0, 0) until start_game, then its rain and
+lightning levels (0 to 1; it rains above 0), then level_event's start_rain, stop_rain, start_thunder and stop_thunder: a
+start's level is its data over 65535 (at most 1), a stop's 0; start_rain rains even at a level of 0. `rain` is emitted
+when it starts or stops raining, then `weatherUpdate` when a level changes, as Java's, after `login`. The vanilla client
+eases the sky towards the level; the bot takes the level at once (Java's server sends the eased levels). No recording
+has weather (the recorded worlds are clear), nor a world spawn moved or a player's spawn set: the levels' scale and
+these packets are as the protocol describes them, not checked against a server.
 
 ## Settings
 
@@ -877,7 +897,7 @@ the hotbar and sends of what is typed:
   high the overworld is, how the game type is stamped, which game types are spectator, and where the start_game answer
   says the game type falls back to the world's; the health and the experience: by how update_attributes writes an
   attribute, how the
-  player action respawn is written and when a respawned player moves; the breath: by how set_entity_data writes the air; the dimension
+  player action respawn is written and when a respawned player moves; the breath: by how set_entity_data writes the air; the spawn point and the weather: alike on every version; the dimension
   changes: by whether the player
   is hidden or frozen, when it moves, how the acknowledgement is written and whether a loading screen is named; the
   settings: by how the chunk radius is asked for and the vanilla
