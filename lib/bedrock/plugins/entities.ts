@@ -2,6 +2,8 @@ import prismarineChat from 'prismarine-chat'
 import type { Entity, EntityMetadataValue, EntityType } from 'prismarine-entity'
 import { EYE_HEIGHT, feetFromEye } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { Registry } from 'prismarine-registry'
+import { iterators } from 'prismarine-world'
+import { Vec3 } from 'vec3'
 import { fromNotchianPitch, fromNotchianPitchByte, fromNotchianYaw, fromNotchianYawByte } from '../../conversions.ts'
 import { bedrockEntityClass } from '../entity.ts'
 import { addedEntity, addedItem, addedPainting, addedPlayer, gamemodeOf, listingsOf, runtimeKey } from '../entity_packets.ts'
@@ -475,5 +477,28 @@ export default function inject (bot: BedrockBotInternal): void {
       }
     }
     return nearest
+  }
+
+  // Java's look ray from the eye, up to the first block; the vanilla client's pick comes with the actions
+  bot.entityAtCursor = (maxDistance = 3.5) => {
+    const { position, yaw, pitch } = bot.entity
+    const eye = position.offset(0, EYE_HEIGHT, 0)
+    const direction = new Vec3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch))
+    const reach = bot.world.raycast(eye, direction, maxDistance)?.intersect.distanceTo(eye) ?? maxDistance
+    const ray = new iterators.RaycastIterator(eye, direction, reach)
+    let target: Entity | null = null
+    let nearestDistance = reach
+    for (const entity of Object.values(bot.entities)) {
+      if (entity === bot.entity || entity.type === 'object') continue
+      const half = entity.width / 2
+      const hit = ray.intersect([[-half, 0, -half, half, entity.height, half]], entity.position)
+      // along the ray: a box behind the eye is met at a negative distance
+      const distance = hit === null ? -1 : hit.pos.minus(eye).dot(direction)
+      if (distance >= 0 && distance < nearestDistance) {
+        target = entity
+        nearestDistance = distance
+      }
+    }
+    return target
   }
 }

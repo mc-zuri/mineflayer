@@ -65,8 +65,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.autoJump`: whether the player jumps by itself onto a block in its way (see physics below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
-- `bot.entities`, `bot.nearestEntity(match)`, `bot.vehicle`: the entities the server shows, and the one the player
-  rides (see below).
+- `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
+  server shows, the one the player looks at, and the one it rides (see below).
 - `bot.scoreboards`, `bot.scoreboard`, `bot.teams`, `bot.teamMap`, `bot.tablist`: as Java's, as Bedrock has them (see
   scoreboards below).
 - `bot.bossBars`: as Java's, the bars of the boss entities the bot has (see boss bars below).
@@ -432,7 +432,9 @@ Dimension changes are not followed yet: the world stays in start_game's dimensio
 
 `bot.entities` holds the entities the server shows, each a prismarine-entity `Entity`, by runtime id; the local
 player's `bot.entity` is there from start_game. `bot.nearestEntity(match)` is Java's: the entity nearest the player's
-feet that `match` takes, never `bot.entity`. The server's packets act at their point in the frame:
+feet that `match` takes, never `bot.entity`. `bot.entityAtCursor(maxDistance = 3.5)` is Java's too: the nearest entity
+whose box the player's look ray meets within `maxDistance`, before the first block it meets in `bot.world`, never
+`bot.entity` nor an entity of type `object`. The server's packets act at their point in the frame:
 
 | The server sends | The bot |
 | --- | --- |
@@ -480,6 +482,7 @@ Where a Bedrock entity differs from Java's, and why:
 | `entityAttach`, `entityDetach` | a leash from 1.9 (attach_entity) | a ride (set_entity_link): Bedrock's leashes are metadata (`lead_holder_eid`), without an event |
 | `bot.vehicle` | set by the code, not in `Bot`'s typings | in `BedrockBot`'s; `mount()`, `dismount()` and `moveVehicle()` are not there yet, and the physics still walk a riding player |
 | `entityEquip`, `usedFirework`, `equipment`, `heldItem` | | not yet: the bot reads no Bedrock items |
+| `bot.entityAtCursor()` | the ray from the eye (`eyeHeight`); the block's ray from `height` over the feet; the distances from the feet; an entity whose feet are farther than `maxDistance` skipped | every ray and distance from the eye, 1.62001 over the feet, as `lookAt`'s; an entity counts by where the ray meets its box. The vanilla client's pick, which sends what the player points at, comes with the actions |
 | a player's `position` in move_entity and move_entity_delta | the feet | taken as its eye, as move_player tells it (Bedrock's player position is its eye), and moved to the feet under it; servers were not recorded sending these of a player |
 
 The vanilla client answers none of these packets. How they differ by version:

@@ -124,6 +124,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   /** the entities the server shows, by runtime id, the local player's too */
   entities: { [id: string]: Entity }
   nearestEntity: (match?: (entity: Entity) => boolean) => Entity | null
+  /** Java's: the nearest entity the look ray from the eye meets within maxDistance (3.5), before a block */
+  entityAtCursor: (maxDistance?: number) => Entity | null
   /** the entity the local player rides, null on foot */
   vehicle: Entity | null
   /** the player list, by username */
