@@ -30,6 +30,8 @@ export interface BedrockBotInternal extends BedrockBot {
   /** the connection's life, with the hooks run after spawn */
   _session: Session
   _entities: EntityIndex
+  /** the counts of the messages the vanilla client would not show: a rawtext that is no valid one, a text type it does not know */
+  _chat: { stats: { invalidRawText: number, unknownType: number } }
   loadPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => void
   loadPlugins: (plugins: Array<BedrockPlugin | BedrockInternalPlugin>) => void
   hasPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => boolean

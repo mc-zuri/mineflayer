@@ -233,11 +233,14 @@ describe('bedrock core', () => {
       const ran: string[] = []
       const events: TypedEmitter<BedrockBotEvents> = new EventEmitter()
       let heard = 0
+      const named: string[] = []
       events.on('physicsTick', () => { heard++ })
+      events.on('chat:ticked', ticks => { named.push(ticks.join()) })
       const record = (ctx: TickContext, name: string): void => {
         ran.push(`${name} ${ctx.tick}${ctx.replaying ? ' replayed' : ''}`)
         ctx.outbox.queue('tick_sync', { request_time: 0n, response_time: 0n })
         core.emit(events, 'physicsTick')
+        core.emitNamed(events, 'chat:ticked', [[String(ctx.tick)]])
       }
       const { core, driver, batches } = harness(core => {
         core.system('m', system('always', { at: 'LocalPlayerRewindSystem' }, ctx => { record(ctx, 'always') }))
@@ -258,7 +261,7 @@ describe('bedrock core', () => {
       assert.deepStrictEqual(ran, ['always 1', 'always 2', 'present 2', 'always 3', 'present 3', 'active 3', 'present 2 replayed', 'active 2 replayed', 'present 3 replayed'])
       assert.deepStrictEqual(replayed, [true, true])
       assert.strictEqual(core.stats.gated, 3)
-      assert.deepStrictEqual([batches.flat().length, heard], [6, 7])
+      assert.deepStrictEqual([batches.flat().length, heard, named], [6, 7, ['1', '2', '2', '3', '3', '3']])
     })
 
     it('replayed, stop at the first that throws, which is reported', () => {
@@ -322,6 +325,19 @@ describe('bedrock core', () => {
       await rejected
       core.fault('again')
       assert.strictEqual(errors.length, 2)
+    })
+
+    it('of an event listener are reported, and the other listeners still hear the event, whatever its name', () => {
+      const { core, errors } = harness()
+      const events: TypedEmitter<BedrockBotEvents> = new EventEmitter()
+      const heard: string[] = []
+      events.on('chat', () => { throw new Error('first') })
+      events.on('chat', username => { heard.push(username) })
+      events.on('chat:named', () => { throw new Error('named') })
+      events.on('chat:named', matches => { heard.push(matches.join()) })
+      core.emitNamed(events, 'chat', ['U9G', 'Hello', 'chat.type.text'])
+      core.emit(events, 'chat:named', ['Hello'])
+      assert.deepStrictEqual([heard, errors.map(error => error.message)], [['U9G', 'Hello'], ['first', 'named']])
     })
 
     it('reported to a listener that throws are not reported again', async () => {

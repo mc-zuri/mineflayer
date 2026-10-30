@@ -84,6 +84,8 @@ export interface BedrockBotOptions {
   physicsEnabled?: boolean
   /** whether the player jumps by itself onto a block in its way, as the vanilla client's auto-jump does @default false */
   autoJump?: boolean
+  /** add the chat patterns that emit chat and whisper @default true */
+  defaultChatPatterns?: boolean
 }
 
 export interface BedrockPluginOptions {
@@ -100,11 +102,17 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'entitySpawn' | 'entityGone' | 'entityMoved' | 'entityUpdate' | 'entitySwingArm' | 'entityHurt' | 'entityDead' | 'entityTaming' | 'entityTamed'
   | 'entityShakingOffWater' | 'entityEatingGrass' | 'entityWake' | 'entityEat' | 'entityCriticalEffect' | 'entityMagicCriticalEffect' | 'entityCrouch'
   | 'entityUncrouch' | 'entitySleep' | 'entityElytraFlew' | 'entityEffect' | 'entityEffectEnd' | 'entityAttributes' | 'itemDrop' | 'playerCollect'
-  | 'playerJoined' | 'playerUpdated' | 'playerLeft' | 'entityAttach' | 'entityDetach' | 'mount' | 'dismount'> & BlockUpdateAtEvents
+  | 'playerJoined' | 'playerUpdated' | 'playerLeft' | 'entityAttach' | 'entityDetach' | 'mount' | 'dismount'
+  | 'message' | 'messagestr' | 'chat' | 'whisper' | 'actionBar' | 'unmatchedMessage'> & BlockUpdateAtEvents & ChatPatternEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
   [event: `blockUpdate:(${number}, ${number}, ${number})`]: (oldBlock: Block, newBlock: Block) => Promise<void> | void
+}
+
+/** `chat:<name>`: the chat pattern or set of that name matched (its messages, or with `parse` their capture groups) */
+export interface ChatPatternEvents {
+  [event: `chat:${string}`]: (matches: string[] | string[][]) => Promise<void> | void
 }
 
 /** the local player: its feet's position */
@@ -167,6 +175,14 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   bossBars: BossBar[]
   end: (reason?: string) => void
   quit: (reason?: string) => void
+  /** Bedrock has no tab completion: rejects */
+  tabComplete: Bot['tabComplete']
+  chatAddPattern: Bot['chatAddPattern']
+  addChatPattern: Bot['addChatPattern']
+  addChatPatternSet: Bot['addChatPatternSet']
+  removeChatPattern: Bot['removeChatPattern']
+  /** the timeout (ms, default 20000) counts game ticks; rejects when the bot ends */
+  awaitMessage: Bot['awaitMessage']
   loadPlugin: (plugin: BedrockPlugin) => void
   loadPlugins: (plugins: BedrockPlugin[]) => void
   hasPlugin: (plugin: BedrockPlugin) => boolean

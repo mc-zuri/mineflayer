@@ -4,7 +4,7 @@ mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock v
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
 the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows and the player
 list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does, telling the server
-every tick, follows the server's corrections, and ends; the rest of the API is Java's only so far.
+every tick, follows the server's corrections, reads the chat, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -21,6 +21,7 @@ bot.on('spawn', () => {
   bot.lookAt(bot.entity.position.offset(10, 1.62001, 0)).then(() => console.log('looking east'))
 })
 bot.on('time', () => console.log(`time of day: ${bot.time.timeOfDay}`))
+bot.on('chat', (username, message) => console.log(`${username}: ${message}`))
 bot.on('kicked', (reason) => console.log(`kicked: ${reason}`))
 bot.on('end', (reason) => console.log(`ended: ${reason}`))
 ```
@@ -51,6 +52,7 @@ Every Bedrock release from 1.16.201 to 1.26.60 (`mineflayer.testedBedrockVersion
 | `viewDistance` | `8`, from 1.21.90 `12` | the chunk radius asked of the server (the vanilla client's) |
 | `physicsEnabled` | `true` | whether the physics move the player (see physics below) |
 | `autoJump` | `false` | whether the player jumps by itself onto a block in its way, as the vanilla client's auto-jump (on there by default) does (see physics below) |
+| `defaultChatPatterns` | `true` | as Java's: the chat patterns that emit `chat` and `whisper` (see chat below) |
 
 The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 
@@ -74,6 +76,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
+- `bot.addChatPattern`, `bot.addChatPatternSet`, `bot.removeChatPattern`, `bot.chatAddPattern`,
+  `bot.awaitMessage(...)`; `bot.tabComplete` rejects (see chat below).
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
 - Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `spawn` (the player
   is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
@@ -87,8 +91,11 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   `soundEffectHeard (soundName, position, volume, pitch)`,
   `hardcodedSoundEffectHeard (soundId, soundCategory, position, volume, pitch)` (see sounds below),
   `particle (particle)` (see particles below),
-  `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`,
-  `teamUpdated`, `teamMemberAdded`, `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
+  `message (jsonMsg, position)`, `messagestr (message, position, jsonMsg)`, `chat` and
+  `whisper (username, message, translate, jsonMsg)`, `actionBar (jsonMsg)`, `chat:<name> (matches)`,
+  `unmatchedMessage (message, jsonMsg)` (see chat below), `kicked (reason, loggedIn)`, `end (reason)`, `error`. The
+  team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`, `teamMemberRemoved`) are declared, so
+  that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
     as Java's.
   - `kicked`'s reason is the disconnect packet's message as it is (Java's is a JSON text), or its reason code's name
@@ -132,7 +139,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -625,6 +632,41 @@ The server's spawn_particle_effect (`/particle`) acts in the packet pass, as Jav
   as sent (no recording has one).
 - **Not yet:** the particles of level events, which no recording has: no command makes a server send one.
 
+## Chat
+
+The events `message`, `messagestr`, `chat`, `whisper`, `actionBar` and `chat:<name>`, the chat patterns
+(`addChatPattern`, `addChatPatternSet`, `removeChatPattern`, `chatAddPattern`) and `bot.awaitMessage(...)` are Java's,
+over what the vanilla client shows in its chat and above the hotbar:
+
+| The server sends | `message`'s position | Also |
+| --- | --- | --- |
+| text `chat` (a player's chat, `<name> message`, as `chat.type.text`; the text of `/me` without a name), `whisper` (`name whispers to you: message`, as `commands.message.display.incoming`), `announcement` (`/say`), `json_announcement` (1.19.30+) | `chat` | |
+| text `raw`, `translation`, `system`, `json` (`/tellraw`, a command's feedback), `json_whisper`; the output of the bot's commands (`command_output`, each message; a failure in red) | `system` | |
+| text `tip`, `popup`, `jukebox_popup`; the action bar of a title (`set_title` `action_bar_message`, `action_bar_message_json`) | `game_info` | `actionBar` |
+
+- **Messages** are prismarine-chat `ChatMessage`s that read as the vanilla client shows them: the text is translated
+  in the version's language as the vanilla client translates it (a message that is a key, `%key` tokens, `%key`
+  parameters, Bedrock's `%s`, `%d`, `%1$s` and `%1`), `§` codes become styles (`toString()` has none, `toMotd()` has
+  them), and rawtext JSON becomes components (`text`, `translate` and `with`, `selector`, `score`). A message the
+  vanilla client would not show is not one either: a text type it does not know, a rawtext it cannot read.
+- Per message, in the packet pass: `message`, the events of the chat patterns it matched (`chat`, `whisper`, the
+  name a `chatAddPattern` was given, `chat:<name>`), `messagestr`, `unmatchedMessage` when it matched none, then
+  `actionBar` above the hotbar. Java's patterns read `messagestr` first too, so its listeners hear them in the same
+  order. Each listener is called apart: one that throws is reported (`error`).
+- **Differences from Java's:**
+  - `message` and `messagestr` have no `sender` and `verified` (not in the typings either): Bedrock does not sign
+    chat, and its text names a player by its XUID, not its UUID.
+  - `unmatchedMessage (message, jsonMsg)` is emitted (Java declares it but never emits it).
+  - `actionBar` comes for an action bar title too (Java's comes for the system chat's overlay only).
+  - `bot.awaitMessage`'s timeout (ms, by default 20000) counts the game's ticks (ms / 50, rounded up), which start
+    with start_game; it resolves at the end of the frame the message came in, and rejects when the bot ends.
+  - `bot.tabComplete` rejects: a Bedrock server has no tab completion (the vanilla client completes a command from
+    the server's `available_commands` itself).
+  - `bot.chatPatterns` is not there: Java never sets it.
+- **Kept from Java's**, quirks included: `addChatPatternSet` returns the number of patterns and sets added so far
+  (the set's index is one less), and a set waiting for its next message ends the matching of the message it matched,
+  so a later pattern does not see it; the default `chat` pattern also reads a whisper and an action bar.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -660,9 +702,10 @@ The server's spawn_particle_effect (`/particle`) acts in the packet pass, as Jav
   1.16.220 – 1.17.40, names 1.18.0 – 1.21.60, with the entity 1.21.70 – 1.26.10, with where it fires 1.26.20, the
   server's names 1.26.30+, and by play_sound's, a varint y 1.16.201 – 1.26.0, a signed y 1.26.10, a handle
   1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+; the particles: by
-  spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+). The
-  physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's
-  `pnpm test:recorded` replays the recordings themselves.
+  spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+; the chat: by how the
+  text packet, a command's output and an action bar title are laid out). The physics' values are the recorded ones,
+  the same on every version unless a group says otherwise. The workspace's `pnpm test:recorded` replays the
+  recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 

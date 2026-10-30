@@ -178,8 +178,14 @@ export class BedrockCore {
 
   /** a domain event: each listener is called apart, so that one throwing is reported and the others still hear it */
   emit<Name extends keyof BedrockBotEvents> (emitter: TypedEmitter<BedrockBotEvents>, name: Name, ...args: Arguments<BedrockBotEvents[Name]>): void {
+    this.emitNamed(emitter, name, args)
+  }
+
+  /** an event whose name and arguments the user chose (a deprecated chat pattern's), emitted as emit does */
+  emitNamed<Arg> (emitter: TypedEmitter<BedrockBotEvents>, name: string, args: readonly Arg[]): void {
     if (this.replaying) return
-    for (const listener of emitter.rawListeners(name)) this.guard('a listener', () => { Reflect.apply(listener, emitter, args) })
+    // the emitter keeps the listeners of any name
+    for (const listener of emitter.rawListeners(name as keyof BedrockBotEvents)) this.guard('a listener', () => { Reflect.apply(listener, emitter, args) })
   }
 
   /** an unrecoverable error: the connection closes, and every wait rejects */
