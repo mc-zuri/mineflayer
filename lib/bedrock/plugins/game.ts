@@ -114,4 +114,15 @@ export default function inject (bot: BedrockBotInternal): void {
   })
 
   bot._core.handle(OWNER, 'set_difficulty', packet => { setDifficulty(packet.difficulty) })
+
+  /** the join's respawn ready state spawns the player; each one after respawns it */
+  let spawned = false
+  bot._core.observe(OWNER, 'respawn', packet => {
+    if (packet.state !== 1) return
+    if (spawned) {
+      bot._core.emit(bot, 'respawn')
+      bot._core.emit(bot, 'game')
+    }
+    spawned = true
+  })
 }

@@ -54,6 +54,7 @@ Every Bedrock release from 1.16.201 to 1.26.60 (`mineflayer.testedBedrockVersion
 | `autoJump` | `false` | whether the player jumps by itself onto a block in its way, as the vanilla client's auto-jump (on there by default) does (see physics below) |
 | `defaultChatPatterns` | `true` | as Java's: the chat patterns that emit `chat` and `whisper` (see chat below) |
 | `chatLengthLimit` | `512` | as Java's: a longer line is sent in parts (see chat below) |
+| `respawn` | `true` | as Java's: whether the bot asks to respawn as soon as the player dies (see health below) |
 
 The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 
@@ -69,6 +70,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.game`: as Java's but `maxPlayers`, which throws (see game state below).
 - `bot.settings`, `bot.setSettings(options)`: as Java's; only the view distance reaches the server (see settings
   below).
+- `bot.health`, `bot.food`, `bot.foodSaturation`, `bot.isAlive`, `bot.respawn()`: as Java's (see health below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
 - `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
@@ -84,7 +86,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   `bot.removeChatPattern`, `bot.chatAddPattern`, `bot.awaitMessage(...)`; `bot.tabComplete` rejects (see chat below).
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
 - Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `game` (`bot.game`
-  changed: see game state), `spawn` (the player is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
+  changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn: see health), `respawn`, `health`, `death`
+  (see health), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities
@@ -134,6 +137,7 @@ packet arrived before:
 | boss_event show_bar of an entity the bot has, which has no bar yet | boss_event register_player (see boss bars) |
 | boss_event hide_bar of a bar the bot shows | boss_event unregister_player |
 | start_game | request_chunk_radius (the view distance; from 1.19.80 with the vanilla client's maximum, 28), tick_sync (up to 1.20.50), serverbound_loading_screen 1 (from 1.21.20); when the player's game type falls back to the world's, set_player_game_type fallback after tick_sync (up to 1.26.10), from 1.26.20 first |
+| respawn, ready (its state 1), but the join's | player_action respawn (see health) |
 
 In its ticks the bot sends its auth input (player_auth_input), then asks for the sections of the columns sent without
 them (subchunk_request, from 1.18.0), as the vanilla client does, from when the server shows the player: see the local
@@ -143,7 +147,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -395,6 +399,36 @@ Where the bot differs from the vanilla client:
 set_default_game_type while the player's game type falls back to the world's. A player whose game type falls back to the
 world's says so as start_game is answered (see the answers above), as the vanilla client does. Dimension changes are
 not followed yet (see the world below).
+
+## Health
+
+`bot.health`, `bot.food` and `bot.foodSaturation` are the player's `minecraft:health`, `minecraft:player.hunger` and
+`minecraft:player.saturation` attributes (update_attributes of start_game's runtime id), and set_health's health:
+undefined until the server tells them, as Java's. `health` is emitted when a packet changes one of them (Java's on each
+update_health: Bedrock servers send the attributes with others, and set_health after them, with the same values).
+
+`bot.isAlive` is `true` from the start (hunger or saturation told before the health leave it so), `false` once the
+health falls to 0, when `death` is emitted after `health`, and `true` again once the player has health. Servers
+tell a death with update_attributes, health 0 (never set_health), in the batch that also has the death message and
+respawn's searching state at the place of death. Then, as the vanilla client does on its death screen:
+
+1. **Dead**: the bot sends nothing from that frame on: no auth input, and no section asked for (the vanilla client
+   still asks for them). With the `respawn` option (the default) it asks to respawn in that frame's input pass
+   (respawn, its state 2, at 0, 0, 0 with the player's runtime id), where the vanilla client asks when its button is
+   clicked. `bot.respawn()` asks so in the next frame's input pass, while the player is dead (again on each call, as
+   each click does); it does nothing while the player lives.
+2. **Respawned**: respawn's ready state places the player, and the bot answers it with player_action respawn in that
+   frame (from 1.19.1 with a result position), and emits `respawn`, then `game` (as Java emits both on its respawn
+   packet). The vanilla client answers each ready state but the join's: also one that respawns a living player, after
+   the credits. The bot sends its auth inputs again from that frame. Up to 1.19.40 the player moves at once; from
+   1.19.50 once the 3 × 3 columns around it are loaded, as at the join (after 200 ticks without them it moves anyway,
+   emitting an `error` that names them). It is not initialized again.
+3. **Spawned**: `spawn` is emitted at the end of the first tick the player moves with health: servers send set_health
+   and the attributes with its health some ticks after respawn's ready state (the vanilla client moves before them up
+   to 1.18.30). Java emits it once the health comes back.
+
+The recorded respawns change the dimension (see the world below): the bot follows the death and the respawn, not the
+dimension yet. A respawn in the same dimension is not recorded.
 
 ## Settings
 
@@ -787,7 +821,8 @@ the hotbar and sends of what is typed:
   local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
   answered; the game state: by how start_game names the engine, the dimension and whether the world is hardcore, how
   high the overworld is, how the game type is stamped, which game types are spectator, and where the start_game answer
-  says the game type falls back to the world's; the settings: by how the chunk radius is asked for and the vanilla
+  says the game type falls back to the world's; the health: by how update_attributes writes an attribute, how the
+  player action respawn is written and when a respawned player moves; the settings: by how the chunk radius is asked for and the vanilla
   client's radius; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
   sent and how a correction acts; the entities: by the layouts of the add packets, move_entity_delta, set_entity_motion,

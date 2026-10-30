@@ -88,6 +88,8 @@ export interface BedrockBotOptions {
   defaultChatPatterns?: boolean
   /** the longest chat packet: a longer line is sent in parts @default 512 */
   chatLengthLimit?: number
+  /** whether the bot asks to respawn as soon as the player dies @default true */
+  respawn?: boolean
 }
 
 export interface BedrockPluginOptions {
@@ -96,7 +98,7 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'game' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'game' | 'spawn' | 'respawn' | 'death' | 'health' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
   | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
   | 'teamCreated' | 'teamRemoved' | 'teamUpdated' | 'teamMemberAdded' | 'teamMemberRemoved'
   | 'title' | 'title_times' | 'title_clear' | 'bossBarCreated' | 'bossBarUpdated' | 'bossBarDeleted'
@@ -144,6 +146,14 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   player: Player
   /** from start_game; maxPlayers throws: no packet tells it */
   game: GameState
+  /** from update_attributes and set_health, once the server tells them */
+  health: number
+  food: number
+  foodSaturation: number
+  /** false from the player's death until it has health again */
+  isAlive: boolean
+  /** asks the server to respawn the dead player, in the next frame; nothing while it lives */
+  respawn: () => void
   /** Java's; only the view distance reaches the server */
   settings: GameSettings
   /** asks for a new view distance in the next frame */

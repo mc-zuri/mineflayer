@@ -46,6 +46,11 @@ export class Session {
     this.spawnHooks.push(run)
   }
 
+  /** the player moved after the join: from then on the lifecycle shows and moves it */
+  private get joined (): boolean {
+    return this.spawnAt !== undefined
+  }
+
   /** before start_game, its answer asks for the radius; after, request_chunk_radius asks for a new one at once */
   requestChunkRadius (radius: number, outbox: OutboxWriter): void {
     if (radius === this.chunkRadius) return
@@ -98,7 +103,7 @@ export class Session {
    * tick. Up to 1.17.40 it moves from then; from 1.18.0 its auth inputs are held until the columns around it are loaded.
    */
   private show (core: BedrockCore, tick: number): void {
-    if (core.activation.present || !this.spawnSignals.playerSpawn || !this.spawnSignals.respawned) return
+    if (this.joined || core.activation.present || !this.spawnSignals.playerSpawn || !this.spawnSignals.respawned) return
     const { x, z } = this.player.feet
     if (!this.world.columnPresent(x, z)) {
       if (++this.waitedForColumn < SHOW_TICKS) return
@@ -111,7 +116,7 @@ export class Session {
 
   /** after the tick's auth input: the player moves once the columns around it are loaded, then is initialized */
   private activate (core: BedrockCore, { tick, outbox }: TickContext): void {
-    if (!core.activation.active) {
+    if (!core.activation.active && !this.joined) {
       const notLoaded = this.world.notLoadedAround(this.player.feet, 1)
       if (notLoaded.length > 0 && tick - this.shownAt < SHOW_TICKS) return
       if (notLoaded.length > 0) core.emit(this.bot, 'error', new Error(`the columns ${notLoaded.map(({ x, z }) => `(${x}, ${z})`).join(', ')} around the player were not loaded ${SHOW_TICKS} ticks after it showed`))
