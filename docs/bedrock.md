@@ -49,7 +49,7 @@ Every Bedrock release from 1.16.201 to 1.26.60 (`mineflayer.testedBedrockVersion
 | `logErrors`, `hideErrors`, `loadInternalPlugins`, `plugins` | as Java's | a plugin is `(bot: BedrockBot, options) => void` |
 | `raknetBackend` | `'raknet-native'` | bedrock-protocol's: `'raknet-native'` or `'jsp-raknet'` (not `'raknet-node'`: a failed connection attempt crashes the process) |
 | `connectTimeout` | `9000` | ms to establish the connection; then `error` and `end` |
-| `viewDistance` | `8`, from 1.21.90 `12` | the chunk radius asked of the server (the vanilla client's) |
+| `viewDistance` | `8`, from 1.21.90 `12` (the vanilla client's) | the chunk radius asked of the server: a number of chunks, or one of Java's names (see settings below) |
 | `physicsEnabled` | `true` | whether the physics move the player (see physics below) |
 | `autoJump` | `false` | whether the player jumps by itself onto a block in its way, as the vanilla client's auto-jump (on there by default) does (see physics below) |
 | `defaultChatPatterns` | `true` | as Java's: the chat patterns that emit `chat` and `whisper` (see chat below) |
@@ -67,6 +67,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.physicsEnabled`: whether the physics move the player (see physics below).
 - `bot.autoJump`: whether the player jumps by itself onto a block in its way (see physics below).
 - `bot.game`: as Java's but `maxPlayers`, which throws (see game state below).
+- `bot.settings`, `bot.setSettings(options)`: as Java's; only the view distance reaches the server (see settings
+  below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
 - `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
@@ -131,7 +133,7 @@ packet arrived before:
 | network_stack_latency, when it asks for an answer | the same timestamp, asking none |
 | boss_event show_bar of an entity the bot has, which has no bar yet | boss_event register_player (see boss bars) |
 | boss_event hide_bar of a bar the bot shows | boss_event unregister_player |
-| start_game | request_chunk_radius (`viewDistance`; from 1.19.80 with the vanilla client's maximum, 28), tick_sync (up to 1.20.50), serverbound_loading_screen 1 (from 1.21.20); when the player's game type falls back to the world's, set_player_game_type fallback after tick_sync (up to 1.26.10), from 1.26.20 first |
+| start_game | request_chunk_radius (the view distance; from 1.19.80 with the vanilla client's maximum, 28), tick_sync (up to 1.20.50), serverbound_loading_screen 1 (from 1.21.20); when the player's game type falls back to the world's, set_player_game_type fallback after tick_sync (up to 1.26.10), from 1.26.20 first |
 
 In its ticks the bot sends its auth input (player_auth_input), then asks for the sections of the columns sent without
 them (subchunk_request, from 1.18.0), as the vanilla client does, from when the server shows the player: see the local
@@ -393,6 +395,19 @@ Where the bot differs from the vanilla client:
 set_default_game_type while the player's game type falls back to the world's. A player whose game type falls back to the
 world's says so as start_game is answered (see the answers above), as the vanilla client does. Dimension changes are
 not followed yet (see the world below).
+
+## Settings
+
+`bot.settings` has Java's fields and defaults, but for the view distance: the `viewDistance` option, or the vanilla
+client's chunk radius (8, from 1.21.90 12). `bot.setSettings(options)` merges `options` into them, checked as Java
+checks them: a chat level, a view distance or a main hand it does not know throws, and changes nothing. A view distance
+is one of Java's names (`'far'`, 12 chunks; `'normal'`, 10; `'short'`, 8; `'tiny'`, 6) or a whole number of chunks
+above 0 (Java takes any number above 0: Bedrock's radius is whole), the option's alike (`createBot` throws).
+
+The view distance is the only setting a Bedrock server is told: a new one is asked for in the next frame's input pass
+(request_chunk_radius, from 1.19.80 with the vanilla client's maximum, 28), or set before start_game, in its answer. The
+server answers with the radius it allows (chunk_radius_update). A view distance asked for already is not asked for
+again. No packet tells a Bedrock server the others (the skin goes with the login): they are kept, and change nothing.
 
 ## Time
 
@@ -772,7 +787,8 @@ the hotbar and sends of what is typed:
   local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
   answered; the game state: by how start_game names the engine, the dimension and whether the world is hardcore, how
   high the overworld is, how the game type is stamped, which game types are spectator, and where the start_game answer
-  says the game type falls back to the world's; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
+  says the game type falls back to the world's; the settings: by how the chunk radius is asked for and the vanilla
+  client's radius; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
   sent and how a correction acts; the entities: by the layouts of the add packets, move_entity_delta, set_entity_motion,
   the attributes and an effect's removal, how the metadata's flags are written, and what minecraft-data knows of the

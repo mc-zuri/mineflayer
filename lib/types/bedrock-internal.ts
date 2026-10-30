@@ -27,7 +27,7 @@ export interface BedrockBotInternal extends BedrockBot {
   _world: NetworkWorld
   /** the local player, with its ring of past ticks and the counts of the server's corrections */
   _player: LocalPlayer
-  /** the connection's life, with the hooks run after spawn */
+  /** the connection's life: the handshake's answers, the chunk radius asked of the server, and the hooks run after spawn */
   _session: Session
   _entities: EntityIndex
   /** the counts of the messages the vanilla client would not show: a rawtext that is no valid one, a text type it does not know */

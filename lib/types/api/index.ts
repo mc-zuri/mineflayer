@@ -78,8 +78,8 @@ export interface BedrockBotOptions {
   raknetBackend?: 'raknet-native' | 'jsp-raknet'
   /** ms @default 9000 */
   connectTimeout?: number
-  /** the chunk radius asked of the server @default 8, from 1.21.90 12 (the vanilla client's) */
-  viewDistance?: number
+  /** the chunk radius asked of the server: a number of chunks, or Java's far (12), normal (10), short (8), tiny (6) @default 8, from 1.21.90 12 (the vanilla client's) */
+  viewDistance?: ViewDistance
   /** whether the physics move the player @default true */
   physicsEnabled?: boolean
   /** whether the player jumps by itself onto a block in its way, as the vanilla client's auto-jump does @default false */
@@ -144,6 +144,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   player: Player
   /** from start_game; maxPlayers throws: no packet tells it */
   game: GameState
+  /** Java's; only the view distance reaches the server */
+  settings: GameSettings
+  /** asks for a new view distance in the next frame */
+  setSettings: (options: Partial<GameSettings>) => void
   /** the physics move the player; false holds it where it is, standing still: acts from the next frame */
   physicsEnabled: boolean
   /** the player jumps by itself onto a block in its way, as the vanilla client's auto-jump does: acts from the next frame */

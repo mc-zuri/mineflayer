@@ -17,9 +17,10 @@ export class Session {
   /** why the bot ends: the kick's reason, or the one bot.end() was given */
   endReason: string | undefined
   loggedIn = false
+  /** the chunk radius asked of the server */
+  chunkRadius: number
   private runtimeEntityId = 0n
   private readonly bot: BedrockBotInternal
-  private readonly viewDistance: number | undefined
   private readonly world: NetworkWorld
   private readonly player: LocalPlayer
   /** play_status player_spawn, and respawn's ready state: the server spawned the player */
@@ -32,9 +33,10 @@ export class Session {
   private spawnAt: number | undefined
   private readonly spawnHooks: Array<() => void> = []
 
-  constructor (bot: BedrockBotInternal, viewDistance: number | undefined, world: NetworkWorld, player: LocalPlayer) {
+  constructor (bot: BedrockBotInternal, chunkRadius: number | undefined, world: NetworkWorld, player: LocalPlayer) {
     this.bot = bot
-    this.viewDistance = viewDistance
+    // the vanilla client's
+    this.chunkRadius = chunkRadius ?? (this.atLeast('bedrock_1.21.90') ? 12 : 8)
     this.world = world
     this.player = player
   }
@@ -42,6 +44,13 @@ export class Session {
   /** run right after spawn is emitted */
   afterSpawn (run: () => void): void {
     this.spawnHooks.push(run)
+  }
+
+  /** before start_game, its answer asks for the radius; after, request_chunk_radius asks for a new one at once */
+  requestChunkRadius (radius: number, outbox: OutboxWriter): void {
+    if (radius === this.chunkRadius) return
+    this.chunkRadius = radius
+    if (this.loggedIn) this.queueChunkRadius(outbox)
   }
 
   install (core: BedrockCore): void {
@@ -137,12 +146,16 @@ export class Session {
   /** a player whose game type falls back to the world's says so: from 1.26.20 first */
   private answerStartGame (outbox: OutboxWriter, fallback: boolean): void {
     if (fallback && this.atLeast('bedrock_1.26.20')) outbox.queue('set_player_game_type', { gamemode: 'fallback' })
-    const chunkRadius = this.viewDistance ?? (this.atLeast('bedrock_1.21.90') ? 12 : 8)
-    if (this.atLeast('bedrock_1.19.80')) outbox.queue('request_chunk_radius', { chunk_radius: chunkRadius, max_radius: 28 })
-    else outbox.queue('request_chunk_radius', { chunk_radius: chunkRadius })
+    this.queueChunkRadius(outbox)
     if (!this.atLeast('bedrock_1.20.61')) outbox.queue('tick_sync', { request_time: 0n, response_time: 0n })
     if (fallback && !this.atLeast('bedrock_1.26.20')) outbox.queue('set_player_game_type', { gamemode: 'fallback' })
     if (this.atLeast('bedrock_1.21.20')) outbox.queue('serverbound_loading_screen', { type: 1 })
+  }
+
+  /** from 1.19.80 with the vanilla client's maximum */
+  private queueChunkRadius (outbox: OutboxWriter): void {
+    if (this.atLeast('bedrock_1.19.80')) outbox.queue('request_chunk_radius', { chunk_radius: this.chunkRadius, max_radius: 28 })
+    else outbox.queue('request_chunk_radius', { chunk_radius: this.chunkRadius })
   }
 
   private atLeast (since: BedrockVersion): boolean {

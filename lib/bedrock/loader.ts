@@ -14,6 +14,7 @@ import entities from './plugins/entities.ts'
 import game from './plugins/game.ts'
 import particle from './plugins/particle.ts'
 import scoreboard from './plugins/scoreboard.ts'
+import settings, { chunkRadiusOf } from './plugins/settings.ts'
 import sound from './plugins/sound.ts'
 import tablist from './plugins/tablist.ts'
 import team from './plugins/team.ts'
@@ -26,6 +27,7 @@ import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock
 
 const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   game,
+  settings,
   time,
   chat,
   entities,
@@ -108,7 +110,7 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   const player = new LocalPlayer(bot, controls, { physicsEnabled: options.physicsEnabled ?? true, autoJump: options.autoJump ?? false })
   bot._player = player
   bot._world = new NetworkWorld(bot, () => player.feet)
-  const session = new Session(bot, options.viewDistance, bot._world, player)
+  const session = new Session(bot, options.viewDistance === undefined ? undefined : chunkRadiusOf(options.viewDistance), bot._world, player)
   bot._session = session
   // a tick ends with the player's movement recorded and shown, then spawn
   player.install(core)
