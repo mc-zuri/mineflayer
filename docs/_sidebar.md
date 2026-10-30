@@ -1,6 +1,7 @@
 - Getting Started
   - [Introduction](/)
   - [API](api.md)
+  - [Bedrock](bedrock.md)
   - [FAQ](FAQ.md)
   - [Demos](demos.md)
   - [Tutorial](tutorial.md)

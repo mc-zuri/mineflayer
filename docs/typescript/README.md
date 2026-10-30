@@ -53,7 +53,18 @@ the status:
 - `lib/types/protocol/client.ts`: `TypedClient`, the minecraft-protocol client typed by those packets, with no
   catch-all overload: listening to or writing a packet no version has is a type error.
 - `lib/types/vendor/`: corrected typings for dependencies whose own typings disagree with their runtime, which
-  `tsconfig.json` maps the package to (listed in [API mismatches](api-mismatches.md#dependency-typings)).
+  `tsconfig.json` maps the package to, and typings of modules that have none (listed in
+  [API mismatches](api-mismatches.md#dependency-typings)).
+
+[Bedrock](../bedrock.md) has its own:
+
+- `BedrockBot`, `BedrockBotOptions` and the rest in `lib/types/api/`, which import no protocol type: the public API
+  stays protocol-free.
+- `lib/types/bedrock-internal.ts`: `BedrockBotInternal`, the Bedrock plugins' view of the bot.
+- `lib/types/protocol/Bedrock.d.ts`: the packets of every Bedrock version mineflayer connects to, merged as the Java
+  ones (`pnpm gen:bedrock-types` in the workspace).
+- `lib/types/protocol/bedrock-client.ts`: `BedrockClient`, bedrock-protocol's client typed by those packets, with no
+  catch-all overload.
 
 ## Known limitations
 
