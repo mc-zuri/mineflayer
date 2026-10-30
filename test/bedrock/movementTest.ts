@@ -10,22 +10,22 @@ import { ServerWorld } from './common/world.ts'
 
 // Where the server places the local player, and the auth input the bot sends every tick from when the server shows
 // it, as the vanilla client of each version writes it: grouped by the auth input's layout, by when the server shows a
-// player that does not move yet, and by how a teleport is answered. Until the physics move it, the player stays where
-// the server put it: its feet (0.5, 12, 0.5) report the eye 13.6200103759765625.
+// player that does not move yet, and by how a teleport is answered. The player joins with its feet at (0.5, 12, 0.5),
+// on a stone floor, which report the eye 13.6200103759765625; where the physics move it is physicsTest's.
 
 const NO_MOVE = Object.freeze({ x: 0, z: 0 })
 const FORWARD = Object.freeze({ x: 0, z: 1 })
 const EAST_OF_NORTH = Object.freeze({ yaw: -45, pitch: 0 })
 
-/** the auth input but its flags, and how its version writes them */
+/** the auth input but where the physics moved the player and its flags, and how its version writes them */
 function layoutOf (input: AuthInput): object {
-  const { input_data: _flags, ...fields } = input
+  const { input_data: _flags, position: _position, delta: _delta, ...fields } = input
   return { ...fields, input_data: inputFlags(input).written }
 }
 
-/** what every version writes: the feet (0.5, 12, 0.5), looking yaw -45 */
+/** what every version writes, looking yaw -45 */
 function common (tick: number, moveVector: { x: number, z: number }): object {
-  return { pitch: 0, yaw: -45, position: { x: 0.5, y: 13.6200103759765625, z: 0.5 }, move_vector: moveVector, head_yaw: -45, input_mode: 'mouse', play_mode: 'screen', tick: BigInt(tick), delta: { x: 0, y: 0, z: 0 } }
+  return { pitch: 0, yaw: -45, move_vector: moveVector, head_yaw: -45, input_mode: 'mouse', play_mode: 'screen', tick: BigInt(tick) }
 }
 
 /** joins looking yaw -45, then holds forward a tick: the first auth input, and that tick's */
@@ -329,7 +329,7 @@ describe('bedrock movement', () => {
       await driver.ticks(2)
       const tick = internal._core.tick ?? -1
       const answers = [server.authInput(tick - 1), server.authInput(tick)].map(answer => [answer.position, answer.yaw, answer.pitch, inputFlags(answer).set])
-      assert.deepStrictEqual(answers, Array(2).fill([{ x: 0.5, y: 13.6200103759765625, z: 0.5 }, 90, 0, ['block_breaking_delay_enabled']]))
+      assert.deepStrictEqual(answers, Array(2).fill([{ x: 0.5, y: 13.6200103759765625, z: 0.5 }, 90, 0, ['block_breaking_delay_enabled', 'vertical_collision']]))
       assert.deepStrictEqual([bot.entity.position, bot.entity.yaw, bot.entity.pitch, forced], [new Vec3(0.5, 12, 0.5), Math.PI / 2, 0, 0])
     })
 

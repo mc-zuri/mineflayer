@@ -85,7 +85,7 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   })
   bot._core = core
   const controls = new Controls(bot)
-  const player = new LocalPlayer(bot, controls)
+  const player = new LocalPlayer(bot, controls, options.physicsEnabled ?? true)
   bot._player = player
   bot._world = new NetworkWorld(bot, () => player.feet)
   const session = new Session(bot, options.viewDistance, bot._world, player)

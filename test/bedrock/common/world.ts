@@ -62,16 +62,19 @@ export class ServerWorld {
   private readonly server: FakeBedrockClient
   private readonly hashes: boolean
   private readonly dimension: Dimension
+  /** blocks besides the floor of the columns around the feet */
+  private readonly blocks: readonly BlockAt[]
   private readonly ChunkColumn: typeof BedrockChunk
   private readonly columns = new Map<string, BedrockChunk>()
   private answered = 0
   private feet: Point3 = { x: 0.5, y: 12, z: 0.5 }
 
-  constructor (server: FakeBedrockClient, { hashes = false, dimension = 'overworld' }: { hashes?: boolean, dimension?: Dimension } = {}) {
+  constructor (server: FakeBedrockClient, { hashes = false, dimension = 'overworld', blocks = [] }: { hashes?: boolean, dimension?: Dimension, blocks?: readonly BlockAt[] } = {}) {
     this.server = server
     this.version = server.codec.version
     this.hashes = hashes
     this.dimension = dimension
+    this.blocks = blocks
     const registry = prismarineRegistry(this.version)
     assert.ok('handleStartGame' in registry)
     registry.handleStartGame({ block_network_ids_are_hashes: hashes })
@@ -139,12 +142,13 @@ export class ServerWorld {
     return { firstAuthInput, moving }
   }
 
-  /** the 3 × 3 columns around start_game's feet, a stone floor under them */
+  /** the 3 × 3 columns around start_game's feet, a stone floor under them, and the world's other blocks there */
   async sendAround (): Promise<void> {
     const [x, z] = [Math.floor(this.feet.x) >> 4, Math.floor(this.feet.z) >> 4]
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
-        this.column(x + dx, z + dz)
+        const blocks = this.blocks.filter(([bx, , bz]) => bx >> 4 === x + dx && bz >> 4 === z + dz)
+        this.column(x + dx, z + dz, [...stoneFloor(x + dx, z + dz), ...blocks])
         await this.sendColumn(x + dx, z + dz)
       }
     }

@@ -1,29 +1,32 @@
 import assert from 'assert'
 import prismarineEntity from 'prismarine-entity'
 import type { Entity } from 'prismarine-entity'
+import { createMovementState, EYE_HEIGHT, feetFromEye, reportedEyePosition, rulesFor, simulateTick, sneakScaledMove } from 'prismarine-physics/lib/bedrock/index.ts'
+import type { BedrockRules, MovementState, TickActions, Vec3Data } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { Registry } from 'prismarine-registry'
 import { Vec3 } from 'vec3'
 import { fromNotchianPitch, fromNotchianYaw, toNotchianPitch, toNotchianYaw } from '../../conversions.ts'
 import { euclideanMod } from '../../math.ts'
 import type { BedrockCore } from '../core/core.ts'
-import type { TickContext } from '../core/types.ts'
+import type { OutboxWriter, TickContext } from '../core/types.ts'
 import type { DueWait } from '../core/waits.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
-import type { BedrockPlayer } from '../../types/api/index.ts'
+import type { BedrockPlayer, BedrockVersion } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockClientboundPackets } from '../../types/protocol/bedrock-client.ts'
 import { authInput } from './auth_input.ts'
-import type { Rotation, Vec3f } from './auth_input.ts'
+import type { Movement, Rotation, Vec3f } from './auth_input.ts'
 import { agrees, applied, Corrections, rewindsUnder } from './corrections.ts'
-import type { Filing, MovementState, TickInput } from './corrections.ts'
+import type { Filing, MovementInput } from './corrections.ts'
 import type { Controls } from './input.ts'
 
 const OWNER = 'movement'
-/** the vanilla client's eye, above the feet */
-export const EYE_HEIGHT = Math.fround(1.62001)
 const PLAYER_HEIGHT = 1.8
 const PLAYER_WIDTH = 0.6
 const STILL = Object.freeze({ x: 0, y: 0, z: 0 })
+const NO_ACTIONS: TickActions = Object.freeze({ startSprinting: false, stopSprinting: false, startSneaking: false, stopSneaking: false, startJumping: false })
+/** a held player: still, moving into nothing, its eye reported over its feet */
+const HELD = Object.freeze({ velocity: STILL, horizontalCollision: false, verticalCollision: false, stepSlide: 0, reportedFeetY: null })
 /** a teleport this far, or farther, starts the ring again */
 const FAR_TELEPORT = 16
 
@@ -32,14 +35,6 @@ type EntityLoader = (registry: Registry) => typeof Entity
 /** prismarine-entity's module is its loader, which its typings do not declare (docs/typescript/api-mismatches.md) */
 function assertEntityLoader (loader: object): asserts loader is EntityLoader {
   assert.ok(typeof loader === 'function', 'prismarine-entity exports its loader')
-}
-
-function eyeOf (feet: Vec3f): Vec3f {
-  return { x: Math.fround(feet.x), y: Math.fround(Math.fround(feet.y) + EYE_HEIGHT), z: Math.fround(feet.z) }
-}
-
-function feetOf (eye: Vec3f): Vec3f {
-  return { x: eye.x, y: Math.fround(eye.y - EYE_HEIGHT), z: eye.z }
 }
 
 function isFar (from: Vec3f, to: Vec3f): boolean {
@@ -66,23 +61,30 @@ interface Sent {
 }
 
 /**
- * The local player: where the server places it (start_game, respawn, move_player) and corrects it, where it looks, and
- * the auth input it sends every tick once the server shows it. It stays where the server put it until the physics move
- * it.
+ * The local player: where the server places it (start_game, respawn, move_player) and corrects it, where it looks, how
+ * the physics move it each tick, and the auth input it sends every tick once the server shows it.
  */
 export class LocalPlayer {
   rotation: Rotation = { yaw: 0, pitch: 0 }
   /** the ring of the last ticks, and what became of the server's corrections */
   readonly corrections = new Corrections()
-  private state: MovementState = { position: STILL, velocity: STILL, onGround: false }
+  private state: MovementState = createMovementState(STILL)
   /** what the tick's movement read, for the ring: from the first tick the player moves */
-  private input: TickInput | undefined
+  private input: MovementInput | undefined
+  /** what the tick's movement started */
+  private actions: TickActions = NO_ACTIONS
   private readonly bot: BedrockBotInternal
   private readonly controls: Controls
+  private readonly rules: BedrockRules
   /** bot.entity from start_game */
   private readonly entity: BedrockPlayer
+  /** physicsEnabled as the input pass applied it, and as last set */
+  private physicsEnabled: boolean
+  private physicsRequested: boolean
   /** start_game's runtime id, its low 32 bits: move_player's is a varint */
   private runtimeId: bigint | undefined
+  /** the runtime id as the vanilla client writes it in its own move_player and player_action */
+  private sentRuntimeId = 0
   /** where the last teleport put the eye, until an auth input answers it */
   private teleport: Vec3f | undefined
   private lastSent: Sent | undefined
@@ -95,9 +97,12 @@ export class LocalPlayer {
   /** looks asked for and not sent yet */
   private looking = 0
 
-  constructor (bot: BedrockBotInternal, controls: Controls) {
+  constructor (bot: BedrockBotInternal, controls: Controls, physicsEnabled: boolean) {
     this.bot = bot
     this.controls = controls
+    this.rules = rulesFor(bot.version)
+    this.physicsEnabled = physicsEnabled
+    this.physicsRequested = physicsEnabled
     this.entity = this.createEntity()
   }
 
@@ -112,8 +117,16 @@ export class LocalPlayer {
       const delta = point.minus(this.feet.offset(0, EYE_HEIGHT, 0))
       await this.look(core, Math.atan2(-delta.x, -delta.z), Math.atan2(delta.y, Math.sqrt(delta.x * delta.x + delta.z * delta.z)))
     }
+    Object.defineProperty(this.bot, 'physicsEnabled', {
+      get: () => this.physicsRequested,
+      set: (enabled: boolean) => {
+        this.physicsRequested = enabled
+        core.command(() => { this.physicsEnabled = enabled })
+      }
+    })
     core.observe(OWNER, 'start_game', packet => {
       this.runtimeId = BigInt.asUintN(32, packet.runtime_entity_id)
+      this.sentRuntimeId = Number(BigInt.asIntN(32, packet.runtime_entity_id))
       this.entity.id = Number(packet.runtime_entity_id)
       this.bot.entity = this.entity
       // absent on 1.16.201: one tick
@@ -121,15 +134,15 @@ export class LocalPlayer {
       this.corrections.rewinds = rewindsUnder(packet.movement_authority)
       // 1.16.201 names it spawn
       const eye = packet.player_position ?? packet.spawn
-      if (eye !== undefined) this.write({ position: feetOf(eye), velocity: STILL, onGround: false })
+      if (eye !== undefined) this.place(feetFromEye(eye))
       this.turn({ yaw: packet.rotation.z, pitch: packet.rotation.x })
     })
     core.handle(OWNER, 'respawn', packet => {
       if (packet.state !== 1) return
       // up to 1.16.210 the position is x, y, z
       const { position, x, y, z } = packet
-      if (position !== undefined) this.writeNow({ position: feetOf(position), velocity: STILL, onGround: false })
-      if (x !== undefined && y !== undefined && z !== undefined) this.writeNow({ position: feetOf({ x, y, z }), velocity: STILL, onGround: false })
+      if (position !== undefined) this.placeNow(feetFromEye(position))
+      if (x !== undefined && y !== undefined && z !== undefined) this.placeNow(feetFromEye({ x, y, z }))
     })
     core.handle(OWNER, 'move_player', packet => {
       if (!this.isLocalPlayer(packet.runtime_id)) return
@@ -144,7 +157,7 @@ export class LocalPlayer {
     })
     core.handle(OWNER, 'set_movement_authority', packet => { this.corrections.rewinds = rewindsUnder(packet.movement_authority) })
     core.system(OWNER, { name: 'movement.rewind', place: { at: 'LocalPlayerRewindSystem' }, gate: 'active', replay: false, run: () => { this.rewind(core) } })
-    core.system(OWNER, { name: 'movement.simulate', place: { at: 'PredictedMovementSystem' }, gate: 'active', replay: true, run: () => { this.simulate() } })
+    core.system(OWNER, { name: 'movement.simulate', place: { at: 'PredictedMovementSystem' }, gate: 'active', replay: true, run: ctx => { this.simulate(ctx) } })
     core.system(OWNER, { name: 'movement.sendInput', place: { at: 'SendPlayerInputPacketSystem' }, gate: 'present', replay: false, run: ctx => { this.sendInput(core, ctx) } })
     core.endOfTick(OWNER, ({ tick }) => {
       if (this.input !== undefined) this.corrections.history.record(tick, this.input, this.state)
@@ -196,6 +209,18 @@ export class LocalPlayer {
     this.entity.pitch = fromNotchianPitch(rotation.pitch)
   }
 
+  /** the server put the player anew (start_game, respawn): standing still, off the ground */
+  private place (feet: Vec3Data): void {
+    this.state = createMovementState(feet)
+    this.show()
+  }
+
+  /** respawn: the ring would lead elsewhere, so it starts again */
+  private placeNow (feet: Vec3Data): void {
+    this.corrections.history.clear()
+    this.place(feet)
+  }
+
   /** a server packet acting at once: the ring would lead elsewhere, so it starts again */
   private writeNow (filing: Filing): void {
     this.corrections.history.clear()
@@ -208,15 +233,17 @@ export class LocalPlayer {
   }
 
   private show (): void {
-    const { position, velocity, onGround } = this.state
+    const { position, velocity, onGround, horizontalCollision, verticalCollision } = this.state
     this.entity.position = new Vec3(position.x, position.y, position.z)
     this.entity.velocity = new Vec3(velocity.x, velocity.y, velocity.z)
     this.entity.onGround = onGround
+    this.entity.isCollidedHorizontally = horizontalCollision
+    this.entity.isCollidedVertically = verticalCollision
   }
 
   /** a near teleport stamped with a tick of the ring is filed there, for a rewind over that tick to play it again */
   private teleportTo (packet: BedrockClientboundPackets['move_player']): void {
-    const teleport = { position: feetOf(packet.position), velocity: STILL, onGround: packet.on_ground }
+    const teleport: Filing = { kind: 'teleport', position: feetFromEye(packet.position), onGround: packet.on_ground }
     const tick = this.corrections.rewinds && packet.mode !== 'reset' && !isFar(this.state.position, teleport.position) ? Number(packet.tick) : 0
     const record = tick === 0 ? undefined : this.corrections.recordOf(tick)
     if (record === undefined) this.writeNow(teleport)
@@ -231,7 +258,7 @@ export class LocalPlayer {
     // from 1.20.80 the server corrects the vehicle the player drives too
     if (packet.prediction_type === 'vehicle') return
     const { history, stats } = this.corrections
-    const correction = { position: feetOf(packet.position), velocity: packet.delta, onGround: packet.on_ground }
+    const correction: Filing = { kind: 'correction', position: feetFromEye(packet.position), velocity: packet.delta, onGround: packet.on_ground }
     if (!this.corrections.rewinds) this.writeNow(correction)
     else if (packet.tick === 0n) stats.unstamped++
     else {
@@ -243,7 +270,7 @@ export class LocalPlayer {
   }
 
   private setMotion (packet: BedrockClientboundPackets['set_entity_motion']): void {
-    const motion = { velocity: packet.velocity }
+    const motion: Filing = { kind: 'motion', velocity: packet.velocity }
     // stamped from 1.20.71
     const tick = this.corrections.rewinds ? Number(packet.tick ?? 0n) : 0
     if (tick === 0) this.writeNow(motion)
@@ -280,25 +307,87 @@ export class LocalPlayer {
     stats.rewinds++
   }
 
-  /** until the physics come, the player stays where the server put it, standing still */
-  private simulate (): void {
-    this.input = { cooked: this.controls.cooked, rotation: this.rotation, teleported: this.teleport !== undefined }
-    this.state = { ...this.state, velocity: STILL }
+  /**
+   * the physics move the player a tick, on the tick's input (a tick played again on the input the ring kept); while
+   * physicsEnabled is false the player stands still
+   */
+  private simulate ({ tick, replaying, outbox }: TickContext): void {
+    const input = replaying ? this.recordedInput(tick) : this.liveInput()
+    const before = this.state
+    const { state, actions } = input === 'held'
+      ? { state: { ...before, ...HELD }, actions: NO_ACTIONS }
+      : simulateTick(before, input, this.bot._world.physicsWorld(before.position.y), this.rules)
+    this.state = state
+    if (replaying) return
+    this.input = input
+    this.actions = actions
+    this.sendBesides(outbox, before, actions)
+  }
+
+  private recordedInput (tick: number): MovementInput {
+    const record = this.corrections.history.get(tick)
+    assert.ok(record !== undefined, `no record of tick ${tick} to play again`)
+    return record.input
+  }
+
+  private liveInput (): MovementInput {
+    if (!this.physicsEnabled) return 'held'
+    const { direction, keys } = this.controls.cooked
+    return {
+      move: sneakScaledMove(direction, keys.sneak.level, this.state),
+      yaw: this.rotation.yaw,
+      jumping: keys.jump.level,
+      sneakDown: keys.sneak.level,
+      sprintDown: keys.sprint.level,
+      // a second forward press (a pathfinder's toggling) starts no sprint: only the sprint key does
+      doubleTapSprints: false,
+      // the bot keeps no food level yet
+      tooHungryToSprint: false,
+      teleported: this.teleport !== undefined
+    }
+  }
+
+  /**
+   * what the vanilla client sends before the tick's auth input: on 1.16.201 what the tick started, as player_action; up
+   * to 1.20.40 a move_player on the tick it lands
+   */
+  private sendBesides (outbox: OutboxWriter, before: MovementState, actions: TickActions): void {
+    if (!this.atLeast('bedrock_1.16.210')) {
+      const started = [['start_sprint', actions.startSprinting], ['stop_sprint', actions.stopSprinting], ['start_sneak', actions.startSneaking], ['stop_sneak', actions.stopSneaking], ['jump', actions.startJumping]] as const
+      for (const [action, done] of started) if (done) outbox.queue('player_action', { runtime_entity_id: this.sentRuntimeId, action, position: STILL, face: 0 })
+    }
+    if (!before.onGround && this.state.onGround && !this.atLeast('bedrock_1.20.50')) {
+      const { yaw, pitch } = this.rotation
+      outbox.queue('move_player', { runtime_id: this.sentRuntimeId, position: reportedEyePosition(this.state), pitch, yaw, head_yaw: yaw, mode: 'normal', on_ground: true, ridden_runtime_id: 0, tick: 0n })
+    }
   }
 
   private sendInput (core: BedrockCore, { tick, outbox }: TickContext): void {
-    const { teleport, rotation } = this
-    const input = core.activation.active ? this.controls.cooked : undefined
-    const position = teleport ?? eyeOf(this.state.position)
-    outbox.queue('player_auth_input', authInput(this.bot.version, { tick, rotation, position, delta: STILL, input, teleportAck: teleport !== undefined }))
-    if (teleport !== undefined && isBedrockVersionAtLeast(this.bot.version, 'bedrock_1.21.70')) outbox.queue('client_camera_aim_assist', { preset_id: '', action: 'clear', allow_aim_assist: false })
+    const { teleport, rotation, state } = this
+    const movement = this.movement()
+    const position = teleport ?? reportedEyePosition(state)
+    const delta = teleport === undefined ? state.velocity : STILL
+    outbox.queue('player_auth_input', authInput(this.bot.version, { tick, rotation, position, delta, active: core.activation.active, movement, teleportAck: teleport !== undefined }))
+    if (teleport !== undefined && this.atLeast('bedrock_1.21.70')) outbox.queue('client_camera_aim_assist', { preset_id: '', action: 'clear', allow_aim_assist: false })
     this.teleport = undefined
-    if (input !== undefined) this.controls.clearEdges()
+    if (movement !== undefined) this.controls.clearEdges()
     for (const wait of this.turned) wait.due(tick)
     this.looking -= this.turned.length
     this.turned = []
     const sent = { position, rotation, feet: this.feet }
     if (this.lastSent !== undefined && !samePose(sent, this.lastSent)) this.moved = this.lastSent.feet
     this.lastSent = sent
+  }
+
+  /** what moved the player this tick, unless it was held: from the first tick it moves */
+  private movement (): Movement | undefined {
+    const { input, state } = this
+    if (input === undefined || input === 'held') return undefined
+    const { keys, direction } = this.controls.cooked
+    return { keys, move: input.move, direction, actions: this.actions, horizontalCollision: state.horizontalCollision, verticalCollision: state.verticalCollision }
+  }
+
+  private atLeast (since: BedrockVersion): boolean {
+    return isBedrockVersionAtLeast(this.bot.version, since)
   }
 }

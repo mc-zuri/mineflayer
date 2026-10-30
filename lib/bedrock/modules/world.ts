@@ -1,6 +1,7 @@
 import type { Block } from 'prismarine-block'
 import prismarineChunk from 'prismarine-chunk'
 import type { BedrockChunk } from 'prismarine-chunk'
+import type { World } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { RegistryBedrock } from 'prismarine-registry'
 import prismarineWorld from 'prismarine-world'
 import type { world } from 'prismarine-world'
@@ -25,6 +26,8 @@ const DIMENSIONS = Object.freeze(['overworld', 'nether', 'end'])
 const OVERWORLD_SECTIONS = sectionsFrom(-4, 19)
 const NETHER_SECTIONS = sectionsFrom(0, 7)
 const END_SECTIONS = sectionsFrom(0, 15)
+/** what the physics take a cell the bot does not know below the player for */
+const UNSENT_FLOOR = Object.freeze({ name: 'unsent', shapes: Object.freeze([Object.freeze([0, 0, 0, 1, 1, 1])]) })
 
 function sectionsFrom (lowest: number, highest: number): readonly number[] {
   return Object.freeze(Array.from({ length: highest - lowest + 1 }, (_, index) => lowest + index))
@@ -123,6 +126,21 @@ export class NetworkWorld {
   sectionKnown (x: number, y: number, z: number): boolean {
     const column = this.shown.get(keyOf(chunkCoordinate(x), chunkCoordinate(z)))
     return column !== undefined && this.knows(column, chunkCoordinate(y))
+  }
+
+  /**
+   * the blocks as the physics read them: where the bot has no column, or asked for the section and has no answer yet,
+   * a solid floor below the section of the feet (at `feetY`), so that the player does not fall through what the server
+   * has not sent; air from that section up
+   */
+  physicsWorld (feetY: number): World {
+    const feetSection = chunkCoordinate(feetY)
+    return {
+      getBlock: (x, y, z) => {
+        if (!this.sectionKnown(x, y, z)) return chunkCoordinate(y) < feetSection ? UNSENT_FLOOR : null
+        return this.world.getBlock(new Vec3(x, y, z))
+      }
+    }
   }
 
   /** whether every column within `radius` columns of `feet`'s is shown with every section */

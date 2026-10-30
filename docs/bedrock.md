@@ -2,8 +2,8 @@
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time and the world's
-blocks, holds its controls and looks, telling the server every tick, follows the server's corrections, and ends; it
-does not move by itself yet (the physics come next), and the rest of the API is Java's only so far.
+blocks, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does, telling the server
+every tick, follows the server's corrections, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -16,7 +16,7 @@ const bot = mineflayer.createBot({
 })
 
 bot.on('spawn', () => {
-  bot.setControlState('forward', true) // reported from the next tick
+  bot.setControlState('forward', true) // walks from the next tick
   bot.lookAt(bot.entity.position.offset(10, 1.62001, 0)).then(() => console.log('looking east'))
 })
 bot.on('time', () => console.log(`time of day: ${bot.time.timeOfDay}`))
@@ -48,6 +48,7 @@ Every Bedrock release from 1.16.201 to 1.26.60 (`mineflayer.testedBedrockVersion
 | `raknetBackend` | `'raknet-native'` | bedrock-protocol's: `'raknet-native'` or `'jsp-raknet'` (not `'raknet-node'`: a failed connection attempt crashes the process) |
 | `connectTimeout` | `9000` | ms to establish the connection; then `error` and `end` |
 | `viewDistance` | `8`, from 1.21.90 `12` | the chunk radius asked of the server (the vanilla client's) |
+| `physicsEnabled` | `true` | whether the physics move the player (see physics below) |
 
 The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 
@@ -58,6 +59,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.entity`: the local player (a prismarine-entity `Entity`, from start_game): its feet's `position`, `velocity`,
   `yaw` and `pitch` (mineflayer's radians), `onGround`, and `isCollidedHorizontally` / `isCollidedVertically`
   (see the local player below).
+- `bot.physicsEnabled`: whether the physics move the player (see physics below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
@@ -141,8 +143,8 @@ of the version does (these are the recorded joins of every version):
 The vanilla client sends it a while after play_status player_spawn (bedrock-protocol at once). The server shows the
 player in two steps here, auth inputs and then movement, as the recordings show: not on player_spawn alone.
 
-The player does not move by itself yet: it stays where the server put it, standing still (the auth input's `delta` is
-0), until the physics come. The server moves it in the packet pass:
+From the tick it moves, the physics move the player every tick (see physics below). The server moves it in the packet
+pass:
 
 - **move_player** of the player's runtime id (start_game's, by its low 32 bits: move_player's is a varint) places it,
   without velocity, emitting `forcedMove`, and turns it; its `rotation` mode only turns it. The next auth input
@@ -151,8 +153,8 @@ The player does not move by itself yet: it stays where the server put it, standi
   also in the first auth input when it came before the server showed the player.
 - **correct_player_move_prediction** and **set_entity_motion** (of the player's runtime id) correct it: see
   corrections below.
-- `bot.entity` shows the player's position, velocity and `onGround` as the packet pass leaves them, and as each tick
-  ends.
+- `bot.entity` shows the player's position, velocity, `onGround` and `isCollidedHorizontally` /
+  `isCollidedVertically` as the packet pass leaves them, and as each tick ends.
 - `move` is emitted at the end of a tick whose auth input reported another position or rotation than the one before,
   with the feet that one reported.
 
@@ -169,15 +171,19 @@ The auth input, as each version writes it (the vanilla client's values: a keyboa
 | 1.26.40 – 1.26.45 | the flags a list of those set; every absent field written present, then absent, as the vanilla client does |
 | 1.26.51+ | the flags a list; the absent fields absent |
 
-The tick is the bot's (from start_game), never the server's. The flags, by their names in the version, while the
-player moves (held, only `block_breaking_delay_enabled`, and a teleport's):
+The tick is the bot's (from start_game), never the server's. Its `position` is the eye the physics report (answering a
+teleport, where the server put the eye), its `delta` the velocity they left (0 answering a teleport), its `move_vector`
+the move they were given (scaled while sneaking), `raw_move_vector` the keys' direction. The flags, by their names in
+the version, while the player moves (held, only `block_breaking_delay_enabled`, and a teleport's):
 
 | Flag | When |
 | --- | --- |
 | `up`, `down`, `left`, `right` | forward, back, left, right held |
 | `jump_down`, `jumping`, `want_up`; `north_jump` up to 1.20.80 | jump held |
-| `sprint_down` | sprint held |
+| `sprint_down`, `sprinting` | sprint held (as recorded: a wall stopping the sprint does not clear `sprinting`) |
 | `sneak_down`, `sneaking`, `want_down` | sneak held |
+| `start_sprinting`, `stop_sprinting`, `start_sneaking`, `stop_sneaking`, `start_jumping`, from 1.16.210 | the tick's physics started or stopped a sprint or a sneak, or jumped |
+| `horizontal_collision`, `vertical_collision`, from 1.21.30 | the move was stopped along x or z, along y (as the last tick left it, answering a teleport) |
 | `jump_pressed_raw`, `jump_released_raw`, `jump_current_raw` (and sneak's), from 1.21.50 | jump (sneak) pressed, released since the last auth input that reported the keys; held |
 | `block_breaking_delay_enabled`, from 1.21.0 | always |
 | `handled_teleport`, from 1.19.60 | the auth input answers a teleport |
@@ -219,19 +225,19 @@ set_entity_motion; a correction under the `server` or `client` authority) starts
 would lead elsewhere. A system that throws while a tick is played again abandons the rewind: the player stays where it
 was, and the ring starts again.
 
-Until the physics come the player stands still where the server put it, so a rewind leaves it where the correction
-says, without velocity, and reads none of the input the ring keeps. The bot counts what became of the server's packets
-(filed, agreed, echoes, unstamped, too old, anomalies, rewinds, replayed ticks and abandoned rewinds): an internal
-bot's `_player.corrections.stats`.
+A tick played again is the physics' tick again, on what the tick read (its input to the physics, or that
+physicsEnabled held the player), from where the packets filed before it put the player (its box following its feet).
+The bot counts what became of the server's packets (filed, agreed, echoes, unstamped, too old, anomalies, rewinds,
+replayed ticks and abandoned rewinds): an internal bot's `_player.corrections.stats`.
 
 ## Controls and look
 
 - **`setControlState(control, state)`** (forward, back, left, right, jump, sprint, sneak): `getControlState` and
   `controlState` read it at once (`controlState.jump = true` sets it too). The key is pressed or released in the next
   frame's input pass; the tick's input system makes the keys the move vector (x left, z forward; a diagonal as long as
-  a side, 0.70710677; 0.3 of it while sneak is held) and the flags. A control set in a `physicsTick` listener of tick
-  n shows in the auth input of tick n + 1. A press or a release is kept until an auth input that reports the keys:
-  a tap shorter than a tick, or one before the player moves, still reaches the server.
+  a side, 0.70710677; the physics take 0.3 of it while sneaking) and the flags. A control set in a `physicsTick`
+  listener of tick n shows in the auth input of tick n + 1. A press or a release is kept until an auth input that
+  reports the keys: a tap shorter than a tick, or one before the player moves, still reaches the server.
 - **`look(yaw, pitch)`** and **`lookAt(point)`** (from the eye, 1.62001 above the feet) turn the player to
   mineflayer's radians, as Bedrock's degrees (floats), the yaw in (−180, 180]: the vanilla client reports looking east
   as −90 (recorded), not 270; whether it reports north as 180 or −180 was not recorded. The look is taken in the next
@@ -242,6 +248,66 @@ bot's `_player.corrections.stats`.
 - **`waitForTicks(ticks)`** resolves at the end of the tick `ticks` ticks on (counted from start_game's tick 0
   before it); 0 or less resolves at once.
 - Every promise the bot gave rejects when it ends.
+
+## Physics
+
+The physics are prismarine-physics' Bedrock engine (`prismarine-physics/lib/bedrock`), which moves the player as the
+vanilla client of the version does, in floats: walking, sprinting, sneaking (and keeping the player on an edge),
+jumping, gravity, drag and friction (ice, soul sand ...), stepping up, and the collisions with the blocks' shapes. It
+runs at the vanilla client's PredictedMovementSystem, each tick the player moves, on the tick's input:
+
+- the move the keys ask for (x left, z forward), scaled to 0.3 while sneak is held, and on the tick it is released;
+- the yaw (Bedrock degrees), and jump, sneak and sprint held;
+- whether the tick answers a teleport (that tick ends after the jump).
+
+A sprint starts on the sprint key only: a second forward press does not start one (the vanilla client's double tap), so
+that a bot pressing forward again and again does not sprint. Releasing sprint does not stop a sprint (Bedrock's rule):
+the move does, when it no longer goes forward, and a wall (but on 1.21.60). The bot keeps no food level yet: hunger
+never stops a sprint.
+
+The physics read `bot.world`, as `bot.blockAt` does. Where the bot has no column, or asked for the section and has no
+answer yet, a cell below the section of the feet is solid and one from it up is air: the player stands on what the
+server has not sent rather than falls through it.
+
+What the tick did is reported in its auth input (see the local player above), and `bot.entity` shows it at the end of
+the tick. A step up is reported as the vanilla client reports it:
+
+| Versions | The eye reported |
+| --- | --- |
+| 1.16.201 – 1.16.220 | it slides up the step: on the step's tick where it was, then up 0.6 of what is left each tick |
+| 1.17.0 – 1.20.61 | on the step's tick, over the feet the step started from; over the feet from the tick after |
+| 1.20.71+ | over the feet |
+
+Besides the auth input, before it in the tick, the vanilla client tells the server, and so does the bot:
+
+| Versions | What | When |
+| --- | --- | --- |
+| 1.16.201 | player_action `start_sprint`, `stop_sprint`, `start_sneak`, `stop_sneak`, `jump`, in this order | the tick started or stopped a sprint or a sneak, or jumped (later versions: the auth input's flags) |
+| 1.16.201 – 1.20.40 | move_player `normal`, on the ground, at the eye the auth input reports | the tick landed |
+
+`bot.physicsEnabled = false` (or the option `physicsEnabled: false`) holds the player: from the next frame it stands
+where it is, without velocity, moving into nothing (`bot.entity` shows no collision), and its auth inputs report its
+eye over its feet (on the tick after a step too), no key and no move (looks, a teleport's answer and the server's
+corrections still act). Set back to true, it moves from the next frame.
+
+There is no `bot.physics` (Java's gravity, speeds and friction to tune): the vanilla client's are fixed floats, which
+the engine takes from the version.
+
+Where the bot differs from the vanilla client:
+
+- on the builds where the engine's sine and cosine are not the vanilla client's routine (prismarine-physics' README
+  says which), in the last float bits of a move turned by the yaw; the walk, the jump and the fall at yaw 0 are exact
+  on every version;
+- liquids, climbing, flight, gliding, riding, effects, slime and honey, cobwebs and powder snow, and the other blocks
+  prismarine-physics' README lists are not modelled: the player moves through them as through air, or on them as on a
+  full block;
+- the vanilla client jumps onto a block in its way by itself (auto-jump); the bot does not;
+- up to 1.20.0 the vanilla client also sends level_sound_event `Land` (or `Fall`, after a fall) in the tick it lands,
+  before its move_player; the bot does not;
+- up to 1.21.50 the vanilla client sometimes sets a start or stop flag again on a later tick, or on 1.16.201 sends a
+  `stop_sprint` or `stop_sneak` again, with nothing changed; the bot reports each once;
+- up to 1.18.0 the vanilla client writes `head_yaw` (of the auth input and the landing move_player) in [0, 360); the
+  bot writes the yaw.
 
 ## Time
 
@@ -328,7 +394,10 @@ Dimension changes are not followed yet: the world stays in start_game's dimensio
   1.20.50; the world: by how a column comes, a block changes and the dimension is named; the corrections: by the
   ring's size, the correction's shape, the movement authority, how the velocity is set and the player respawned; the
   local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
-  answered). The workspace's `pnpm test:recorded` replays the recordings themselves.
+  answered; the physics: by how a jump, a sprint, a sneak, a landing and a step up are told, when a sprint speeds the
+  player, which collisions are reported, how a column comes, and how a correction acts). The physics' values are the
+  recorded ones, the same on every version unless a group says otherwise. The workspace's `pnpm test:recorded`
+  replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 

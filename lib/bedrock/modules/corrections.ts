@@ -1,37 +1,31 @@
+import { correctTo, teleportTo } from 'prismarine-physics/lib/bedrock/index.ts'
+import type { Correction, MovementState, TickInput, Vec3Data } from 'prismarine-physics/lib/bedrock/index.ts'
 import { History } from '../core/history.ts'
 import type { HistoryRecord } from '../core/history.ts'
-import type { CookedInput, Rotation, Vec3f } from './auth_input.ts'
 
-/** the local player's movement after a tick: plain data, which the ring keeps as it was */
-export interface MovementState {
-  /** the feet */
-  readonly position: Vec3f
-  readonly velocity: Vec3f
-  readonly onGround: boolean
-}
-
-/** what a tick's movement read: a rewind plays the tick again on it */
-export interface TickInput {
-  readonly cooked: CookedInput
-  readonly rotation: Rotation
-  /** the tick's auth input answers a teleport */
-  readonly teleported: boolean
-}
+/** what a tick's movement read: the engine's input, or that it held the player (physicsEnabled false) */
+export type MovementInput = TickInput | 'held'
 
 /** what a server packet says the player's movement was after a tick */
-export type Filing = Partial<MovementState>
+export type Filing =
+  | { readonly kind: 'teleport', readonly position: Vec3Data, readonly onGround: boolean }
+  | ({ readonly kind: 'correction' } & Correction)
+  | { readonly kind: 'motion', readonly velocity: Vec3Data }
 
-export type TickRecord = HistoryRecord<TickInput, MovementState, Filing>
+export type TickRecord = HistoryRecord<MovementInput, MovementState, Filing>
 
 /** a correction this near its tick's record (squared), on the ground alike, says nothing new */
 const AGREEMENT = Math.fround(1e-5)
 
+/** the movement with a server packet applied: the box follows the feet the packet gives */
 export function applied (state: MovementState, filing: Filing): MovementState {
-  return { ...state, ...filing }
+  if (filing.kind === 'teleport') return teleportTo(state, filing.position, filing.onGround)
+  if (filing.kind === 'correction') return correctTo(state, filing)
+  return { ...state, velocity: filing.velocity }
 }
 
 /** summed as the vanilla client sums it, in floats */
-export function agrees (record: MovementState, correction: Pick<MovementState, 'position' | 'onGround'>): boolean {
+export function agrees (record: Pick<MovementState, 'position' | 'onGround'>, correction: Pick<MovementState, 'position' | 'onGround'>): boolean {
   const f = Math.fround
   const [dx, dy, dz] = [f(correction.position.x - record.position.x), f(correction.position.y - record.position.y), f(correction.position.z - record.position.z)]
   return f(f(dz * dz) + f(f(dy * dy) + f(dx * dx))) <= AGREEMENT && correction.onGround === record.onGround
@@ -48,7 +42,7 @@ export function rewindsUnder (authority: string | number | undefined): boolean {
  * from there; under another it acts at once.
  */
 export class Corrections {
-  readonly history = new History<TickInput, MovementState, Filing>()
+  readonly history = new History<MovementInput, MovementState, Filing>()
   readonly stats = { filed: 0, agreed: 0, echoes: 0, unstamped: 0, tooOld: 0, anomalies: 0, rewinds: 0, replayedTicks: 0, abandoned: 0 }
   rewinds = true
 

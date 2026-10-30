@@ -12,13 +12,16 @@ import type { Point3, StartGame } from './common/world.ts'
 // The server's corrections of the local player. Under a movement authority that rewinds the player, a packet that names
 // one of the bot's ticks is filed on that tick's record in the packet pass, and the next tick starts by playing the
 // ticks since again from it: that tick's auth input reports where they lead. Under another authority the packet acts at
-// once. Until the physics come the player stays where the server put it, so a rewind holds the corrected pose. The
-// player joins with its feet at (0.5, 12, 0.5), off the ground, and keeps its last 20 ticks.
+// once. The player joins with its feet at (0.5, 12, 0.5), on a stone floor, where it stands (its velocity is gravity's
+// -0.0784 each tick), and keeps its last 20 ticks; where it is corrected to is on the floor too, so that the ticks
+// played again leave it there.
 
 type Correction = Partial<ClientboundPacketsToWrite['correct_player_move_prediction']>
 type Stats = BedrockBotInternal['_player']['corrections']['stats']
 
+/** the velocity of a player standing on the ground: gravity's, every tick */
 const FALLING = Object.freeze({ x: 0, y: -0.07840000092983246, z: 0 })
+const STANDING_VELOCITY = new Vec3(FALLING.x, FALLING.y, FALLING.z)
 const PUSHED = Object.freeze({ x: 0.25, y: 0.5, z: -0.25 })
 const JOINED_EYE = Object.freeze({ x: 0.5, y: 13.6200103759765625, z: 0.5 })
 /** where the server corrects the player to: the eye, and the feet under it */
@@ -87,17 +90,14 @@ async function correctedThreeTicksBack (version: BedrockVersion, corrections: Co
 /** the next tick's flush is its auth input alone, which reports where 3 ticks played again lead */
 const CORRECTED_THREE_TICKS_BACK = Object.freeze({ flushed: [['player_auth_input', 1]], eye: CORRECTED_EYE, feet: CORRECTED_FEET, tick: 1, filed: 1, rewinds: 1, replayedTicks: 3 })
 
-/**
- * keeps its last `kept` ticks: a correction before them is too old, and one of the oldest rewinds the player before the
- * tick moves it (standing still, without the correction's velocity)
- */
+/** keeps its last `kept` ticks: a correction before them is too old, and one of the oldest rewinds the player */
 async function keeps (version: BedrockVersion, game: StartGame, kept: number): Promise<void> {
   const testBot = await joined(version, game)
   correct(testBot, testBot.tick - kept)
   correct(testBot, testBot.tick - kept + 1)
   await testBot.driver.tick()
   const { tooOld, rewinds, replayedTicks } = stats(testBot)
-  assert.deepStrictEqual([eyeAfter(testBot, 1), testBot.bot.entity.velocity, tooOld, rewinds, replayedTicks], [CORRECTED_EYE, new Vec3(0, 0, 0), 1, 1, kept - 1])
+  assert.deepStrictEqual([eyeAfter(testBot, 1), testBot.bot.entity.velocity, tooOld, rewinds, replayedTicks], [CORRECTED_EYE, STANDING_VELOCITY, 1, 1, kept - 1])
 }
 
 /** a correction of the tick before: the player as the packet pass left it, then the next tick's auth input and the player */
@@ -111,15 +111,18 @@ async function correctedOnce (testBot: Joined): Promise<object> {
   return { atOnce, eye: eyeAfter(testBot, 1), after: [testBot.bot.entity.position, testBot.bot.entity.velocity], filed, rewinds }
 }
 
-const STANDING = Object.freeze([new Vec3(0.5, 12, 0.5), new Vec3(0, 0, 0), false])
+const STANDING = Object.freeze([new Vec3(0.5, 12, 0.5), STANDING_VELOCITY, true])
 
-/** the player's velocity once the packet pass is done, and after the next tick */
+/** the player's velocity once the packet pass is done, and its feet after the next tick */
 async function velocities ({ bot, driver }: TestBot): Promise<[Vec3, Vec3]> {
   await driver.frame(0)
   const atOnce = bot.entity.velocity
   await driver.tick()
-  return [atOnce, bot.entity.velocity]
+  return [atOnce, bot.entity.position]
 }
+
+/** where the player standing at (0.5, 12, 0.5) is a tick after it was given PUSHED: against the stone at (1, 12, 0) */
+const PUSHED_ONCE = new Vec3(0.699999988079071, 12.5, 0.25)
 
 /** a plugin is given the internal bot */
 function isInternal (bot: BedrockBot): bot is BedrockBotInternal {
@@ -209,7 +212,7 @@ describe('bedrock corrections', () => {
       it(`bedrock ${version}: places the player in the packet pass, as under the client authority`, async () => {
         for (const game of [{}, { movement_authority: 'client' as const }]) {
           assert.deepStrictEqual(await correctedOnce(await joined(version, game)), {
-            atOnce: [CORRECTED_FEET, new Vec3(FALLING.x, FALLING.y, FALLING.z), true], eye: CORRECTED_EYE, after: [CORRECTED_FEET, new Vec3(0, 0, 0)], filed: 0, rewinds: 0
+            atOnce: [CORRECTED_FEET, STANDING_VELOCITY, true], eye: CORRECTED_EYE, after: [CORRECTED_FEET, STANDING_VELOCITY], filed: 0, rewinds: 0
           })
         }
       })
@@ -219,7 +222,7 @@ describe('bedrock corrections', () => {
   describe('servers of the server movement authority with rewind (1.21.70, 1.21.80, as recorded)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.21.70', 'bedrock_1.21.80')) {
       it(`bedrock ${version}: files a correction, and rewinds the player in the next tick`, async () => {
-        assert.deepStrictEqual(await correctedOnce(await joined(version)), { atOnce: STANDING, eye: CORRECTED_EYE, after: [CORRECTED_FEET, new Vec3(0, 0, 0)], filed: 1, rewinds: 1 })
+        assert.deepStrictEqual(await correctedOnce(await joined(version)), { atOnce: STANDING, eye: CORRECTED_EYE, after: [CORRECTED_FEET, STANDING_VELOCITY], filed: 1, rewinds: 1 })
       })
     }
   })
@@ -227,7 +230,13 @@ describe('bedrock corrections', () => {
   describe('servers naming no movement authority, which rewinds the player (1.21.90+)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.21.90')) {
       it(`bedrock ${version}: files a correction, and reports it in the next tick: that of tick 61 received after the auth input of tick 62 in that of tick 63, as recorded`, async () => {
-        const { bot, internal, server, driver } = await joined(version)
+        const testBot = await bedrockTestBot(bedrockCodec(version))
+        const { bot, internal, server, driver } = testBot
+        const world = new ServerWorld(server)
+        await world.join(testBot)
+        // the floor the player was corrected onto, at y 0
+        world.column(0, 4, Array.from({ length: 256 }, (_, index) => [index >> 4, 0, 64 + (index & 15), 'stone'] as const))
+        await world.load(driver, [[0, 4]])
         await driver.runUntil(() => internal._core.tick === 62, 100)
         const recorded = { x: 8.324000358581543, y: 2.6200098991394043, z: 65.51499938964844 }
         server.send('correct_player_move_prediction', { position: recorded, delta: { x: 0, y: 0, z: 0 }, on_ground: true, tick: 61n })
@@ -235,7 +244,7 @@ describe('bedrock corrections', () => {
         const atOnce = bot.entity.position
         await driver.tick()
         const { filed, rewinds, replayedTicks } = stats({ bot, internal, server, driver })
-        assert.deepStrictEqual([atOnce, server.authInput(63).position, bot.entity.onGround, filed, rewinds, replayedTicks], [new Vec3(0.5, 12, 0.5), recorded, true, 1, 1, 1])
+        assert.deepStrictEqual([atOnce, server.authInput(63).position, server.authInput(63).delta, filed, rewinds, replayedTicks], [new Vec3(0.5, 12, 0.5), recorded, FALLING, 1, 1, 1])
       })
     }
   })
@@ -267,12 +276,12 @@ describe('bedrock corrections', () => {
 
   describe('servers setting the velocity without a tick (up to 1.20.61)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.20.61')) {
-      it(`bedrock ${version}: sets the player's in the packet pass, the ring starting again; the player stands still from the next tick`, async () => {
+      it(`bedrock ${version}: sets the player's in the packet pass, the ring starting again; the player moves by it in the next tick`, async () => {
         const testBot = await joined(version, rewinding(version))
         setMotion(testBot, PUSHED, undefined)
         setMotion(testBot, FALLING, undefined, 2)
         correct(testBot, testBot.tick)
-        assert.deepStrictEqual([await velocities(testBot), stats(testBot).tooOld], [[new Vec3(0.25, 0.5, -0.25), new Vec3(0, 0, 0)], 1])
+        assert.deepStrictEqual([await velocities(testBot), stats(testBot).tooOld], [[new Vec3(0.25, 0.5, -0.25), PUSHED_ONCE], 1])
       })
     }
   })
@@ -282,7 +291,7 @@ describe('bedrock corrections', () => {
       it(`bedrock ${version}: sets the player's in the packet pass`, async () => {
         const testBot = await joined(version)
         setMotion(testBot, PUSHED, testBot.tick - 1)
-        assert.deepStrictEqual([await velocities(testBot), stats(testBot).filed], [[new Vec3(0.25, 0.5, -0.25), new Vec3(0, 0, 0)], 0])
+        assert.deepStrictEqual([await velocities(testBot), stats(testBot).filed], [[new Vec3(0.25, 0.5, -0.25), PUSHED_ONCE], 0])
       })
     }
   })
@@ -291,7 +300,7 @@ describe('bedrock corrections', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.21.70')) {
       it(`bedrock ${version}: counts the player's present velocity as an echo, files another of a tick it keeps, drops one of a tick it does not, and sets it at once unstamped`, async () => {
         const testBot = await joined(version)
-        setMotion(testBot, { x: 0, y: 0, z: 0 }, testBot.tick)
+        setMotion(testBot, FALLING, testBot.tick)
         setMotion(testBot, PUSHED, testBot.tick + 9)
         setMotion(testBot, PUSHED, 1)
         setMotion(testBot, PUSHED, testBot.tick - 1)
@@ -300,8 +309,10 @@ describe('bedrock corrections', () => {
         setMotion(testBot, PUSHED, 0)
         setMotion(testBot, PUSHED, testBot.tick)
         const counted = { filed: 1, agreed: 0, echoes: 1, unstamped: 0, tooOld: 1, anomalies: 1, rewinds: 1, replayedTicks: 1, abandoned: 0 }
+        // pushed from the tick before: played again, then on in the next tick; then pushed on from there
         assert.deepStrictEqual([filed, await velocities(testBot), stats(testBot)], [
-          [[new Vec3(0, 0, 0), new Vec3(0, 0, 0)], counted], [new Vec3(0.25, 0.5, -0.25), new Vec3(0, 0, 0)], { ...counted, echoes: 2 }
+          [[STANDING_VELOCITY, new Vec3(0.699999988079071, 12.911600112915039, 0.11349999159574509)], counted],
+          [new Vec3(0.25, 0.5, -0.25), new Vec3(0.949999988079071, 13.411600112915039, -0.13650000095367432)], { ...counted, echoes: 2 }
         ])
       })
     }
@@ -315,22 +326,26 @@ describe('bedrock corrections', () => {
       correct(testBot, 0)
       correct(testBot, 1)
       correct(testBot, testBot.tick + 1)
-      correct(testBot, testBot.tick - 1, AGREEING_EYE, { on_ground: false })
+      correct(testBot, testBot.tick - 1, AGREEING_EYE)
       await testBot.driver.tick()
       assert.deepStrictEqual([testBot.internal._core.tick, eyeAfter(testBot, 1), stats(testBot)], [testBot.tick + 1, JOINED_EYE, {
         filed: 0, agreed: 1, echoes: 0, unstamped: 1, tooOld: 1, anomalies: 1, rewinds: 0, replayedTicks: 0, abandoned: 0
       }])
     })
 
-    it('files a correction a float farther, or on the ground, or while a rewind is asked for', async () => {
+    it('files a correction a float farther, or off the ground, or while a rewind is asked for', async () => {
       const testBot = await joined(version)
-      correct(testBot, testBot.tick - 1, DISAGREEING_EYE, { on_ground: false })
+      correct(testBot, testBot.tick - 1, DISAGREEING_EYE)
       await testBot.driver.tick()
-      correct(testBot, testBot.tick + 1, DISAGREEING_EYE, { on_ground: true })
-      correct(testBot, testBot.tick, DISAGREEING_EYE, { on_ground: false })
+      // where the ticks played again left the player: on the floor, under the correction
+      const played = eyeAfter(testBot, 1)
+      correct(testBot, testBot.tick + 1, played, { on_ground: false })
+      correct(testBot, testBot.tick, played)
       await testBot.driver.tick()
       const { filed, agreed, rewinds, replayedTicks } = stats(testBot)
-      assert.deepStrictEqual([filed, agreed, rewinds, replayedTicks, eyeAfter(testBot, 2), testBot.bot.entity.onGround], [3, 0, 2, 2, DISAGREEING_EYE, true])
+      assert.deepStrictEqual([played, filed, agreed, rewinds, replayedTicks, eyeAfter(testBot, 2), testBot.bot.entity.onGround], [
+        { ...DISAGREEING_EYE, y: JOINED_EYE.y }, 3, 0, 2, 2, played, true
+      ])
     })
 
     it('agrees with a correction of the ticks it played again, and of one before them, as they were played', async () => {
@@ -339,17 +354,20 @@ describe('bedrock corrections', () => {
       correct(testBot, tick - 1)
       await driver.tick()
       const { history } = internal._player.corrections
-      const played = [tick - 2, tick - 1, tick].map(record => history.get(record)?.snapshot)
-      correct(testBot, tick - 2, JOINED_EYE, { on_ground: false })
+      const played = [tick - 2, tick - 1, tick].map(record => {
+        const snapshot = history.get(record)?.snapshot
+        return snapshot === undefined ? undefined : { position: snapshot.position, velocity: snapshot.velocity, onGround: snapshot.onGround }
+      })
+      correct(testBot, tick - 2, JOINED_EYE)
       correct(testBot, tick - 1)
       correct(testBot, tick)
       await driver.tick()
       const { filed, agreed, rewinds } = stats(testBot)
       const corrected = { position: { x: 3.5, y: 12, z: -2.5 }, onGround: true }
       assert.deepStrictEqual([played, filed, agreed, rewinds, eyeAfter(testBot, 2)], [[
-        { position: { x: 0.5, y: 12, z: 0.5 }, velocity: { x: 0, y: 0, z: 0 }, onGround: false },
+        { position: { x: 0.5, y: 12, z: 0.5 }, velocity: FALLING, onGround: true },
         { ...corrected, velocity: FALLING },
-        { ...corrected, velocity: { x: 0, y: 0, z: 0 } }
+        { ...corrected, velocity: FALLING }
       ], 1, 3, 1, CORRECTED_EYE])
     })
 
@@ -399,11 +417,16 @@ describe('bedrock corrections', () => {
       const stopped = bot.entity.velocity
       await driver.ticks(2)
       const records = [tick + 1, tick + 2].map(recorded => internal._player.corrections.history.get(recorded))
-      const standing = { position: { x: 4.5, y: 12, z: 0.5 }, velocity: { x: 0, y: 0, z: 0 }, onGround: true }
-      assert.deepStrictEqual([stopped, records.map(record => record === undefined ? undefined : [record.input.cooked.moveVector, record.input.rotation, record.input.teleported, record.snapshot])], [
+      const read = records.map(record => {
+        if (record === undefined || record.input === 'held') return undefined
+        const { input: { move, yaw, teleported }, snapshot: { position, velocity, onGround } } = record
+        return [move, yaw, teleported, { position, velocity, onGround }]
+      })
+      assert.deepStrictEqual([stopped, read], [
         new Vec3(0, 0, 0), [
-          [{ x: 0, z: 1 }, { yaw: 90, pitch: 30 }, true, standing],
-          [{ x: 0, z: 1 }, { yaw: 90, pitch: 30 }, false, standing]
+          [{ x: 0, z: 1 }, 90, true, { position: { x: 4.5, y: 12, z: 0.5 }, velocity: { x: 0, y: 0, z: 0 }, onGround: true }],
+          // the first tick walking west, as recorded
+          [{ x: 0, z: 1 }, 90, false, { position: { x: 4.4019999504089355, y: 12, z: 0.5 }, velocity: { x: -0.053508009761571884, y: -0.07840000092983246, z: -0 }, onGround: true }]
         ]
       ])
     })

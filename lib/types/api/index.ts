@@ -80,6 +80,8 @@ export interface BedrockBotOptions {
   connectTimeout?: number
   /** the chunk radius asked of the server @default 8, from 1.21.90 12 (the vanilla client's) */
   viewDistance?: number
+  /** whether the physics move the player @default true */
+  physicsEnabled?: boolean
 }
 
 export interface BedrockPluginOptions {
@@ -109,6 +111,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   registry: Registry
   /** from start_game */
   entity: BedrockPlayer
+  /** the physics move the player; false holds it where it is, standing still: acts from the next frame */
+  physicsEnabled: boolean
   time: Time | TimeNotSynced
   /** the controls held: set, each acts from the next frame */
   controlState: ControlStateStatus

@@ -10,7 +10,8 @@ import { ServerWorld } from './common/world.ts'
 
 // The controls and the look, phase by phase: a control set acts in the next frame's input pass and shows in the next
 // tick's auth input; a look is applied after the next frame's ticks and shows in the auth input of the frame after.
-// The keys' flags are grouped by the flags the version's server reads.
+// The keys' flags are grouped by the flags the version's server reads; the flags of what the physics did (a start, a
+// stop, a collision) are physicsTest's.
 
 /** a joined bot */
 async function joinedBot (codec: BedrockCodec): Promise<TestBot> {
@@ -19,12 +20,20 @@ async function joinedBot (codec: BedrockCodec): Promise<TestBot> {
   return testBot
 }
 
-/** holds `keys` (and nothing else) for a tick: that tick's auth input's flags */
+/** what the physics did: started or stopped, or collided */
+const MOVEMENT_FLAGS: ReadonlySet<string> = new Set(['start_sprinting', 'stop_sprinting', 'start_sneaking', 'stop_sneaking', 'start_jumping', 'horizontal_collision', 'vertical_collision'])
+
+/** the flags of the keys an auth input sets */
+function keyFlags (input: AuthInput): string[] {
+  return inputFlags(input).set.filter(flag => !MOVEMENT_FLAGS.has(flag))
+}
+
+/** holds `keys` (and nothing else) for a tick: that tick's auth input's flags of the keys */
 async function flagsHolding ({ bot, internal, server, driver }: TestBot, keys: readonly ControlState[]): Promise<string[]> {
   bot.clearControlStates()
   for (const control of keys) bot.setControlState(control, true)
   await driver.tick()
-  return inputFlags(server.authInput(internal._core.tick ?? -1)).set
+  return keyFlags(server.authInput(internal._core.tick ?? -1))
 }
 
 const PRESSED: readonly ControlState[] = Object.freeze(['forward', 'left', 'jump', 'sprint', 'sneak'])
@@ -34,8 +43,8 @@ describe('bedrock controls', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.20.80')) {
       it(`bedrock ${version}: reports the keys held`, async () => {
         const testBot = await joinedBot(bedrockCodec(version))
-        assert.deepStrictEqual(await flagsHolding(testBot, PRESSED), ['north_jump', 'jump_down', 'sprint_down', 'jumping', 'sneaking', 'sneak_down', 'up', 'left', 'want_up', 'want_down'])
-        assert.deepStrictEqual(await flagsHolding(testBot, ['back', 'right', 'sprint']), ['sprint_down', 'down', 'right'])
+        assert.deepStrictEqual(await flagsHolding(testBot, PRESSED), ['north_jump', 'jump_down', 'sprint_down', 'jumping', 'sneaking', 'sneak_down', 'up', 'left', 'want_up', 'want_down', 'sprinting'])
+        assert.deepStrictEqual(await flagsHolding(testBot, ['back', 'right', 'sprint']), ['sprint_down', 'down', 'right', 'sprinting'])
       })
     }
   })
@@ -44,8 +53,8 @@ describe('bedrock controls', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.21.0', 'bedrock_1.21.42')) {
       it(`bedrock ${version}: reports the keys held`, async () => {
         const testBot = await joinedBot(bedrockCodec(version))
-        assert.deepStrictEqual(await flagsHolding(testBot, PRESSED), ['jump_down', 'sprint_down', 'jumping', 'sneaking', 'sneak_down', 'up', 'left', 'want_up', 'want_down', 'block_breaking_delay_enabled'])
-        assert.deepStrictEqual(await flagsHolding(testBot, ['back', 'right', 'sprint']), ['sprint_down', 'down', 'right', 'block_breaking_delay_enabled'])
+        assert.deepStrictEqual(await flagsHolding(testBot, PRESSED), ['jump_down', 'sprint_down', 'jumping', 'sneaking', 'sneak_down', 'up', 'left', 'want_up', 'want_down', 'sprinting', 'block_breaking_delay_enabled'])
+        assert.deepStrictEqual(await flagsHolding(testBot, ['back', 'right', 'sprint']), ['sprint_down', 'down', 'right', 'sprinting', 'block_breaking_delay_enabled'])
       })
     }
   })
@@ -54,11 +63,11 @@ describe('bedrock controls', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.21.50')) {
       it(`bedrock ${version}: reports the keys held, and the jump and sneak keys pressed and released`, async () => {
         const testBot = await joinedBot(bedrockCodec(version))
-        const held = ['jump_down', 'sprint_down', 'jumping', 'sneaking', 'sneak_down', 'up', 'left', 'want_up', 'want_down', 'block_breaking_delay_enabled']
+        const held = ['jump_down', 'sprint_down', 'jumping', 'sneaking', 'sneak_down', 'up', 'left', 'want_up', 'want_down', 'sprinting', 'block_breaking_delay_enabled']
         assert.deepStrictEqual(await flagsHolding(testBot, PRESSED), [...held, 'jump_pressed_raw', 'jump_current_raw', 'sneak_pressed_raw', 'sneak_current_raw'])
         await testBot.driver.tick()
-        assert.deepStrictEqual(inputFlags(testBot.server.authInput(testBot.internal._core.tick ?? -1)).set, [...held, 'jump_current_raw', 'sneak_current_raw'])
-        assert.deepStrictEqual(await flagsHolding(testBot, ['back', 'right', 'sprint']), ['sprint_down', 'down', 'right', 'block_breaking_delay_enabled', 'jump_released_raw', 'sneak_released_raw'])
+        assert.deepStrictEqual(keyFlags(testBot.server.authInput(testBot.internal._core.tick ?? -1)), [...held, 'jump_current_raw', 'sneak_current_raw'])
+        assert.deepStrictEqual(await flagsHolding(testBot, ['back', 'right', 'sprint']), ['sprint_down', 'down', 'right', 'sprinting', 'block_breaking_delay_enabled', 'jump_released_raw', 'sneak_released_raw'])
       })
     }
   })
@@ -87,7 +96,7 @@ describe('bedrock controls', () => {
       const tick = (internal._core.tick ?? -1) + 1
       bot.once('physicsTick', () => { bot.setControlState('forward', true) })
       await driver.ticks(2)
-      assert.deepStrictEqual([inputFlags(server.authInput(tick)).set, inputFlags(server.authInput(tick + 1)).set], [['block_breaking_delay_enabled'], ['up', 'block_breaking_delay_enabled']])
+      assert.deepStrictEqual([keyFlags(server.authInput(tick)), keyFlags(server.authInput(tick + 1))], [['block_breaking_delay_enabled'], ['up', 'block_breaking_delay_enabled']])
     })
 
     it('cooks the keys into a move vector: x left and z forward, a diagonal as long as a side, scaled while sneaking', async () => {
@@ -133,7 +142,7 @@ describe('bedrock controls', () => {
       await driver.tick()
       await world.answer()
       await driver.ticks(3)
-      assert.deepStrictEqual([1, 2, 3, 4, 5].map(tick => server.inTick(tick)[0] === undefined ? [] : inputFlags(server.authInput(tick)).set), [
+      assert.deepStrictEqual([1, 2, 3, 4, 5].map(tick => server.inTick(tick)[0] === undefined ? [] : keyFlags(server.authInput(tick))), [
         [],
         ['block_breaking_delay_enabled'],
         ['block_breaking_delay_enabled'],

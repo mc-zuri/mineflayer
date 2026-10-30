@@ -1,3 +1,4 @@
+import type { TickActions } from 'prismarine-physics/lib/bedrock/index.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
 import type { BedrockVersion, ControlState } from '../../types/api/index.ts'
 import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
@@ -15,11 +16,20 @@ export interface Latch { readonly level: boolean, readonly down: boolean, readon
 
 /** what the input system made of the controls in a tick */
 export interface CookedInput {
-  /** x left, z forward; scaled while sneaking */
-  readonly moveVector: Vec2f
-  /** the move vector before the sneak's scale */
-  readonly rawMoveVector: Vec2f
+  /** the move the direction keys ask for: x left, z forward, a diagonal as long as a side */
+  readonly direction: Vec2f
   readonly keys: Readonly<Record<ControlState, Latch>>
+}
+
+/** what moved the player in a tick: the keys, the move the engine was given, and what it did */
+export interface Movement {
+  readonly keys: Readonly<Record<ControlState, Latch>>
+  /** the direction, scaled while sneaking */
+  readonly move: Vec2f
+  readonly direction: Vec2f
+  readonly actions: TickActions
+  readonly horizontalCollision: boolean
+  readonly verticalCollision: boolean
 }
 
 export interface AuthInputState {
@@ -28,8 +38,10 @@ export interface AuthInputState {
   /** the eye: where the player reports it is */
   readonly position: Vec3f
   readonly delta: Vec3f
-  /** the controls, while the player is simulated; none while its auth inputs are held */
-  readonly input: CookedInput | undefined
+  /** the player moves: the camera is set up (while its auth inputs are held it is not) */
+  readonly active: boolean
+  /** the tick's movement, unless the player was held */
+  readonly movement: Movement | undefined
   /** the input answers a teleport */
   readonly teleportAck: boolean
 }
@@ -61,7 +73,8 @@ const INPUT_FLAGS: readonly FlagGroup[] = Object.freeze([
   ['bedrock_1.21.50', ['hotbar_only_touch', 'jump_released_raw', 'jump_pressed_raw', 'jump_current_raw', 'sneak_released_raw', 'sneak_pressed_raw', 'sneak_current_raw']]
 ])
 
-type FlagName = 'up' | 'down' | 'left' | 'right' | 'north_jump' | 'jump_down' | 'jumping' | 'want_up' | 'sprint_down' | 'sneak_down' | 'sneaking' | 'want_down' |
+type FlagName = 'up' | 'down' | 'left' | 'right' | 'north_jump' | 'jump_down' | 'jumping' | 'want_up' | 'sprint_down' | 'sprinting' | 'sneak_down' | 'sneaking' | 'want_down' |
+  'start_sprinting' | 'stop_sprinting' | 'start_sneaking' | 'stop_sneaking' | 'start_jumping' | 'horizontal_collision' | 'vertical_collision' |
   'handled_teleport' | 'block_breaking_delay_enabled' | 'jump_released_raw' | 'jump_pressed_raw' | 'jump_current_raw' | 'sneak_released_raw' | 'sneak_pressed_raw' | 'sneak_current_raw'
 
 const ZERO_VEC2 = Object.freeze({ x: 0, z: 0 })
@@ -73,11 +86,11 @@ function inputFlagNames (version: BedrockVersion): readonly string[] {
 }
 
 /** the flags set: a flag the version does not have is not sent */
-function flagsOf (version: BedrockVersion, { input, teleportAck }: AuthInputState): Set<FlagName> {
+function flagsOf (version: BedrockVersion, { movement, teleportAck }: AuthInputState): Set<FlagName> {
   const flags = new Set<FlagName>(['block_breaking_delay_enabled'])
   if (teleportAck) flags.add('handled_teleport')
-  if (input === undefined) return flags
-  const { forward, back, left, right, jump, sprint, sneak } = input.keys
+  if (movement === undefined) return flags
+  const { keys: { forward, back, left, right, jump, sprint, sneak }, actions } = movement
   const reported: Array<[boolean, readonly FlagName[]]> = [
     [forward.level, ['up']],
     [back.level, ['down']],
@@ -85,8 +98,15 @@ function flagsOf (version: BedrockVersion, { input, teleportAck }: AuthInputStat
     [right.level, ['right']],
     [jump.level, ['jump_down', 'jumping', 'want_up']],
     [jump.level && !isBedrockVersionAtLeast(version, 'bedrock_1.21.0'), ['north_jump']],
-    [sprint.level, ['sprint_down']],
+    [sprint.level, ['sprint_down', 'sprinting']],
     [sneak.level, ['sneak_down', 'sneaking', 'want_down']],
+    [actions.startSprinting, ['start_sprinting']],
+    [actions.stopSprinting, ['stop_sprinting']],
+    [actions.startSneaking, ['start_sneaking']],
+    [actions.stopSneaking, ['stop_sneaking']],
+    [actions.startJumping, ['start_jumping']],
+    [movement.horizontalCollision, ['horizontal_collision']],
+    [movement.verticalCollision, ['vertical_collision']],
     [jump.up, ['jump_released_raw']],
     [jump.down, ['jump_pressed_raw']],
     [jump.level, ['jump_current_raw']],
@@ -110,7 +130,7 @@ function inputData (version: BedrockVersion, flags: ReadonlySet<string>): NonNul
   return { ...bits, _value: set.reduce((value, bit) => value | (1n << BigInt(bit)), 0n) }
 }
 
-/** where the camera looks, while the player is simulated */
+/** where the camera looks, once the player moves */
 function cameraOrientation ({ yaw, pitch }: Rotation): Vec3f {
   const [yawRadians, pitchRadians] = [yaw * Math.PI / 180, pitch * Math.PI / 180]
   // 0 - x rather than -x: a zero is +0 (-0 has its sign bit set on the wire)
@@ -127,12 +147,12 @@ function cameraOrientation ({ yaw, pitch }: Rotation): Vec3f {
  */
 export function authInput (version: BedrockVersion, state: AuthInputState): AuthInput {
   const atLeast = (since: BedrockVersion): boolean => isBedrockVersionAtLeast(version, since)
-  const { tick, rotation, position, delta, input } = state
+  const { tick, rotation, position, delta, active, movement } = state
   const packet: AuthInput = {
     pitch: rotation.pitch,
     yaw: rotation.yaw,
     position,
-    move_vector: input?.moveVector ?? ZERO_VEC2,
+    move_vector: movement?.move ?? ZERO_VEC2,
     head_yaw: rotation.yaw,
     input_data: inputData(version, flagsOf(version, state)),
     input_mode: atLeast('bedrock_1.16.210') ? 'mouse' : 'touch',
@@ -143,10 +163,10 @@ export function authInput (version: BedrockVersion, state: AuthInputState): Auth
   if (atLeast('bedrock_1.19.1')) packet.interaction_model = 'touch'
   if (atLeast('bedrock_1.19.70')) packet.analogue_move_vector = ZERO_VEC2
   if (atLeast('bedrock_1.21.42')) {
-    packet.interact_rotation = input === undefined ? ZERO_VEC2 : { x: rotation.pitch, z: rotation.yaw }
-    packet.camera_orientation = input === undefined ? ZERO_VEC3 : cameraOrientation(rotation)
+    packet.interact_rotation = active ? { x: rotation.pitch, z: rotation.yaw } : ZERO_VEC2
+    packet.camera_orientation = active ? cameraOrientation(rotation) : ZERO_VEC3
   }
-  if (atLeast('bedrock_1.21.50')) packet.raw_move_vector = input?.rawMoveVector ?? ZERO_VEC2
+  if (atLeast('bedrock_1.21.50')) packet.raw_move_vector = movement?.direction ?? ZERO_VEC2
   if (atLeast('bedrock_1.26.40') && !atLeast('bedrock_1.26.51')) {
     // the vanilla client writes each absent field as present, then absent
     packet.transaction_presence = true
