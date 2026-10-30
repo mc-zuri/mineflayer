@@ -234,8 +234,8 @@ export namespace MCProtocol.Bedrock.Read.Types {
 		inventory_actions?: {
 			source_type: "container" | "global" | "world_interaction" | "creative" | "craft_slot" | "craft" | number;
 			inventory_id?: number | undefined;
-			flags?: number | undefined;
 			action?: number | undefined;
+			flags?: number | undefined;
 			slot: number;
 			old_item: Item;
 			new_item: Item;
@@ -467,7 +467,7 @@ export namespace MCProtocol.Bedrock.Read.Types {
 	export type SkinImage = {
 		width: number;
 		height: number;
-		data: string | ByteArray;
+		data: ByteArray;
 	};
 	export type Skin = {
 		skin_id: string;
@@ -482,7 +482,7 @@ export namespace MCProtocol.Bedrock.Read.Types {
 		cape_data: SkinImage;
 		geometry_data: string;
 		animation_data: string;
-		premium: string | boolean;
+		premium: boolean;
 		persona: boolean;
 		cape_on_classic: boolean;
 		cape_id: string;
@@ -611,12 +611,16 @@ export namespace MCProtocol.Bedrock.Read.Types {
 		option_id: number;
 	}[];
 	/**
+	 * Used in inventory transactions.
+	 */
+	export type ContainerSlotType = "anvil_input" | "anvil_material" | "anvil_result" | "smithing_table_input" | "smithing_table_material" | "smithing_table_result" | "armor" | "container" | "beacon_payment" | "brewing_input" | "brewing_result" | "brewing_fuel" | "hotbar_and_inventory" | "crafting_input" | "crafting_output" | "recipe_construction" | "recipe_nature" | "recipe_items" | "recipe_search" | "recipe_search_bar" | "recipe_equipment" | "enchanting_input" | "enchanting_lapis" | "furnace_fuel" | "furnace_ingredient" | "furnace_output" | "horse_equip" | "hotbar" | "inventory" | "shulker" | "trade_ingredient1" | "trade_ingredient2" | "trade_result" | "offhand" | "compcreate_input" | "compcreate_output" | "elemconstruct_output" | "matreduce_input" | "matreduce_output" | "labtable_input" | "loom_input" | "loom_dye" | "loom_material" | "loom_result" | "blast_furnace_ingredient" | "smoker_ingredient" | "trade2_ingredient1" | "trade2_ingredient2" | "trade2_result" | "grindstone_input" | "grindstone_additional" | "grindstone_result" | "stonecutter_input" | "stonecutter_result" | "cartography_input" | "cartography_additional" | "cartography_result" | "barrel" | "cursor" | "creative_output" | number | "recipe_book" | "smithing_table_template" | "crafter" | "dynamic" | "registry" | "recipe_food" | "recipe_blocks" | "recipe_furnace_items" | "reserved_container_a" | "reserved_container_b" | "reserved_container_c" | "reserved_container_d";
+	/**
 	 * Source and Destination point to the source slot from which Count of the item stack were taken and the
 	 * destination slot to which this item was moved.
 	 */
 	export type StackRequestSlotInfo = {
 		/** Versions: 1.16.201 */
-		container_id?: number | undefined;
+		container_id?: ContainerSlotType | undefined;
 		/** Versions: 1.16.201 */
 		slot_id?: number | undefined;
 		/** StackNetworkID is the unique stack ID that the client assumes to be present in this slot. The server must check if these IDs match. If they do not match, servers should reject the stack request that the action holding this info was in. As of 1.26.40 this is a little endian int instead of a zigzag varint. */
@@ -641,10 +645,10 @@ export namespace MCProtocol.Bedrock.Read.Types {
 			primary_effect?: number | undefined;
 			secondary_effect?: number | undefined;
 			recipe_network_id?: number | undefined;
-			times_crafted?: number | undefined;
 			creative_item_network_id?: number | undefined;
 			filtered_string_index?: number | undefined;
 			result_items?: Item[] | undefined;
+			times_crafted?: number | undefined;
 		}[];
 		custom_names: string[];
 	}[];
@@ -652,11 +656,11 @@ export namespace MCProtocol.Bedrock.Read.Types {
 	 * ItemStackResponse is a response to an individual ItemStackRequest.
 	 */
 	export type ItemStackResponses = {
-		result?: number | undefined;
+		result?: "ok" | "error" | number | undefined;
 		/** RequestID is the unique ID of the request that this response is in reaction to. If rejected, the client will undo the actions from the request with this ID. */
 		request_id: number;
 		containers?: {
-			container_id?: number | undefined;
+			container_id?: ContainerSlotType | undefined;
 			slots: {
 				slot: number;
 				hotbar_slot: number;
@@ -691,7 +695,7 @@ export namespace MCProtocol.Bedrock.Read.Types {
 	};
 	export type WindowID = "inventory" | "first" | "last" | "offhand" | "armor" | "creative" | "hotbar" | "fixed_inventory" | "ui" | "drop_contents" | "beacon" | "trading_output" | "trading_use_inputs" | "trading_input_2" | "trading_input_1" | "enchant_output" | "enchant_material" | "enchant_input" | "anvil_output" | "anvil_result" | "anvil_material" | "container_input" | "crafting_use_ingredient" | "crafting_result" | "crafting_remove_ingredient" | "crafting_add_ingredient" | "none" | number;
 	export type WindowIDVarint = "inventory" | "first" | "last" | "offhand" | "armor" | "creative" | "hotbar" | "fixed_inventory" | "ui" | "drop_contents" | "beacon" | "trading_output" | "trading_use_inputs" | "trading_input_2" | "trading_input_1" | "enchant_output" | "enchant_material" | "enchant_input" | "anvil_output" | "anvil_result" | "anvil_material" | "container_input" | "crafting_use_ingredient" | "crafting_result" | "crafting_remove_ingredient" | "crafting_add_ingredient" | "none" | number;
-	export type WindowType = "container" | "workbench" | "furnace" | "enchantment" | "brewing_stand" | "anvil" | "dispenser" | "dropper" | "hopper" | "cauldron" | "minecart_chest" | "minecart_hopper" | "horse" | "beacon" | "structure_editor" | "trading" | "command_block" | "jukebox" | "armor" | "hand" | "compound_creator" | "element_constructor" | "material_reducer" | "lab_table" | "loom" | "lectern" | "grindstone" | "blast_furnace" | "smoker" | "stonecutter" | "cartography" | "hud" | "jigsaw_editor" | "smithing_table" | number | "none" | "inventory" | "chest_boat" | "decorated_pot" | "crafter";
+	export type WindowType = "container" | "workbench" | "furnace" | "enchantment" | "brewing_stand" | "anvil" | "dispenser" | "dropper" | "hopper" | "cauldron" | "minecart_chest" | "minecart_hopper" | "horse" | "beacon" | "structure_editor" | "trading" | "command_block" | "jukebox" | "armor" | "hand" | "compound_creator" | "element_constructor" | "material_reducer" | "lab_table" | "loom" | "lectern" | "grindstone" | "blast_furnace" | "smoker" | "stonecutter" | "cartography" | "hud" | "jigsaw_editor" | "smithing_table" | "none" | "inventory" | number | "chest_boat" | "decorated_pot" | "crafter";
 	/**
 	 * TODO: remove?
 	 */
@@ -1527,7 +1531,7 @@ export namespace MCProtocol.Bedrock.Read.Types {
 	 */
 	export type packet_inventory_slot = {
 		/** WindowID is the ID of the window that the packet modifies. It must point to one of the windows that the client currently has opened. */
-		window_id: WindowIDVarint;
+		window_id: WindowIDVarint | WindowID;
 		/** Slot is the index of the slot that the packet modifies. The new item will be set to the slot at this index. */
 		slot: number;
 		/** NewItem is the item to be put in the slot at Slot. It will overwrite any item that may currently be present in that slot. */
@@ -3115,16 +3119,14 @@ export namespace MCProtocol.Bedrock.Read.Types {
 	 */
 	export type packet_creative_content = {
 		/** Individual items that are displayed within the creative inventory menu, grouped by their category. */
-		items: ItemStacks | {
+		items: {
+			runtime_id?: number | undefined;
+			item: Item | ItemLegacy;
+			stack_id?: number | undefined;
 			/** The index of the item in the creative menu. */
-			entry_id: number;
-			item: ItemLegacy;
-		}[] | {
-			/** The index of the item in the creative menu. */
-			entry_id: number;
-			item: ItemLegacy;
+			entry_id?: number | undefined;
 			/** The group index of the item - which group in the groups array this item belongs to. */
-			group_index: number;
+			group_index?: number | undefined;
 		}[];
 		/** The groups that are displayed within the creative inventory menu. Versions: 1.21.60 – 1.26.60 */
 		groups?: {
@@ -3796,10 +3798,10 @@ export namespace MCProtocol.Bedrock.Read.Types {
 			predicted_durability?: number | undefined;
 			network_id?: number | undefined;
 			recipe_network_id?: number | undefined;
-			times_crafted?: number | undefined;
 			item_id?: number | undefined;
 			filtered_string_index?: number | undefined;
 			result_items?: Item[] | ItemLegacy[] | ItemStackRequestInstanceDescriptor[] | undefined;
+			times_crafted?: number | undefined;
 			cost?: number | undefined;
 			pattern?: string | undefined;
 			ingredients?: RecipeIngredient[] | RecipeIngredient2[] | undefined;
@@ -3813,11 +3815,6 @@ export namespace MCProtocol.Bedrock.Read.Types {
 		/** Versions: 1.19.30 – 1.26.60 */
 		cause?: "chat_public" | "chat_whisper" | "sign_text" | "anvil_text" | "book_and_quill_text" | "command_block_text" | "block_actor_data_text" | "join_event_text" | "leave_event_text" | "slash_command_chat" | "cartography_text" | number | "slash_command_non_chat" | "scoreboard_text" | "ticking_area_text" | "kick_command" | "title_command" | "summon_command" | undefined;
 	};
-	/**
-	 * Used in inventory transactions.
-	 * Versions: 1.16.210 – 1.26.60
-	 */
-	export type ContainerSlotType = "anvil_input" | "anvil_material" | "anvil_result" | "smithing_table_input" | "smithing_table_material" | "smithing_table_result" | "armor" | "container" | "beacon_payment" | "brewing_input" | "brewing_result" | "brewing_fuel" | "hotbar_and_inventory" | "crafting_input" | "crafting_output" | "recipe_construction" | "recipe_nature" | "recipe_items" | "recipe_search" | "recipe_search_bar" | "recipe_equipment" | "enchanting_input" | "enchanting_lapis" | "furnace_fuel" | "furnace_ingredient" | "furnace_output" | "horse_equip" | "hotbar" | "inventory" | "shulker" | "trade_ingredient1" | "trade_ingredient2" | "trade_result" | "offhand" | "compcreate_input" | "compcreate_output" | "elemconstruct_output" | "matreduce_input" | "matreduce_output" | "labtable_input" | "loom_input" | "loom_dye" | "loom_material" | "loom_result" | "blast_furnace_ingredient" | "smoker_ingredient" | "trade2_ingredient1" | "trade2_ingredient2" | "trade2_result" | "grindstone_input" | "grindstone_additional" | "grindstone_result" | "stonecutter_input" | "stonecutter_result" | "cartography_input" | "cartography_additional" | "cartography_result" | "barrel" | "cursor" | "creative_output" | number | "recipe_book" | "smithing_table_template" | "crafter" | "dynamic" | "registry" | "recipe_food" | "recipe_blocks" | "recipe_furnace_items" | "reserved_container_a" | "reserved_container_b" | "reserved_container_c" | "reserved_container_d";
 	/**
 	 * Versions: 1.16.210 – 1.26.60
 	 */
@@ -4148,7 +4145,7 @@ export namespace MCProtocol.Bedrock.Read.Types {
 		items: {
 			network_id: number;
 			count: number;
-		};
+		}[];
 	};
 	/**
 	 * Versions: 1.17.30 – 1.26.60
@@ -6824,7 +6821,7 @@ export namespace MCProtocol.Bedrock.Read.Types {
 	 */
 	export type ItemStackRequestInstanceDescriptor = {
 		/** Versions: 1.26.40 – 1.26.60 */
-		type: "invalid" | "name" | number;
+		type: "invalid" | "name" | "molang" | "item_tag" | number;
 		/** The descriptor kind again, as a byte. Versions: 1.26.40 – 1.26.60 */
 		legacy_type: number;
 		/** Versions: 1.26.40 – 1.26.60 */
@@ -6832,11 +6829,17 @@ export namespace MCProtocol.Bedrock.Read.Types {
 		/** Versions: 1.26.40 – 1.26.60 */
 		metadata?: number | undefined;
 		/** Versions: 1.26.40 – 1.26.60 */
+		expression?: string | undefined;
+		/** Versions: 1.26.40 – 1.26.60 */
+		version?: number | undefined;
+		/** Versions: 1.26.40 – 1.26.60 */
+		tag?: string | undefined;
+		/** Versions: 1.26.40 – 1.26.60 */
 		count: number;
 		/** Versions: 1.26.40 – 1.26.60 */
 		block_runtime_id: number;
-		/** Versions: 1.26.40 – 1.26.60 */
-		extra?: ItemExtraDataWithoutBlockingTick | undefined;
+		/** A shield's data ends with its blocking tick, as ItemLegacy's does for the ShieldItemID. Versions: 1.26.40 – 1.26.60 */
+		extra?: ItemExtraDataWithBlockingTick | ItemExtraDataWithoutBlockingTick | undefined;
 	};
 	/**
 	 * Added in 1.26.40.
@@ -7973,8 +7976,8 @@ export namespace MCProtocol.Bedrock.Write.Types {
 		inventory_actions?: {
 			source_type: "container" | "global" | "world_interaction" | "creative" | "craft_slot" | "craft" | number;
 			inventory_id?: number | undefined;
-			flags?: number | undefined;
 			action?: number | undefined;
+			flags?: number | undefined;
 			slot: number;
 			old_item: Item;
 			new_item: Item;
@@ -8206,7 +8209,7 @@ export namespace MCProtocol.Bedrock.Write.Types {
 	export type SkinImage = {
 		width: number;
 		height: number;
-		data: string | ByteArray;
+		data: ByteArray;
 	};
 	export type Skin = {
 		skin_id: string;
@@ -8221,7 +8224,7 @@ export namespace MCProtocol.Bedrock.Write.Types {
 		cape_data: SkinImage;
 		geometry_data: string;
 		animation_data: string;
-		premium: string | boolean;
+		premium: boolean;
 		persona: boolean;
 		cape_on_classic: boolean;
 		cape_id: string;
@@ -8350,12 +8353,16 @@ export namespace MCProtocol.Bedrock.Write.Types {
 		option_id: number;
 	}[];
 	/**
+	 * Used in inventory transactions.
+	 */
+	export type ContainerSlotType = "anvil_input" | "anvil_material" | "anvil_result" | "smithing_table_input" | "smithing_table_material" | "smithing_table_result" | "armor" | "container" | "beacon_payment" | "brewing_input" | "brewing_result" | "brewing_fuel" | "hotbar_and_inventory" | "crafting_input" | "crafting_output" | "recipe_construction" | "recipe_nature" | "recipe_items" | "recipe_search" | "recipe_search_bar" | "recipe_equipment" | "enchanting_input" | "enchanting_lapis" | "furnace_fuel" | "furnace_ingredient" | "furnace_output" | "horse_equip" | "hotbar" | "inventory" | "shulker" | "trade_ingredient1" | "trade_ingredient2" | "trade_result" | "offhand" | "compcreate_input" | "compcreate_output" | "elemconstruct_output" | "matreduce_input" | "matreduce_output" | "labtable_input" | "loom_input" | "loom_dye" | "loom_material" | "loom_result" | "blast_furnace_ingredient" | "smoker_ingredient" | "trade2_ingredient1" | "trade2_ingredient2" | "trade2_result" | "grindstone_input" | "grindstone_additional" | "grindstone_result" | "stonecutter_input" | "stonecutter_result" | "cartography_input" | "cartography_additional" | "cartography_result" | "barrel" | "cursor" | "creative_output" | number | "recipe_book" | "smithing_table_template" | "crafter" | "dynamic" | "registry" | "recipe_food" | "recipe_blocks" | "recipe_furnace_items" | "reserved_container_a" | "reserved_container_b" | "reserved_container_c" | "reserved_container_d";
+	/**
 	 * Source and Destination point to the source slot from which Count of the item stack were taken and the
 	 * destination slot to which this item was moved.
 	 */
 	export type StackRequestSlotInfo = {
 		/** Versions: 1.16.201 */
-		container_id?: number | undefined;
+		container_id?: ContainerSlotType | undefined;
 		/** Versions: 1.16.201 */
 		slot_id?: number | undefined;
 		/** StackNetworkID is the unique stack ID that the client assumes to be present in this slot. The server must check if these IDs match. If they do not match, servers should reject the stack request that the action holding this info was in. As of 1.26.40 this is a little endian int instead of a zigzag varint. */
@@ -8380,10 +8387,10 @@ export namespace MCProtocol.Bedrock.Write.Types {
 			primary_effect?: number | undefined;
 			secondary_effect?: number | undefined;
 			recipe_network_id?: number | undefined;
-			times_crafted?: number | undefined;
 			creative_item_network_id?: number | undefined;
 			filtered_string_index?: number | undefined;
 			result_items?: Item[] | undefined;
+			times_crafted?: number | undefined;
 		}[];
 		custom_names: string[];
 	}[];
@@ -8391,11 +8398,11 @@ export namespace MCProtocol.Bedrock.Write.Types {
 	 * ItemStackResponse is a response to an individual ItemStackRequest.
 	 */
 	export type ItemStackResponses = {
-		result?: number | undefined;
+		result?: "ok" | "error" | number | undefined;
 		/** RequestID is the unique ID of the request that this response is in reaction to. If rejected, the client will undo the actions from the request with this ID. */
 		request_id: number;
 		containers?: {
-			container_id?: number | undefined;
+			container_id?: ContainerSlotType | undefined;
 			slots: {
 				slot: number;
 				hotbar_slot: number;
@@ -8430,7 +8437,7 @@ export namespace MCProtocol.Bedrock.Write.Types {
 	};
 	export type WindowID = "inventory" | "first" | "last" | "offhand" | "armor" | "creative" | "hotbar" | "fixed_inventory" | "ui" | "drop_contents" | "beacon" | "trading_output" | "trading_use_inputs" | "trading_input_2" | "trading_input_1" | "enchant_output" | "enchant_material" | "enchant_input" | "anvil_output" | "anvil_result" | "anvil_material" | "container_input" | "crafting_use_ingredient" | "crafting_result" | "crafting_remove_ingredient" | "crafting_add_ingredient" | "none" | number;
 	export type WindowIDVarint = "inventory" | "first" | "last" | "offhand" | "armor" | "creative" | "hotbar" | "fixed_inventory" | "ui" | "drop_contents" | "beacon" | "trading_output" | "trading_use_inputs" | "trading_input_2" | "trading_input_1" | "enchant_output" | "enchant_material" | "enchant_input" | "anvil_output" | "anvil_result" | "anvil_material" | "container_input" | "crafting_use_ingredient" | "crafting_result" | "crafting_remove_ingredient" | "crafting_add_ingredient" | "none" | number;
-	export type WindowType = "container" | "workbench" | "furnace" | "enchantment" | "brewing_stand" | "anvil" | "dispenser" | "dropper" | "hopper" | "cauldron" | "minecart_chest" | "minecart_hopper" | "horse" | "beacon" | "structure_editor" | "trading" | "command_block" | "jukebox" | "armor" | "hand" | "compound_creator" | "element_constructor" | "material_reducer" | "lab_table" | "loom" | "lectern" | "grindstone" | "blast_furnace" | "smoker" | "stonecutter" | "cartography" | "hud" | "jigsaw_editor" | "smithing_table" | number | "none" | "inventory" | "chest_boat" | "decorated_pot" | "crafter";
+	export type WindowType = "container" | "workbench" | "furnace" | "enchantment" | "brewing_stand" | "anvil" | "dispenser" | "dropper" | "hopper" | "cauldron" | "minecart_chest" | "minecart_hopper" | "horse" | "beacon" | "structure_editor" | "trading" | "command_block" | "jukebox" | "armor" | "hand" | "compound_creator" | "element_constructor" | "material_reducer" | "lab_table" | "loom" | "lectern" | "grindstone" | "blast_furnace" | "smoker" | "stonecutter" | "cartography" | "hud" | "jigsaw_editor" | "smithing_table" | "none" | "inventory" | number | "chest_boat" | "decorated_pot" | "crafter";
 	/**
 	 * TODO: remove?
 	 */
@@ -9266,7 +9273,7 @@ export namespace MCProtocol.Bedrock.Write.Types {
 	 */
 	export type packet_inventory_slot = {
 		/** WindowID is the ID of the window that the packet modifies. It must point to one of the windows that the client currently has opened. */
-		window_id: WindowIDVarint;
+		window_id: WindowIDVarint | WindowID;
 		/** Slot is the index of the slot that the packet modifies. The new item will be set to the slot at this index. */
 		slot: number;
 		/** NewItem is the item to be put in the slot at Slot. It will overwrite any item that may currently be present in that slot. */
@@ -10854,16 +10861,14 @@ export namespace MCProtocol.Bedrock.Write.Types {
 	 */
 	export type packet_creative_content = {
 		/** Individual items that are displayed within the creative inventory menu, grouped by their category. */
-		items: ItemStacks | {
+		items: {
+			runtime_id?: number | undefined;
+			item: Item | ItemLegacy;
+			stack_id?: number | undefined;
 			/** The index of the item in the creative menu. */
-			entry_id: number;
-			item: ItemLegacy;
-		}[] | {
-			/** The index of the item in the creative menu. */
-			entry_id: number;
-			item: ItemLegacy;
+			entry_id?: number | undefined;
 			/** The group index of the item - which group in the groups array this item belongs to. */
-			group_index: number;
+			group_index?: number | undefined;
 		}[];
 		/** The groups that are displayed within the creative inventory menu. Versions: 1.21.60 – 1.26.60 */
 		groups?: {
@@ -11535,10 +11540,10 @@ export namespace MCProtocol.Bedrock.Write.Types {
 			predicted_durability?: number | undefined;
 			network_id?: number | undefined;
 			recipe_network_id?: number | undefined;
-			times_crafted?: number | undefined;
 			item_id?: number | undefined;
 			filtered_string_index?: number | undefined;
 			result_items?: Item[] | ItemLegacy[] | ItemStackRequestInstanceDescriptor[] | undefined;
+			times_crafted?: number | undefined;
 			cost?: number | undefined;
 			pattern?: string | undefined;
 			ingredients?: RecipeIngredient[] | RecipeIngredient2[] | undefined;
@@ -11552,11 +11557,6 @@ export namespace MCProtocol.Bedrock.Write.Types {
 		/** Versions: 1.19.30 – 1.26.60 */
 		cause?: "chat_public" | "chat_whisper" | "sign_text" | "anvil_text" | "book_and_quill_text" | "command_block_text" | "block_actor_data_text" | "join_event_text" | "leave_event_text" | "slash_command_chat" | "cartography_text" | number | "slash_command_non_chat" | "scoreboard_text" | "ticking_area_text" | "kick_command" | "title_command" | "summon_command" | undefined;
 	};
-	/**
-	 * Used in inventory transactions.
-	 * Versions: 1.16.210 – 1.26.60
-	 */
-	export type ContainerSlotType = "anvil_input" | "anvil_material" | "anvil_result" | "smithing_table_input" | "smithing_table_material" | "smithing_table_result" | "armor" | "container" | "beacon_payment" | "brewing_input" | "brewing_result" | "brewing_fuel" | "hotbar_and_inventory" | "crafting_input" | "crafting_output" | "recipe_construction" | "recipe_nature" | "recipe_items" | "recipe_search" | "recipe_search_bar" | "recipe_equipment" | "enchanting_input" | "enchanting_lapis" | "furnace_fuel" | "furnace_ingredient" | "furnace_output" | "horse_equip" | "hotbar" | "inventory" | "shulker" | "trade_ingredient1" | "trade_ingredient2" | "trade_result" | "offhand" | "compcreate_input" | "compcreate_output" | "elemconstruct_output" | "matreduce_input" | "matreduce_output" | "labtable_input" | "loom_input" | "loom_dye" | "loom_material" | "loom_result" | "blast_furnace_ingredient" | "smoker_ingredient" | "trade2_ingredient1" | "trade2_ingredient2" | "trade2_result" | "grindstone_input" | "grindstone_additional" | "grindstone_result" | "stonecutter_input" | "stonecutter_result" | "cartography_input" | "cartography_additional" | "cartography_result" | "barrel" | "cursor" | "creative_output" | number | "recipe_book" | "smithing_table_template" | "crafter" | "dynamic" | "registry" | "recipe_food" | "recipe_blocks" | "recipe_furnace_items" | "reserved_container_a" | "reserved_container_b" | "reserved_container_c" | "reserved_container_d";
 	/**
 	 * Versions: 1.16.210 – 1.26.60
 	 */
@@ -11887,7 +11887,7 @@ export namespace MCProtocol.Bedrock.Write.Types {
 		items: {
 			network_id: number;
 			count: number;
-		};
+		}[];
 	};
 	/**
 	 * Versions: 1.17.30 – 1.26.60
@@ -14563,7 +14563,7 @@ export namespace MCProtocol.Bedrock.Write.Types {
 	 */
 	export type ItemStackRequestInstanceDescriptor = {
 		/** Versions: 1.26.40 – 1.26.60 */
-		type: "invalid" | "name" | number;
+		type: "invalid" | "name" | "molang" | "item_tag" | number;
 		/** The descriptor kind again, as a byte. Versions: 1.26.40 – 1.26.60 */
 		legacy_type: number;
 		/** Versions: 1.26.40 – 1.26.60 */
@@ -14571,11 +14571,17 @@ export namespace MCProtocol.Bedrock.Write.Types {
 		/** Versions: 1.26.40 – 1.26.60 */
 		metadata?: number | undefined;
 		/** Versions: 1.26.40 – 1.26.60 */
+		expression?: string | undefined;
+		/** Versions: 1.26.40 – 1.26.60 */
+		version?: number | undefined;
+		/** Versions: 1.26.40 – 1.26.60 */
+		tag?: string | undefined;
+		/** Versions: 1.26.40 – 1.26.60 */
 		count: number;
 		/** Versions: 1.26.40 – 1.26.60 */
 		block_runtime_id: number;
-		/** Versions: 1.26.40 – 1.26.60 */
-		extra?: ItemExtraDataWithoutBlockingTick | undefined;
+		/** A shield's data ends with its blocking tick, as ItemLegacy's does for the ShieldItemID. Versions: 1.26.40 – 1.26.60 */
+		extra?: ItemExtraDataWithBlockingTick | ItemExtraDataWithoutBlockingTick | undefined;
 	};
 	/**
 	 * Added in 1.26.40.

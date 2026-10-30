@@ -709,8 +709,6 @@ How the player packets differ by version:
   from 1.19.10; it tells the game mode from 1.18.30, and up to 1.16.210 x, y, z and the speeds. Its position is the
   feet, move_player's the eye.
 - **update_player_game_type** tells a tick from 1.20.80; the spectator mode is named from 1.18.30.
-- **Before 1.16.220** bedrock-protocol cannot read a player_list of two players with their skins, as servers send it
-  once another player joins: other players are then neither listed nor spawned.
 
 ## Scoreboards, teams and the tab list
 
