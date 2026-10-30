@@ -16,7 +16,8 @@
     "skipLibCheck": true,
     // Dependencies whose typings disagree with their runtime: corrected typings (docs/typescript/api-mismatches.md).
     "paths": {
-      "prismarine-chat": ["./lib/types/vendor/prismarine-chat.d.ts"]
+      "prismarine-chat": ["./lib/types/vendor/prismarine-chat.d.ts"],
+      "prismarine-entity": ["./lib/types/vendor/prismarine-entity.d.ts"]
     },
 
     // The strictest checks (the @tsconfig/strictest set).

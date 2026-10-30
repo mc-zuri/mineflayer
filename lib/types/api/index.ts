@@ -198,7 +198,7 @@ export interface BotEvents {
   breath: () => Promise<void> | void
   abilities: (abilities: Abilities) => Promise<void> | void
   entitySwingArm: (entity: Entity) => Promise<void> | void
-  entityHurt: (entity: Entity, source: Entity) => Promise<void> | void
+  entityHurt: (entity: Entity, source?: Entity) => Promise<void> | void
   entityDead: (entity: Entity) => Promise<void> | void
   entityTaming: (entity: Entity) => Promise<void> | void
   entityTamed: (entity: Entity) => Promise<void> | void
@@ -610,7 +610,7 @@ export interface Player {
   displayName: ChatMessage
   gamemode: number
   ping: number
-  entity: Entity
+  entity: Entity | null
   skinData: SkinData | undefined
   profileKeys?: {
     publicKey: Buffer

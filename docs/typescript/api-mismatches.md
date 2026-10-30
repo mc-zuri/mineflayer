@@ -95,7 +95,12 @@ types the thing itself; each is a candidate for a fix upstream.
 | prismarine-chat | `ChatMessage.fromNotch(str: string)` | 1.20.3+ messages are NBT text components, which it takes | `lib/types/vendor/prismarine-chat.d.ts` |
 | prismarine-chat | `new ChatMessage(message)` takes a string, a number or `MessageBuilder`s | it takes a JSON text component (an object, or an array of them), which mineflayer passes | `lib/types/vendor/prismarine-chat.d.ts` (`TextComponent`) |
 | prismarine-chat | `MessageBuilder.fromString(str)` returns a `MessageBuilder` | it returns `null` for an empty string (mineflayer checks) | |
-| prismarine-entity | named exports only (`Entity`) | `module.exports` is the loader `(version) => Entity` (a registry too) | the Bedrock movement module asserts the default import is a function, which types it as the loader |
+| prismarine-entity | named exports only (`Entity`) | `module.exports` is the loader `(version) => Entity` (a registry too) | `lib/types/vendor/prismarine-entity.d.ts` |
+| prismarine-entity | `effects: Effect[]` | an object by effect id, `{}` at first | `lib/types/vendor/prismarine-entity.d.ts` |
+| prismarine-entity | `metadata: object[]` | the protocol's values by their key: numbers, strings, booleans and bigints too | `lib/types/vendor/prismarine-entity.d.ts` |
+| prismarine-entity | `vehicle: Entity`, `heldItem: Item`, `equipment: Item[]` | `vehicle` is `null` on foot; `equipment` is `new Array(5)`, so a slot and `heldItem` are `undefined` until set | `lib/types/vendor/prismarine-entity.d.ts` |
+| prismarine-entity | `type` is one of `player`, `mob`, `object`, `global`, `orb`, `projectile`, `hostile`, `other` | mineflayer sets the type of minecraft-data's entity: also `animal`, `passive`, `ambient`, `living`, `water_creature` | `lib/types/vendor/prismarine-entity.d.ts` |
+| prismarine-entity | no `headYaw`, `headPitch`, `eyeHeight`, `crouching`, `attributes`, `dataBlobs` | mineflayer sets them | `lib/types/vendor/prismarine-entity.d.ts` |
 | minecraft-protocol | `once('sessionce', ...)`, `once('end', (reasonce) => ...)` | the events are `session` and `end` (a search and replace of `on` with `once` in the typings) | `TypedClient` |
 | minecraft-protocol | no `connect_allowed` event, no `wait_connect` | autoVersion sets `wait_connect` and emits `connect_allowed` once it knows the server's version | `TypedClient` |
 | minecraft-protocol | `createClient(options)` takes a string `version` | it sets `version: false` itself when none is given (ask the server for its version), and takes it | `lib/types/vendor/minecraft-protocol.d.ts` |
@@ -129,3 +134,5 @@ types the thing itself; each is a candidate for a fix upstream.
 | `testedVersions`, `latestSupportedVersion`, `oldestSupportedVersion` | declared with `let`, as if they could be assigned, and `testedVersions` as any string array | the typings: constants, a non-empty list |
 | `supportFeature(feature, version)` | any string as the feature, and a boolean result; minecraft-data's features are named, and some have a value | the typings |
 | `bot.time.bigTime`, `bot.time.bigAge` | the typings said `BigInt`, the type of a BigInt wrapper object (`Object(1n)`), which takes no arithmetic (`bot.time.bigAge + 1n` did not type check); the code sets primitive bigints | the typings: `bigint` |
+| `Player.entity` | always an `Entity` in the typings; `null` in the code once the player's entity is gone | the typings |
+| `"entityHurt" (entity, source)` | the typings required the source; the code emits none before 1.20 (entity_status), and an undefined one when the damage has no source entity | the typings |

@@ -1,9 +1,7 @@
 import assert from 'assert'
 import prismarineEntity from 'prismarine-entity'
-import type { Entity } from 'prismarine-entity'
 import { createMovementState, EYE_HEIGHT, feetFromEye, reportedEyePosition, rulesFor, simulateTick, sneakScaledMove } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { BedrockRules, MovementState, TickActions, TickInput, TickResult, Vec3Data } from 'prismarine-physics/lib/bedrock/index.ts'
-import type { Registry } from 'prismarine-registry'
 import { Vec3 } from 'vec3'
 import { fromNotchianPitch, fromNotchianYaw, toNotchianPitch, toNotchianYaw } from '../../conversions.ts'
 import { euclideanMod } from '../../math.ts'
@@ -39,13 +37,6 @@ type Echoed = Pick<MovementState, 'sprinting' | 'sneaking'>
 export interface MovementSettings {
   physicsEnabled: boolean
   autoJump: boolean
-}
-
-type EntityLoader = (registry: Registry) => typeof Entity
-
-/** prismarine-entity's module is its loader, which its typings do not declare (docs/typescript/api-mismatches.md) */
-function assertEntityLoader (loader: object): asserts loader is EntityLoader {
-  assert.ok(typeof loader === 'function', 'prismarine-entity exports its loader')
 }
 
 function isFar (from: Vec3f, to: Vec3f): boolean {
@@ -204,7 +195,6 @@ export class LocalPlayer {
   }
 
   private createEntity (): BedrockPlayer {
-    assertEntityLoader(prismarineEntity)
     const entity = Object.assign(new (prismarineEntity(this.bot.registry))(0), { isCollidedHorizontally: false, isCollidedVertically: false })
     entity.type = 'player'
     entity.name = 'player'

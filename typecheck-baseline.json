@@ -15,7 +15,7 @@
   "lib/plugins/creative.ts": 31,
   "lib/plugins/digging.ts": 23,
   "lib/plugins/enchantment_table.ts": 8,
-  "lib/plugins/entities.ts": 127,
+  "lib/plugins/entities.ts": 126,
   "lib/plugins/experience.ts": 2,
   "lib/plugins/explosion.ts": 12,
   "lib/plugins/fishing.ts": 10,
