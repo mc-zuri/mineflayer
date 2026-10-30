@@ -2,9 +2,9 @@
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
-the titles, the boss bars, the sounds, the particles, the world's blocks and the entities the server shows, walks, sprints, sneaks, jumps and falls by its controls
-and looks as the vanilla client does, telling the server every tick, follows the server's corrections, and ends; the
-rest of the API is Java's only so far.
+the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows and the player
+list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does, telling the server
+every tick, follows the server's corrections, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -69,6 +69,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.scoreboards`, `bot.scoreboard`, `bot.teams`, `bot.teamMap`, `bot.tablist`: as Java's, as Bedrock has them (see
   scoreboards below).
 - `bot.bossBars`: as Java's, the bars of the boss entities the bot has (see boss bars below).
+- `bot.players`, `bot.player`: the player list (see below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -129,7 +130,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect` and the events of entity_event and animate | the packet pass |
+| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -434,7 +435,9 @@ feet that `match` takes, never `bot.entity`. The server's packets act at their p
 | The server sends | The bot |
 | --- | --- |
 | add_entity, add_item_entity, add_painting | spawns the entity in the packet pass: `entitySpawn`, then for an item `itemDrop` |
+| add_player | spawns a player of the player list in the packet pass, at its feet, as its player's `entity`: `entitySpawn` |
 | move_entity, move_entity_delta | moves it in the packet pass, to the position, the rotation and on the ground or not as told (move_entity_delta: the axes and rotations it carries): `entityMoved` |
+| move_player | moves another player in the packet pass to the feet under the eye it tells, turned, on the ground or not: `entityMoved` |
 | set_entity_motion | sets its velocity in the packet pass, without an event, as Java |
 | set_entity_data | merges its metadata at the start of the next tick: `entityUpdate`, then as Java `entitySleep` when the update says it sleeps, `entityElytraFlew` when it starts gliding, `entityCrouch` while it sneaks, and `entityUncrouch` once it stops |
 | update_attributes | sets `entity.attributes[name]` to `{ value, modifiers }` in the packet pass: `entityAttributes` |
@@ -472,6 +475,7 @@ Where a Bedrock entity differs from Java's, and why:
 | `getDroppedItem()` | the item stack | throws: the bot reads no Bedrock items yet |
 | `entityHandSwap` | entity_status 55 | none: Bedrock tells no hand swap |
 | `entityEquip`, `usedFirework`, `equipment`, `heldItem` | | not yet: the bot reads no Bedrock items |
+| a player's `position` in move_entity and move_entity_delta | the feet | taken as its eye, as move_player tells it (Bedrock's player position is its eye), and moved to the feet under it; servers were not recorded sending these of a player |
 
 The vanilla client answers none of these packets. How they differ by version:
 
@@ -482,6 +486,42 @@ The vanilla client answers none of these packets. How they differ by version:
 - **The ids**: the runtime id is a varint on 1.16.201 (a varint64 after) in the add packets, move_entity,
   set_entity_motion, set_entity_data, entity_event and mob_effect; add_entity names its ids unique_id and runtime_id
   from 1.19.10. Up to 1.16.210 the add packets give x, y, z and the speeds, and add_painting block coordinates.
+
+### Players
+
+`bot.players` holds the player list by username, each entry Java's `Player`: its `uuid`, `username`, `displayName`
+(Java's message of the username), `gamemode` (Java's number) and `entity`, the player's entity while the server shows
+it, else null. `bot.player` is the local player's entry, from start_game. The server's packets act in the packet pass:
+
+| The server sends | The bot |
+| --- | --- |
+| player_list, an add | lists a new uuid (`playerJoined`), or updates a listed one (`playerUpdated`): its entity is the one the server shows of its unique id |
+| player_list, a removal | unlists the player (`playerLeft`), its `entity` then null, as Java; never the local player. Its entity stays until the server removes it |
+| add_player | spawns the player's entity, if it is listed: the vanilla client and Java show no other |
+| update_player_game_type | sets a listed player's `gamemode`: `playerUpdated` |
+| remove_entity | at the end of the next tick, as any entity, the player's `entity` is null |
+
+Where the player list differs from Java's, and why:
+
+| | Java | Bedrock |
+| --- | --- | --- |
+| the local player's entry | after `login` | before it: servers list the local player before start_game, then again (`playerUpdated`), and `bot.player` and its `entity` are set from start_game |
+| `gamemode` | the server's | Java's of Bedrock's: survival 0, creative 1, adventure 2, any spectator 3; the fallback is the world's (start_game's); the local player's is start_game's until update_player_game_type, another's the world's until add_player (1.18.30+) or update_player_game_type tells it |
+| `ping` | the latency | 0: Bedrock tells no other player's latency |
+| `skinData` | the skin's url | undefined: Bedrock skins are images |
+| `displayName` | the server's, else the username | the username: Bedrock lists no display name |
+
+How the player packets differ by version:
+
+- **player_list** has one type for all its records up to 1.26.30 (and a verified flag per record, for a removal too up
+  to 1.16.210), each record its own type from 1.26.40; the records add whether they are a subclient from 1.20.61, a
+  color from 1.21.80, and a PlayFab id from 1.26.60.
+- **add_player** names the unique id entity_id_self up to 1.18.11, unique_entity_id up to 1.19.1, unique_id (an li64)
+  from 1.19.10; it tells the game mode from 1.18.30, and up to 1.16.210 x, y, z and the speeds. Its position is the
+  feet, move_player's the eye.
+- **update_player_game_type** tells a tick from 1.20.80; the spectator mode is named from 1.18.30.
+- **Before 1.16.220** bedrock-protocol cannot read a player_list of two players with their skins, as servers send it
+  once another player joins: other players are then neither listed nor spawned.
 
 ## Scoreboards, teams and the tab list
 
@@ -600,7 +640,8 @@ The server's spawn_particle_effect (`/particle`) acts in the packet pass, as Jav
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
   sent and how a correction acts; the entities: by the layouts of the add packets, move_entity_delta, set_entity_motion,
   the attributes and an effect's removal, how the metadata's flags are written, and what minecraft-data knows of the
-  entities; the scoreboards: by set_score's layout, one action for the packet's entries
+  entities; the players: by the layouts of player_list, add_player, move_player and update_player_game_type; the
+  scoreboards: by set_score's layout, one action for the packet's entries
   1.16.220 – 1.26.30, each entry its own type 1.26.40+; the titles: by set_title's layout, the type by its number
   1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 – 1.21.2, with a filtered message 1.21.20+; the boss
   bars: by boss_event's layout, no style with the bar 1.16.201 – 1.16.210, a numbered style 1.16.220 – 1.21.50, a

@@ -2,11 +2,11 @@ import assert from 'assert'
 import type { Entity } from 'prismarine-entity'
 import prismarineRegistry from 'prismarine-registry'
 import { metadataKeyNumbers } from '../../lib/bedrock/metadata.ts'
-import { latestSupportedBedrockVersion, testedBedrockVersions } from '../../lib/bedrock/version.ts'
+import { latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
 import type { BedrockBot, BedrockVersion } from '../../lib/types/api/index.ts'
-import { bedrockCodec, blankPacket } from './common/codec.ts'
+import { bedrockCodec } from './common/codec.ts'
+import { atLeast, boundingBox, entry, flags, LOCAL_UNIQUE, placed, positionOf, receive, runtimeId, spawned, started, STILL, write } from './common/entities.ts'
 import { bedrockTestBot, bedrockTestVersions, bedrockTestVersionsFrom } from './common/server.ts'
-import type { FakeBedrockClient, TestBot } from './common/server.ts'
 import { ServerWorld } from './common/world.ts'
 import type { Point3 } from './common/world.ts'
 
@@ -17,8 +17,6 @@ import type { Point3 } from './common/world.ts'
 type EntityEventName = 'entitySpawn' | 'entityGone' | 'entityMoved' | 'entityUpdate' | 'entitySwingArm' | 'entityHurt' | 'entityDead' |
   'entityTaming' | 'entityTamed' | 'entityShakingOffWater' | 'entityEatingGrass' | 'entityWake' | 'entityEat' | 'entityCriticalEffect' |
   'entityMagicCriticalEffect' | 'entityCrouch' | 'entityUncrouch' | 'entitySleep' | 'entityElytraFlew' | 'entityAttributes' | 'itemDrop'
-
-type ValueType = 'byte' | 'int' | 'float' | 'string' | 'long'
 
 interface Added {
   unique: bigint
@@ -32,9 +30,6 @@ interface Added {
   metadata?: object[]
 }
 
-const LOCAL_UNIQUE = -8589934591n
-const STILL = Object.freeze({ x: 0, y: 0, z: 0 })
-const VALUE_TYPES = Object.freeze({ byte: 0, int: 2, float: 3, string: 4, long: 7 })
 const SNEAKING = 1n << 1n
 const GLIDING = 1n << 32n
 const SLEEPING_EXTENDED = 1n << 11n
@@ -44,47 +39,8 @@ const EVENTS: readonly EntityEventName[] = Object.freeze(['entitySpawn', 'entity
   'entityTaming', 'entityTamed', 'entityShakingOffWater', 'entityEatingGrass', 'entityWake', 'entityEat', 'entityCriticalEffect',
   'entityMagicCriticalEffect', 'entityCrouch', 'entityUncrouch', 'entitySleep', 'entityElytraFlew', 'entityAttributes', 'itemDrop'])
 
-function atLeast (version: BedrockVersion, since: BedrockVersion): boolean {
-  return testedBedrockVersions.indexOf(version) >= testedBedrockVersions.indexOf(since)
-}
-
-function receive (server: FakeBedrockClient, ...hex: string[]): void {
-  for (const packet of hex) server.receive(Buffer.from(packet, 'hex'))
-}
-
-/** written with the codec and received as from the wire: a bitfield is written from its _value, and read back whole */
-function write (server: FakeBedrockClient, name: string, fields: object): void {
-  server.receive(server.codec.serializer.createPacketBuffer({ name, params: { ...blankPacket(server.codec, name), ...fields } }))
-}
-
-/** a metadata entry as the version writes it: from 1.26.40 with its type again */
-function entry (version: BedrockVersion, key: string | number, type: ValueType | number, value?: number | bigint | string | object): object {
-  const legacy = atLeast(version, 'bedrock_1.26.40') ? { legacy_type: typeof type === 'number' ? type : VALUE_TYPES[type] } : {}
-  return { key, type, ...value === undefined ? {} : { value }, ...legacy }
-}
-
-/** 1.16.201 names the flags index and writes them as a long */
-function flags (version: BedrockVersion, bits: bigint): object {
-  return version === 'bedrock_1.16.201' ? entry(version, 'index', 'long', bits) : entry(version, 'flags', 'long', { _value: bits })
-}
-
 function extendedFlags (version: BedrockVersion, bits: bigint): object {
   return entry(version, 'flags_extended', 'long', version === 'bedrock_1.16.201' ? bits : { _value: bits })
-}
-
-function boundingBox (version: BedrockVersion, width: number, height: number): object[] {
-  return [entry(version, 'boundingbox_width', 'float', width), entry(version, 'boundingbox_height', 'float', height)]
-}
-
-/** a runtime id as the add packets write it: a varint on 1.16.201 */
-function runtimeId (version: BedrockVersion, runtime: number): number | bigint {
-  return atLeast(version, 'bedrock_1.16.210') ? BigInt(runtime) : runtime
-}
-
-/** up to 1.16.210 x, y, z and the speeds */
-function placed (version: BedrockVersion, position: Point3, velocity: Point3): object {
-  if (atLeast(version, 'bedrock_1.16.220')) return { position, velocity }
-  return { x: position.x, y: position.y, z: position.z, speed_x: velocity.x, speed_y: velocity.y, speed_z: velocity.z }
 }
 
 /** add_entity as the version lays it out: unique_id and runtime_id from 1.19.10 */
@@ -128,31 +84,12 @@ function villager (version: BedrockVersion): Added {
   }
 }
 
-/** a bot the server started the game for, the local player's runtime id `runtime` */
-async function started (version: BedrockVersion, runtime = 1): Promise<TestBot> {
-  const testBot = await bedrockTestBot(bedrockCodec(version))
-  testBot.server.send('start_game', { entity_id: LOCAL_UNIQUE, runtime_entity_id: BigInt(runtime) })
-  await testBot.driver.frame(0)
-  return testBot
-}
-
 /** the entity events from now, each with its entity's id, and the errors */
 function recorded (bot: BedrockBot): string[] {
   const events: string[] = []
   for (const name of EVENTS) bot.on(name, (entity: Entity) => { events.push(`${name} ${entity.id}`) })
   bot.on('error', error => { events.push(`error ${error.message}`) })
   return events
-}
-
-function spawned (bot: BedrockBot, runtime: number): Entity {
-  const entity = bot.entities[runtime]
-  assert.ok(entity !== undefined, `no entity ${runtime}`)
-  return entity
-}
-
-function positionOf (entity: Entity): Point3 {
-  const { x, y, z } = entity.position
-  return { x, y, z }
 }
 
 describe('bedrock entities', () => {
@@ -561,7 +498,7 @@ describe('bedrock entities', () => {
         assert.deepStrictEqual([events, bot.entities[4], villagerEntity.isValid], [[], villagerEntity, true])
         await driver.tick()
         assert.deepStrictEqual([events, bot.entities[4], villagerEntity.isValid, internal._entities.byUniqueId(-8589934590n)], [['entityGone 4', 'physicsTick'], undefined, false, undefined])
-        assert.deepStrictEqual([bot.entities[1], internal._entities.stats], [bot.entity, { unknownEntity: 1, local: 1, replaced: 0 }])
+        assert.deepStrictEqual([bot.entities[1], internal._entities.stats], [bot.entity, { unknownEntity: 1, unlisted: 0, local: 1, replaced: 0 }])
         write(server, 'add_entity', addEntity(version, { unique: -5n, runtime: 4, type: 'minecraft:pig', position: STILL }))
         await driver.frame(0)
         assert.deepStrictEqual([internal._entities.byUniqueId(-8589934590n), internal._entities.byUniqueId(-5n)], [undefined, spawned(bot, 4)])

@@ -12,8 +12,11 @@ export interface EntityIndex {
   /** by the unique id (remove_entity, set_entity_link, player_list, scores) */
   byUniqueId: (uniqueId: bigint) => Entity | undefined
   byRuntimeId: (runtimeId: number | bigint) => Entity | undefined
-  /** packets naming an entity the bot does not have; moves of the local player, which are movement's; adds of a live runtime id */
-  stats: { unknownEntity: number, local: number, replaced: number }
+  /**
+   * packets naming an entity the bot does not have; add_player, removals from the list and game modes of a player not
+   * listed; moves and removals of the local player, which are movement's or never happen; adds of a live runtime id
+   */
+  stats: { unknownEntity: number, unlisted: number, local: number, replaced: number }
 }
 
 export interface BedrockBotInternal extends BedrockBot {

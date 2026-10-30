@@ -1,15 +1,18 @@
+import prismarineChat from 'prismarine-chat'
 import type { Entity, EntityMetadataValue, EntityType } from 'prismarine-entity'
+import { EYE_HEIGHT, feetFromEye } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { Registry } from 'prismarine-registry'
 import { fromNotchianPitch, fromNotchianPitchByte, fromNotchianYaw, fromNotchianYawByte } from '../../conversions.ts'
 import { bedrockEntityClass } from '../entity.ts'
-import { addedEntity, addedItem, addedPainting, runtimeKey } from '../entity_packets.ts'
-import type { Spawn } from '../entity_packets.ts'
+import { addedEntity, addedItem, addedPainting, addedPlayer, gamemodeOf, listingsOf, runtimeKey } from '../entity_packets.ts'
+import type { Listing, Spawn } from '../entity_packets.ts'
 import { EntityMetadata, isGliding, isSneaking } from '../metadata.ts'
+import type { Player } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 
-// The entities the server shows, by runtime id. Their spawns, moves, attributes, effects and events act in the packet
-// pass; their metadata at the start of the next tick, and a removal at the end of the next tick, as in the vanilla
-// client. The local player's position, velocity and rotation are movement's.
+// The entities the server shows, by runtime id, and the player list. Their spawns, moves, attributes, effects and
+// events act in the packet pass; their metadata at the start of the next tick, and a removal at the end of the next
+// tick, as in the vanilla client. The local player's position, velocity and rotation are movement's.
 
 const OWNER = 'entities'
 const ON_GROUND = 1
@@ -43,6 +46,11 @@ interface Removal {
   readonly unique: bigint
 }
 
+interface Listed {
+  readonly player: Player
+  readonly unique: bigint
+}
+
 function eventOf (events: Readonly<Record<string, EntityEvent>>, id: string | number): EntityEvent | undefined {
   return Object.entries(events).find(([name]) => name === id)?.[1]
 }
@@ -61,10 +69,16 @@ export default function inject (bot: BedrockBotInternal): void {
   const registryEntities: Registry['entitiesByName'] | undefined = bot.registry.entitiesByName
   const byUnique = new Map<bigint, number>()
   const removing = new Map<number, Removal>()
-  const stats = { unknownEntity: 0, local: 0, replaced: 0 }
+  const ChatMessage = prismarineChat(bot.registry)
+  const listed = new Map<string, Listed>()
+  const stats = { unknownEntity: 0, unlisted: 0, local: 0, replaced: 0 }
   let localKey: number | undefined
+  let localUnique: bigint | undefined
+  let localGamemode = 0
+  let worldGamemode = 0
 
   bot.entities = {}
+  bot.players = {}
   bot._entities = {
     byUniqueId: uniqueId => {
       const key = byUnique.get(uniqueId)
@@ -112,7 +126,13 @@ export default function inject (bot: BedrockBotInternal): void {
     if (typeof experience === 'number') entity.count = experience
   }
 
-  function spawn (spawned: Spawn, name: string): Entity {
+  /** a player's position in move_entity and move_entity_delta is its eye, as in move_player */
+  function feetY (entity: Entity, y: number): number {
+    return entity.type === 'player' ? feetFromEye({ x: 0, y, z: 0 }).y : y
+  }
+
+  /** the entity of an add packet, in bot.entities, its entitySpawn to come */
+  function place (spawned: Spawn, name: string): Entity {
     const { key, unique, position, velocity, yaw, pitch, headYaw } = spawned
     const removal = removing.get(key)
     if (removal !== undefined) destroy(key, removal)
@@ -146,6 +166,11 @@ export default function inject (bot: BedrockBotInternal): void {
     entity.attributes = Object.fromEntries(spawned.attributes.map(({ name, value }) => [name, { value, modifiers: [] }]))
     bot.entities[key] = entity
     byUnique.set(unique, key)
+    return entity
+  }
+
+  function spawn (spawned: Spawn, name: string): Entity {
+    const entity = place(spawned, name)
     core.emit(bot, 'entitySpawn', entity)
     return entity
   }
@@ -179,9 +204,52 @@ export default function inject (bot: BedrockBotInternal): void {
     removing.delete(key)
     core.emit(bot, 'entityGone', entity)
     entity.isValid = false
+    for (const { player } of listed.values()) {
+      if (player.entity === entity) player.entity = null
+    }
     // a unique id spawned again under another runtime id is that entity's now
     if (byUnique.get(unique) === key) byUnique.delete(unique)
     delete bot.entities[key]
+  }
+
+  function listedOf (unique: bigint): Listed | undefined {
+    return [...listed.values()].find(entry => entry.unique === unique)
+  }
+
+  /** Java's: a new uuid joins, a known one is updated; its entity is the one the server spawned of its unique id */
+  function list ({ uuid, unique, username }: Extract<Listing, { type: 'add' }>): void {
+    const known = listed.get(uuid)
+    const player = known?.player ?? {
+      uuid,
+      username,
+      displayName: new ChatMessage({ text: '', extra: [{ text: username }] }),
+      gamemode: unique === localUnique ? localGamemode : worldGamemode,
+      ping: 0,
+      entity: null,
+      skinData: undefined
+    }
+    player.entity = bot._entities.byUniqueId(unique) ?? null
+    if (unique === localUnique) bot.player = player
+    if (known !== undefined) {
+      core.emit(bot, 'playerUpdated', player)
+      return
+    }
+    listed.set(uuid, { player, unique })
+    bot.players[username] = player
+    core.emit(bot, 'playerJoined', player)
+  }
+
+  /** never the local player, as Java; its entity stays until the server removes it */
+  function unlist (uuid: string): void {
+    const known = listed.get(uuid)
+    if (known === undefined) stats.unlisted++
+    else if (known.unique === localUnique) stats.local++
+    else {
+      known.player.entity = null
+      listed.delete(uuid)
+      delete bot.players[known.player.username]
+      core.emit(bot, 'playerLeft', known.player)
+    }
   }
 
   function emitEvent (event: EntityEvent | undefined, runtimeId: number | bigint): void {
@@ -190,10 +258,19 @@ export default function inject (bot: BedrockBotInternal): void {
     if (entity !== undefined) core.emit(bot, event, entity)
   }
 
+  // the server lists the local player before start_game, and again right after it (playerUpdated)
   core.observe(OWNER, 'start_game', packet => {
     localKey = runtimeKey(packet.runtime_entity_id)
+    localUnique = packet.entity_id
+    worldGamemode = gamemodeOf(packet.world_gamemode, 0)
+    localGamemode = gamemodeOf(packet.player_gamemode, worldGamemode)
     bot.entities[localKey] = bot.entity
-    byUnique.set(packet.entity_id, localKey)
+    byUnique.set(localUnique, localKey)
+    const own = listedOf(localUnique)
+    if (own === undefined) return
+    own.player.entity = bot.entity
+    own.player.gamemode = localGamemode
+    bot.player = own.player
   })
   core.handle(OWNER, 'add_entity', packet => {
     spawn(addedEntity(packet), packet.entity_type.replace(/^minecraft:/, ''))
@@ -203,6 +280,39 @@ export default function inject (bot: BedrockBotInternal): void {
   })
   core.handle(OWNER, 'add_painting', packet => {
     spawn(addedPainting(packet), 'painting')
+  })
+  // as the vanilla client, and Java, a player only of the player list
+  core.handle(OWNER, 'add_player', packet => {
+    const spawned = addedPlayer(packet)
+    const known = listed.get(spawned.uuid)
+    if (known === undefined) {
+      stats.unlisted++
+      return
+    }
+    const entity = place(spawned, 'player')
+    entity.type = 'player'
+    entity.username = spawned.username
+    entity.uuid = spawned.uuid
+    entity.eyeHeight = EYE_HEIGHT
+    known.player.entity = entity
+    // from 1.18.30
+    if (spawned.gamemode !== undefined) known.player.gamemode = gamemodeOf(spawned.gamemode, worldGamemode)
+    core.emit(bot, 'entitySpawn', entity)
+  })
+  core.handle(OWNER, 'player_list', packet => {
+    for (const listing of listingsOf(packet)) {
+      if (listing.type === 'add') list(listing)
+      else unlist(listing.uuid)
+    }
+  })
+  core.observe(OWNER, 'update_player_game_type', packet => {
+    const known = listedOf(packet.player_unique_id)
+    if (known === undefined) {
+      stats.unlisted++
+      return
+    }
+    known.player.gamemode = gamemodeOf(packet.gamemode, worldGamemode)
+    core.emit(bot, 'playerUpdated', known.player)
   })
   core.handle(OWNER, 'remove_entity', packet => {
     const unique = packet.entity_id_self
@@ -223,7 +333,7 @@ export default function inject (bot: BedrockBotInternal): void {
     const entity = other(packet.runtime_entity_id)
     if (entity === undefined) return
     const { position, rotation } = packet
-    entity.position.set(position.x, position.y, position.z)
+    entity.position.set(position.x, feetY(entity, position.y), position.z)
     turn(entity, rotation.yaw, rotation.pitch, rotation.head_yaw)
     entity.onGround = (packet.flags & ON_GROUND) !== 0
     core.emit(bot, 'entityMoved', entity)
@@ -233,12 +343,22 @@ export default function inject (bot: BedrockBotInternal): void {
     const entity = other(packet.runtime_entity_id)
     if (entity === undefined) return
     const { x, y, z, rot_x: pitch, rot_y: yaw, rot_z: headYaw } = packet
-    entity.position.set(x ?? entity.position.x, y ?? entity.position.y, z ?? entity.position.z)
+    entity.position.set(x ?? entity.position.x, y === undefined ? entity.position.y : feetY(entity, y), z ?? entity.position.z)
     if (pitch !== undefined) entity.pitch = fromNotchianPitchByte(pitch)
     if (yaw !== undefined) entity.yaw = fromNotchianYawByte(yaw)
     if (headYaw !== undefined) entity.headYaw = fromNotchianYawByte(headYaw)
     // flags up to 1.26.30
     entity.onGround = (packet.flags?.on_ground ?? packet.on_ground) === true
+    core.emit(bot, 'entityMoved', entity)
+  })
+  // another player's: its eye; the local player's is movement's
+  core.observe(OWNER, 'move_player', packet => {
+    const entity = other(packet.runtime_id)
+    if (entity === undefined) return
+    const { x, y, z } = feetFromEye(packet.position)
+    entity.position.set(x, y, z)
+    turn(entity, packet.yaw, packet.pitch, packet.head_yaw)
+    entity.onGround = packet.on_ground
     core.emit(bot, 'entityMoved', entity)
   })
   core.observe(OWNER, 'set_entity_motion', packet => {
