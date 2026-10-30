@@ -739,6 +739,9 @@ the hotbar and sends of what is typed:
     `spawn`, failing on any `error`; its start_game names the movement authority the version's servers named, and
     keeps 20 ticks;
   - `BEDROCK_VERSIONS=1.16.201,1.26` runs some versions only.
+  - the versions are dealt to 4 processes run at once (`BEDROCK_TEST_JOBS` sets how many), each running every file
+    for its versions (`scripts/test-bedrock.ts`); the tests of the latest version only run in each. Nothing waits real
+    time: a tick is as long as the test takes to step it.
 - **What servers send**: the tests use the packets and values servers sent the vanilla Bedrock client, recorded on
   every version, small ones as their bytes. Versions whose servers send alike are a group, and each group's tests run
   on each of its versions (the time: `set_time` 1.16.201 – 1.26.20, world clocks 1.26.30+, `tick_sync` answers up to

@@ -7,7 +7,7 @@
   "types": "index.d.ts",
   "scripts": {
     "mocha_test": "mocha --reporter ./test/common/durationsReporter.ts --extension ts --exit test",
-    "test:bedrock": "c8 mocha --extension ts --exit test/bedrock",
+    "test:bedrock": "c8 node scripts/test-bedrock.ts",
     "test": "npm run mocha_test && npm run test:bedrock",
     "pretest": "npm run lint",
     "typecheck": "node scripts/typecheck.ts -p .",
