@@ -30,12 +30,18 @@ export class Session {
   /** set_local_player_as_initialized's tick, and spawn's, once the player moves */
   private initializeAt: number | undefined
   private spawnAt: number | undefined
+  private readonly spawnHooks: Array<() => void> = []
 
   constructor (bot: BedrockBotInternal, viewDistance: number | undefined, world: NetworkWorld, player: LocalPlayer) {
     this.bot = bot
     this.viewDistance = viewDistance
     this.world = world
     this.player = player
+  }
+
+  /** run right after spawn is emitted */
+  afterSpawn (run: () => void): void {
+    this.spawnHooks.push(run)
   }
 
   install (core: BedrockCore): void {
@@ -71,7 +77,10 @@ export class Session {
     }, { critical: true })
     core.system(OWNER, { name: 'session.activate', place: { after: 'movement.sendInput' }, gate: 'present', replay: false, run: ctx => { this.activate(core, ctx) } })
     core.endOfTick(OWNER, ({ tick }) => {
-      if (tick === this.spawnAt) core.emit(this.bot, 'spawn')
+      if (tick === this.spawnAt) {
+        core.emit(this.bot, 'spawn')
+        for (const run of this.spawnHooks) run()
+      }
       this.show(core, tick)
     })
   }

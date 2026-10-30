@@ -9,6 +9,7 @@ import { Session } from './modules/session.ts'
 import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
 import bossBar from './plugins/boss_bar.ts'
+import entities from './plugins/entities.ts'
 import particle from './plugins/particle.ts'
 import scoreboard from './plugins/scoreboard.ts'
 import sound from './plugins/sound.ts'
@@ -23,6 +24,7 @@ import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock
 
 const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   time,
+  entities,
   scoreboard,
   team,
   tablist,
@@ -103,6 +105,7 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   bot._player = player
   bot._world = new NetworkWorld(bot, () => player.feet)
   const session = new Session(bot, options.viewDistance, bot._world, player)
+  bot._session = session
   // a tick ends with the player's movement recorded and shown, then spawn
   player.install(core)
   session.install(core)

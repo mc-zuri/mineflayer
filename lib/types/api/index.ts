@@ -96,7 +96,10 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
   | 'teamCreated' | 'teamRemoved' | 'teamUpdated' | 'teamMemberAdded' | 'teamMemberRemoved'
   | 'title' | 'title_times' | 'title_clear' | 'bossBarCreated' | 'bossBarUpdated' | 'bossBarDeleted'
-  | 'soundEffectHeard' | 'hardcodedSoundEffectHeard' | 'particle'> & BlockUpdateAtEvents
+  | 'soundEffectHeard' | 'hardcodedSoundEffectHeard' | 'particle'
+  | 'entitySpawn' | 'entityGone' | 'entityMoved' | 'entityUpdate' | 'entitySwingArm' | 'entityHurt' | 'entityDead' | 'entityTaming' | 'entityTamed'
+  | 'entityShakingOffWater' | 'entityEatingGrass' | 'entityWake' | 'entityEat' | 'entityCriticalEffect' | 'entityMagicCriticalEffect' | 'entityCrouch'
+  | 'entityUncrouch' | 'entitySleep' | 'entityElytraFlew' | 'entityEffect' | 'entityEffectEnd' | 'entityAttributes' | 'itemDrop' | 'playerCollect'> & BlockUpdateAtEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -117,6 +120,9 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   registry: Registry
   /** from start_game */
   entity: BedrockPlayer
+  /** the entities the server shows, by runtime id, the local player's too */
+  entities: { [id: string]: Entity }
+  nearestEntity: (match?: (entity: Entity) => boolean) => Entity | null
   /** the physics move the player; false holds it where it is, standing still: acts from the next frame */
   physicsEnabled: boolean
   /** the player jumps by itself onto a block in its way, as the vanilla client's auto-jump does: acts from the next frame */

@@ -1,5 +1,4 @@
 import assert from 'assert'
-import prismarineEntity from 'prismarine-entity'
 import { createMovementState, EYE_HEIGHT, feetFromEye, reportedEyePosition, rulesFor, simulateTick, sneakScaledMove } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { BedrockRules, MovementState, TickActions, TickInput, TickResult, Vec3Data } from 'prismarine-physics/lib/bedrock/index.ts'
 import { Vec3 } from 'vec3'
@@ -8,6 +7,7 @@ import { euclideanMod } from '../../math.ts'
 import type { BedrockCore } from '../core/core.ts'
 import type { OutboxWriter, TickContext } from '../core/types.ts'
 import type { DueWait } from '../core/waits.ts'
+import { bedrockEntityClass } from '../entity.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
 import type { BedrockPlayer, BedrockVersion } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
@@ -195,12 +195,13 @@ export class LocalPlayer {
   }
 
   private createEntity (): BedrockPlayer {
-    const entity = Object.assign(new (prismarineEntity(this.bot.registry))(0), { isCollidedHorizontally: false, isCollidedVertically: false })
+    const entity = Object.assign(new (bedrockEntityClass(this.bot.registry))(0), { isCollidedHorizontally: false, isCollidedVertically: false })
     entity.type = 'player'
     entity.name = 'player'
     entity.username = this.bot.username
     entity.height = PLAYER_HEIGHT
     entity.width = PLAYER_WIDTH
+    entity.eyeHeight = EYE_HEIGHT
     return entity
   }
 

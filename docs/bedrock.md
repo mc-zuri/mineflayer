@@ -2,7 +2,7 @@
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
-the titles, the boss bars, the sounds, the particles and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls
+the titles, the boss bars, the sounds, the particles, the world's blocks and the entities the server shows, walks, sprints, sneaks, jumps and falls by its controls
 and looks as the vanilla client does, telling the server every tick, follows the server's corrections, and ends; the
 rest of the API is Java's only so far.
 
@@ -65,6 +65,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.autoJump`: whether the player jumps by itself onto a block in its way (see physics below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
+- `bot.entities`, `bot.nearestEntity(match)`: the entities the server shows (see below).
 - `bot.scoreboards`, `bot.scoreboard`, `bot.teams`, `bot.teamMap`, `bot.tablist`: as Java's, as Bedrock has them (see
   scoreboards below).
 - `bot.bossBars`: as Java's, the bars of the boss entities the bot has (see boss bars below).
@@ -76,7 +77,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
-  `blockUpdate:(x, y, z) (oldBlock, newBlock)`, `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`,
+  `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events (see entities below), `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`,
   `scoreUpdated`, `scoreRemoved`, `scoreboardPosition` (see scoreboards below), `title (text, type)`,
   `title_times (fadeIn, stay, fadeOut)`, `title_clear` (see titles below), `bossBarCreated (bossBar)`,
   `bossBarUpdated (bossBar)`, `bossBarDeleted (bossBar)` (see boss bars below),
@@ -128,9 +129,9 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error` | the packet pass |
-| `chunkColumnLoad` | the start of a tick |
-| `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
+| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect` and the events of entity_event and animate | the packet pass |
+| `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
+| `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
 ## The local player
 
@@ -424,6 +425,64 @@ sent without its sections before 1.18.0 (a negative count) cannot be asked for, 
 
 Dimension changes are not followed yet: the world stays in start_game's dimension.
 
+## Entities
+
+`bot.entities` holds the entities the server shows, each a prismarine-entity `Entity`, by runtime id; the local
+player's `bot.entity` is there from start_game. `bot.nearestEntity(match)` is Java's: the entity nearest the player's
+feet that `match` takes, never `bot.entity`. The server's packets act at their point in the frame:
+
+| The server sends | The bot |
+| --- | --- |
+| add_entity, add_item_entity, add_painting | spawns the entity in the packet pass: `entitySpawn`, then for an item `itemDrop` |
+| move_entity, move_entity_delta | moves it in the packet pass, to the position, the rotation and on the ground or not as told (move_entity_delta: the axes and rotations it carries): `entityMoved` |
+| set_entity_motion | sets its velocity in the packet pass, without an event, as Java |
+| set_entity_data | merges its metadata at the start of the next tick: `entityUpdate`, then as Java `entitySleep` when the update says it sleeps, `entityElytraFlew` when it starts gliding, `entityCrouch` while it sneaks, and `entityUncrouch` once it stops |
+| update_attributes | sets `entity.attributes[name]` to `{ value, modifiers }` in the packet pass: `entityAttributes` |
+| mob_effect | adds the effect to `entity.effects` by id, or removes it, in the packet pass: `entityEffect (entity, effect)` / `entityEffectEnd (entity, effect)`, with the effect kept (Java's `{ id, amplifier: -1, duration: -1 }` for one it was not told of) |
+| entity_event | in the packet pass `entityHurt`, `entityDead`, `entitySwingArm`, `entityTaming`, `entityTamed`, `entityShakingOffWater`, `entityEatingGrass`, `entityEat` |
+| animate | in the packet pass `entitySwingArm`, `entityWake`, `entityCriticalEffect`, `entityMagicCriticalEffect` |
+| take_item_entity | `playerCollect (collector, collected)` in the packet pass |
+| remove_entity | removes it at the end of the next tick, before `physicsTick`: `entityGone`, then `isValid` is false; it stays in `bot.entities` until then |
+| change_dimension | removes every entity but `bot.entity` as remove_entity does: the vanilla client drops the old dimension's entities, which servers do not remove |
+
+`entitySpawn (bot.entity)` comes right after `spawn`, as Java's. The local player's position, velocity, rotation,
+`onGround` and size are the movement's (see the local player): a move or a velocity the server sends of it is the
+movement's, and its metadata, attributes, effects, `crouching` and `elytraFlying` are kept as any entity's. Its
+`eyeHeight` is the vanilla client's, 1.62001 (a float).
+
+Where a Bedrock entity differs from Java's, and why:
+
+| | Java | Bedrock |
+| --- | --- | --- |
+| `entity.id`, the keys of `bot.entities` | the entity id | the runtime id (its low 32 bits): most packets name an entity by it, remove_entity by its unique id |
+| `entity.metadata` | by the protocol's key | by Bedrock's key numbers (the name tag 4, the bounding box 53 and 54; 1.16.201 numbers the keys from 85 one lower), the flags (0) and the extended flags as a bigint |
+| `name`, `type`, `displayName`, `entityType`, `kind` | the registry's of the entity type | the registry's of the identifier the server names, without `minecraft:` (`villager_v2`): an empty type is `object`, as Java; one minecraft-data does not have (all up to 1.16.210) is `other` of kind `unknown`, without a displayName |
+| `width`, `height` | the registry's | the metadata's bounding box, which servers send with every entity, else the registry's (on 1.19.1 – 1.20.80 minecraft-data has no sizes) |
+| `position` | the feet | Bedrock's actor position: the feet of a mob, above them for some (a boat by 0.375, a minecart on a rail by 0.35) |
+| `count` | an experience orb's count | an experience orb's experience |
+| `attributes` | Java's names | Bedrock's (`minecraft:health`, `minecraft:movement`) |
+| `effects`, `entityEffect` | Java's effect ids | Bedrock's: minecraft-data names none |
+| `entityHurt` | with its source from 1.20 | without one: entity_event tells none |
+| `entityEat` | animation 3 | entity_event `eating_item` |
+| `entityCrouch`, `entityUncrouch` | set the height (1.5, 1.8) and the eye height | leave the size to the bounding box |
+| `entityUpdate` and the events of the flags | in the packet's handler | at the start of the next tick: the vanilla client applies set_entity_data then |
+| `entityGone` | in the packet's handler | at the end of the next tick: the vanilla client destroys a removed entity then |
+| a dimension change | the old dimension's entities stay in `bot.entities` | they are gone at the end of the next tick (`entityGone`), as the vanilla client drops them |
+| `getCustomName()` | metadata 2, a JSON text | the name tag as a message, its § codes styling it as the vanilla client draws it; null without one or when empty |
+| `getDroppedItem()` | the item stack | throws: the bot reads no Bedrock items yet |
+| `entityHandSwap` | entity_status 55 | none: Bedrock tells no hand swap |
+| `entityEquip`, `usedFirework`, `equipment`, `heldItem` | | not yet: the bot reads no Bedrock items |
+
+The vanilla client answers none of these packets. How they differ by version:
+
+- **move_entity_delta** carries flags naming the fields present up to 1.26.30 (servers set bits above them too), each
+  field optional from 1.26.40, and its ticks from 1.26.51.
+- **mob_effect**'s removal carries an amplifier and a duration of 0 up to 1.20.61, the effect's from 1.20.71: the bot
+  ends the effect it kept, as Java.
+- **The ids**: the runtime id is a varint on 1.16.201 (a varint64 after) in the add packets, move_entity,
+  set_entity_motion, set_entity_data, entity_event and mob_effect; add_entity names its ids unique_id and runtime_id
+  from 1.19.10. Up to 1.16.210 the add packets give x, y, z and the speeds, and add_painting block coordinates.
+
 ## Scoreboards, teams and the tab list
 
 The server's scoreboard packets act in the packet pass, as Java's; the bot answers none, as the vanilla client.
@@ -539,7 +598,9 @@ The server's spawn_particle_effect (`/particle`) acts in the packet pass, as Jav
   local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
   answered; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
-  sent and how a correction acts; the scoreboards: by set_score's layout, one action for the packet's entries
+  sent and how a correction acts; the entities: by the layouts of the add packets, move_entity_delta, set_entity_motion,
+  the attributes and an effect's removal, how the metadata's flags are written, and what minecraft-data knows of the
+  entities; the scoreboards: by set_score's layout, one action for the packet's entries
   1.16.220 – 1.26.30, each entry its own type 1.26.40+; the titles: by set_title's layout, the type by its number
   1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 – 1.21.2, with a filtered message 1.21.20+; the boss
   bars: by boss_event's layout, no style with the bar 1.16.201 – 1.16.210, a numbered style 1.16.220 – 1.21.50, a
