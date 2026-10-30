@@ -80,7 +80,17 @@ export function bedrockText (registry: Registry): BedrockText {
  * %%: %d and %1$d are %s and %1$s, a bare %1 is %1$s, and %% stays two characters, as the vanilla client prints it.
  */
 export function bedrockLanguage (language: Readonly<Record<string, string>>): BedrockLanguage {
-  return Object.fromEntries(Object.entries(language).map(([key, format]) => [key, prismarineFormat(format)]))
+  // each format is rewritten when it is first read: a bot reads few of the language's ten thousand
+  const formats = new Map<string, string>()
+  return new Proxy(language, {
+    get: (target, key) => {
+      const format = typeof key === 'string' && Object.hasOwn(target, key) ? target[key] : undefined
+      if (format === undefined) return undefined
+      const rewritten = formats.get(format) ?? prismarineFormat(format)
+      formats.set(format, rewritten)
+      return rewritten
+    }
+  })
 }
 
 function prismarineFormat (format: string): string {
