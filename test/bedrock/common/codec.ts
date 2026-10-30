@@ -50,6 +50,16 @@ export function roundTrip (codec: BedrockCodec, name: string, params: object): o
   return read.data.params
 }
 
+export function readPacket (codec: BedrockCodec, buffer: Buffer): { name: string, params: object } {
+  const where = `${codec.version} 0x${buffer.subarray(0, 64).toString('hex')}${buffer.length > 64 ? '...' : ''}`
+  const read = codec.deserializer.parsePacketBuffer(buffer)
+  const { name, params } = read.data
+  assert.ok(typeof name === 'string' && params !== undefined, `${where}: ${codec.version} has no packet ${name}`)
+  assert.strictEqual(read.metadata.size, buffer.length, `${where}: ${buffer.length - read.metadata.size} bytes not read`)
+  assert.ok(codec.serializer.createPacketBuffer({ name, params }).equals(buffer), `${where}: written again, it differs`)
+  return { name, params }
+}
+
 function varint (value: number): number[] {
   const bytes: number[] = []
   while (value >= 0x80) {

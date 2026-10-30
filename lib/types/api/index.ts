@@ -86,7 +86,7 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'kicked' | 'end'>
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end'>
 
 export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   username: string
@@ -94,6 +94,7 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   majorVersion: string
   version: BedrockVersion
   registry: Registry
+  time: Time | TimeNotSynced
   end: (reason?: string) => void
   quit: (reason?: string) => void
   loadPlugin: (plugin: BedrockPlugin) => void
@@ -631,6 +632,8 @@ export interface Time {
   bigAge: bigint
   age: number
 }
+
+export type TimeNotSynced = { [Field in keyof Time]: null }
 
 export interface ControlStateStatus {
   forward: boolean

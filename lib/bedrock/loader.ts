@@ -2,12 +2,15 @@ import { EventEmitter } from 'events'
 import { createClient } from 'bedrock-protocol'
 import prismarineRegistry from 'prismarine-registry'
 import pluginLoader from './plugin_loader.ts'
+import time from './plugins/time.ts'
 import { bedrockProtocolVersionOf, isBedrockVersion, isSupportedBedrockVersion, latestSupportedBedrockVersion, oldestSupportedBedrockVersion } from './version.ts'
 import type { BedrockBot, BedrockBotOptions, Bot } from '../types/api/index.ts'
 import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock-internal.ts'
 import type { BedrockClient, BedrockClientboundPackets } from '../types/protocol/bedrock-client.ts'
 
-const plugins: { [name: string]: BedrockInternalPlugin } = {}
+const plugins: { [name: string]: BedrockInternalPlugin } = {
+  time
+}
 
 // bedrock-protocol closes the RakNet connection, which tells the server the player left, 40 ms after it emits close:
 // a process exiting on end must not exit before that

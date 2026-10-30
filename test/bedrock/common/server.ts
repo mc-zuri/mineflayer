@@ -5,7 +5,7 @@ import { latestSupportedBedrockVersion, testedBedrockVersions } from '../../../l
 import type { BedrockBot, BedrockBotOptions, BedrockVersion } from '../../../lib/types/api/index.ts'
 import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
 import type { BedrockClient, BedrockServerboundPackets } from '../../../lib/types/protocol/bedrock-client.ts'
-import { blankPacket, roundTrip } from './codec.ts'
+import { blankPacket, readPacket, roundTrip } from './codec.ts'
 import type { BedrockCodec } from './codec.ts'
 
 /** BEDROCK_VERSIONS=1.16.201,1.26: 1.16.201 and every 1.26 */
@@ -63,6 +63,12 @@ export class FakeBedrockClient extends EventEmitter implements BedrockClient {
 
   send<Name extends keyof ClientboundPacketsToWrite> (name: Name, fields: Partial<ClientboundPacketsToWrite[Name]> = {}): void {
     this.deliver(name, roundTrip(this.codec, name, { ...blankPacket(this.codec, name), ...fields }))
+  }
+
+  /** a packet as a server sent it on the wire, such as a recorded one */
+  receive (buffer: Buffer): void {
+    const { name, params } = readPacket(this.codec, buffer)
+    this.deliver(name, params)
   }
 
   private deliver (name: string, params: object): void {
