@@ -13,7 +13,19 @@ import type { Registry } from 'prismarine-registry'
 import type { IndexedData, SupportsFeature } from 'minecraft-data'
 import type { Tags, TagType } from 'prismarine-nbt'
 
-export declare function createBot (options?: BotOptions): Bot
+export declare function createBot<Options extends BedrockBotOptions> (options: Options & OnlyKeysOf<Options, BedrockBotOptions>): BedrockBotFor<Options>
+export declare function createBot<Version extends string | false = false> (options?: BotOptions & { version?: Version extends BedrockVersion ? never : Version }): BotFor<Version>
+
+/** an excess property check that also holds for a generic Options */
+export type OnlyKeysOf<Options, Known> = { [Key in Exclude<keyof Options, keyof Known>]: never }
+
+/** options typed any (a parsed JSON config) can hold any version */
+export type BedrockBotFor<Options> = 0 extends (1 & Options) ? Bot | BedrockBot : BedrockBot
+
+export type BotFor<Version extends string | false> =
+  Version extends BedrockVersion ? BedrockBot : string extends Version ? Bot | BedrockBot : Bot
+
+export declare function isBedrockBot (bot: Bot | BedrockBot): bot is BedrockBot
 
 /** createBot's options: minecraft-protocol's client options (createBot passes them on), and mineflayer's own */
 export interface BotOptions extends Omit<ClientOptions, 'username' | 'version'> {

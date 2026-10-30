@@ -47,14 +47,15 @@ import sequence from './plugins/sequence.ts'
 import minecraftData from 'minecraft-data'
 import prismarineRegistry from 'prismarine-registry'
 import { testedVersions, latestSupportedVersion, oldestSupportedVersion, latestSupportedProtocolVersionOf } from './version.ts'
-import { testedBedrockVersions, latestSupportedBedrockVersion, oldestSupportedBedrockVersion } from './bedrock/version.ts'
+import { testedBedrockVersions, latestSupportedBedrockVersion, oldestSupportedBedrockVersion, isBedrockVersion } from './bedrock/version.ts'
+import { createBedrockBot, isBedrockBot } from './bedrock/loader.ts'
 import Location from './location.ts'
 import Painting from './painting.ts'
 import ScoreBoard from './scoreboard.ts'
 import BossBar from './bossbar.ts'
 import Particle from './particle.ts'
 import type { SupportsFeature } from 'minecraft-data'
-import type { Bot, BotOptions } from './types/api/index.ts'
+import type { BedrockBot, BedrockBotFor, BedrockBotOptions, BedrockVersion, Bot, BotFor, BotOptions, OnlyKeysOf } from './types/api/index.ts'
 import type { BotInternal, InternalPlugin } from './types/internal.ts'
 
 const plugins: { [name: string]: InternalPlugin } = {
@@ -108,7 +109,14 @@ const latestSupportedProtocolVersion = latestSupportedProtocolVersionOf(minecraf
 /** a feature of a version, as minecraft-data has it (whether it has it, or its value) */
 const supportFeature = <Feature extends keyof SupportsFeature> (feature: Feature, version: string): SupportsFeature[Feature] => minecraftData(version).supportFeature(feature)
 
-function createBot (botOptions: BotOptions = {}): Bot {
+function isBedrockOptions (options: BotOptions | BedrockBotOptions): options is BedrockBotOptions {
+  return isBedrockVersion(options.version)
+}
+
+function createBot<Options extends BedrockBotOptions> (options: Options & OnlyKeysOf<Options, BedrockBotOptions>): BedrockBotFor<Options>
+function createBot<Version extends string | false = false> (options?: BotOptions & { version?: Version extends BedrockVersion ? never : Version }): BotFor<Version>
+function createBot (botOptions: BotOptions | BedrockBotOptions = {}): Bot | BedrockBot {
+  if (isBedrockOptions(botOptions)) return createBedrockBot(botOptions)
   // The defaults go on the caller's object itself: the plugins and minecraft-protocol share it.
   const options = Object.assign(botOptions, {
     username: botOptions.username ?? 'Player',
@@ -188,6 +196,7 @@ function createBot (botOptions: BotOptions = {}): Bot {
 
 export {
   createBot,
+  isBedrockBot,
   Location,
   Painting,
   ScoreBoard,

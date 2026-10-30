@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events'
+import { createBedrockBot } from '../../../lib/bedrock/loader.ts'
+import { once } from '../../../lib/promise_utils.ts'
 import { latestSupportedBedrockVersion, testedBedrockVersions } from '../../../lib/bedrock/version.ts'
-import type { BedrockVersion } from '../../../lib/types/api/index.ts'
+import type { BedrockBot, BedrockBotOptions, BedrockVersion } from '../../../lib/types/api/index.ts'
 import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
 import type { BedrockClient, BedrockServerboundPackets } from '../../../lib/types/protocol/bedrock-client.ts'
 import { blankPacket, roundTrip } from './codec.ts'
@@ -82,4 +84,11 @@ export class FakeBedrockClient extends EventEmitter implements BedrockClient {
       this.close()
     }
   }
+}
+
+export async function bedrockTestBot (codec: BedrockCodec, options: Omit<BedrockBotOptions, 'version'> = {}): Promise<{ bot: BedrockBot, server: FakeBedrockClient }> {
+  const server = new FakeBedrockClient(codec)
+  const bot = createBedrockBot({ hideErrors: true, ...options, version: codec.version }, server)
+  await once(bot, 'inject_allowed')
+  return { bot, server }
 }

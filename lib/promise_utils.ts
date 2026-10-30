@@ -1,5 +1,5 @@
 import type { Window } from 'prismarine-windows'
-import type { Bot, BotEvents } from './types/api/index.ts'
+import type { BedrockBot, BedrockBotEvents, Bot, BotEvents } from './types/api/index.ts'
 import type { BotInternal } from './types/internal.ts'
 import type { ClientListeners, TypedClient } from './types/protocol/client.ts'
 
@@ -18,8 +18,9 @@ export interface Task<T> {
 export type EventsOf<Emitter> =
   Emitter extends TypedClient ? ClientListeners
     : Emitter extends Window<infer Events> ? Events
-      : Emitter extends BotInternal | Bot ? BotEvents
-        : never
+      : Emitter extends BedrockBot ? BedrockBotEvents
+        : Emitter extends BotInternal | Bot ? BotEvents
+          : never
 
 /** an event's arguments, as its listener receives them */
 export type EventArgs<Emitter, Event extends keyof EventsOf<Emitter>> =
