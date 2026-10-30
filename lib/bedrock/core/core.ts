@@ -62,6 +62,8 @@ export class BedrockCore {
   private phase: Phase | undefined
   private ended = false
   private faulted: string | undefined
+  /** a rewind is playing past ticks again: their events are dropped */
+  private replaying = false
 
   constructor (hooks: CoreHooks) {
     this.hooks = hooks
@@ -164,15 +166,19 @@ export class BedrockCore {
     return this.timer.nsToNextTick()
   }
 
-  /** the systems a rewind replays, run for a past tick: their packets are dropped */
-  replay (tick: number): void {
-    for (const { owner, system } of this.scheduled()) {
-      if (system.replay && this.gateOpen(system.gate)) this.guard(owner, () => system.run({ tick, now: this.now, replaying: true, outbox: INERT_OUTBOX }))
-    }
+  /** the systems a rewind replays, run for a past tick: their packets and events are dropped; false once one throws */
+  replay (tick: number): boolean {
+    const scheduled = this.scheduled()
+    this.replaying = true
+    const returned = scheduled.every(({ owner, system }) => !system.replay || !this.gateOpen(system.gate) ||
+      this.guard(owner, () => { system.run({ tick, now: this.now, replaying: true, outbox: INERT_OUTBOX }) }))
+    this.replaying = false
+    return returned
   }
 
   /** a domain event: each listener is called apart, so that one throwing is reported and the others still hear it */
   emit<Name extends keyof BedrockBotEvents> (emitter: TypedEmitter<BedrockBotEvents>, name: Name, ...args: Arguments<BedrockBotEvents[Name]>): void {
+    if (this.replaying) return
     for (const listener of emitter.rawListeners(name)) this.guard('a listener', () => { Reflect.apply(listener, emitter, args) })
   }
 

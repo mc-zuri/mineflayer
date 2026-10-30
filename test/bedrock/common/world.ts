@@ -6,7 +6,7 @@ import type { RegistryBedrock } from 'prismarine-registry'
 import { isBedrockVersionAtLeast } from '../../../lib/bedrock/version.ts'
 import type { BedrockVersion } from '../../../lib/types/api/index.ts'
 import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
-import type { FakeBedrockClient, TestBot } from './server.ts'
+import type { ClientboundPacketsToWrite, FakeBedrockClient, TestBot } from './server.ts'
 import type { ManualDriver } from './driver.ts'
 
 /** [x, y, z, name]: a block, in world coordinates */
@@ -20,6 +20,8 @@ type WrittenEntries = NonNullable<MCProtocol.Bedrock.Write.Types.packet_subchunk
 type SubchunkRequest = MCProtocol.Bedrock.Write.Types.packet_subchunk_request
 
 export interface AskedSection { dimension: number, x: number, y: number, z: number }
+
+export type StartGame = Partial<ClientboundPacketsToWrite['start_game']>
 
 /** the sections of a request, as [x, y, z] of world sections: one up to 1.18.0, offsets from an origin after */
 function sectionsOf ({ x, y, z, origin, requests }: SubchunkRequest): Array<readonly [number, number, number]> {
@@ -81,16 +83,21 @@ export class ServerWorld {
     return DIMENSION_IDS[this.dimension]
   }
 
-  /** start_game, the player's feet at `feet` */
-  startGame (feet = this.feet, rotation: Rotation = { yaw: 0, pitch: 0 }): void {
+  /**
+   * start_game, the player's feet at `feet`: the movement authority as recorded (server up to 1.21.60, with rewind on
+   * 1.21.70 and 1.21.80, none named after) and a ring of 20 ticks (none named on 1.16.201), but for `fields`
+   */
+  startGame (feet = this.feet, rotation: Rotation = { yaw: 0, pitch: 0 }, fields: StartGame = {}): void {
     this.feet = feet
     const eye = eyeOf(feet)
     this.server.send('start_game', {
       runtime_entity_id: 1n,
       rotation: { x: rotation.pitch, z: rotation.yaw },
-      ...this.atLeast('bedrock_1.16.210') ? { player_position: eye } : { spawn: eye },
+      ...this.atLeast('bedrock_1.16.210') ? { player_position: eye, rewind_history_size: 20 } : { spawn: eye },
+      ...this.atLeast('bedrock_1.21.90') ? {} : { movement_authority: this.atLeast('bedrock_1.21.70') ? 'server_with_rewind' : 'server' },
       dimension: this.atLeast('bedrock_1.18.30') ? this.dimension : this.dimensionId,
-      ...this.atLeast('bedrock_1.19.80') ? { block_network_ids_are_hashes: this.hashes } : {}
+      ...this.atLeast('bedrock_1.19.80') ? { block_network_ids_are_hashes: this.hashes } : {},
+      ...fields
     })
   }
 
@@ -106,13 +113,13 @@ export class ServerWorld {
    * start_game, the 3 × 3 columns around the feet (a stone floor under them) and the spawn; then ticks, answering the
    * bot's requests, until it spawned, with no error
    */
-  async join ({ bot, internal, driver }: TestBot, { feet = this.feet, rotation }: { feet?: Point3, rotation?: Rotation } = {}): Promise<Joined> {
+  async join ({ bot, internal, driver }: TestBot, { feet = this.feet, rotation, game }: { feet?: Point3, rotation?: Rotation, game?: StartGame } = {}): Promise<Joined> {
     let spawned = false
     bot.once('spawn', () => { spawned = true })
     const errors: string[] = []
     const onError = (error: Error): void => { errors.push(error.message) }
     bot.on('error', onError)
-    this.startGame(feet, rotation)
+    this.startGame(feet, rotation, game)
     await this.sendAround()
     this.spawn()
     const { activation } = internal._core

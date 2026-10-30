@@ -2,8 +2,8 @@
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time and the world's
-blocks, holds its controls and looks, telling the server every tick, and ends; it does not move by itself yet (the
-physics come next), and the rest of the API is Java's only so far.
+blocks, holds its controls and looks, telling the server every tick, follows the server's corrections, and ends; it
+does not move by itself yet (the physics come next), and the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -112,7 +112,7 @@ Events come at their point in the frame:
 | --- | --- |
 | `login`, `time`, `forcedMove`, `blockUpdate`, `kicked`, `end`, `error` | the packet pass |
 | `chunkColumnLoad` | the start of a tick |
-| `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order |
+| `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
 ## The local player
 
@@ -145,10 +145,14 @@ The player does not move by itself yet: it stays where the server put it, standi
 0), until the physics come. The server moves it in the packet pass:
 
 - **move_player** of the player's runtime id (start_game's, by its low 32 bits: move_player's is a varint) places it,
-  emitting `forcedMove`, and turns it; its `rotation` mode only turns it. The next auth input answers it: it reports
-  where the server put the eye, without velocity; from 1.19.60 with the `handled_teleport` flag; from 1.21.70
-  client_camera_aim_assist clears the aim assist after it. The last move of a frame is answered, also in the first auth
-  input when it came before the server showed the player.
+  without velocity, emitting `forcedMove`, and turns it; its `rotation` mode only turns it. The next auth input
+  answers it: it reports where the server put the eye, without velocity; from 1.19.60 with the `handled_teleport`
+  flag; from 1.21.70 client_camera_aim_assist clears the aim assist after it. The last move of a frame is answered,
+  also in the first auth input when it came before the server showed the player.
+- **correct_player_move_prediction** and **set_entity_motion** (of the player's runtime id) correct it: see
+  corrections below.
+- `bot.entity` shows the player's position, velocity and `onGround` as the packet pass leaves them, and as each tick
+  ends.
 - `move` is emitted at the end of a tick whose auth input reported another position or rotation than the one before,
   with the feet that one reported.
 
@@ -177,6 +181,48 @@ player moves (held, only `block_breaking_delay_enabled`, and a teleport's):
 | `jump_pressed_raw`, `jump_released_raw`, `jump_current_raw` (and sneak's), from 1.21.50 | jump (sneak) pressed, released since the last auth input that reported the keys; held |
 | `block_breaking_delay_enabled`, from 1.21.0 | always |
 | `handled_teleport`, from 1.19.60 | the auth input answers a teleport |
+
+## Corrections
+
+The server corrects the player with correct_player_move_prediction (where its eye was after one of the bot's ticks,
+its velocity, and whether it stood on the ground), set_entity_motion (its velocity; stamped with a tick from 1.20.71)
+and move_player (stamped from 1.21.70). How they act depends on the server's movement authority:
+
+| Versions | The movement authority |
+| --- | --- |
+| 1.16.201 – 1.21.80 | start_game names it: `server` (recorded up to 1.21.60), `server_with_rewind` (recorded on 1.21.70 and 1.21.80; 1.16.201 names it `server_v2_rewind`) or `client` |
+| 1.21.90+ | start_game names none: it rewinds |
+| 1.21.42+ | set_movement_authority changes it |
+
+- **Under the `server` or `client` authority** a correction acts at once, in the packet pass, as set_entity_motion
+  does; the next auth input reports it. (Under the `client` authority the vanilla client would send move_player instead
+  of its auth inputs: the bot does not.)
+- **Under an authority that rewinds**, the bot keeps a ring of its last ticks: start_game's `rewind_history_size` of
+  them (0 is 1, at most 1000; 1.16.201 names none: one), each with what its movement read (the keys, the rotation,
+  whether it answered a teleport) and where it left the player. In the packet pass a packet that names one of these
+  ticks is filed on it; the next tick starts by playing the ticks since again from it (the first system of its tick, as
+  the vanilla client's LocalPlayerRewindSystem), with the packets filed on each in the order they came, and its auth
+  input reports where they lead: a correction of tick 61 received after the auth input of tick 62 shows in that of
+  tick 63, as recorded on 1.26.51. A tick played again sends nothing and emits nothing; the tick counter is the bot's
+  own, which no correction moves.
+
+What is filed:
+
+| Packet | Filed on its tick | Otherwise |
+| --- | --- | --- |
+| correct_player_move_prediction | unless it agrees with the tick: its feet within 1e-5 (squared, summed z, y, x as floats, as the vanilla client sums it) and on the ground alike, while no rewind is asked for | tick 0, a tick older than the ring, or one after its last (the server can only correct a tick the bot sent): dropped, and counted; a vehicle's (from 1.20.80) is ignored |
+| set_entity_motion | unless the velocity is exactly the player's present one: an echo, counted | without a tick, or tick 0: set at once; a tick older than the ring, or after its last: dropped |
+| move_player | a teleport of less than 16 blocks, asking for no rewind: a rewind over its tick plays it again | a reset, a teleport of 16 blocks or more, tick 0, a tick not in the ring (counted as a correction's) |
+
+move_player places the player at once either way. A packet that acts at once (move_player, unless filed; respawn;
+set_entity_motion; a correction under the `server` or `client` authority) starts the ring again: the ticks before it
+would lead elsewhere. A system that throws while a tick is played again abandons the rewind: the player stays where it
+was, and the ring starts again.
+
+Until the physics come the player stands still where the server put it, so a rewind leaves it where the correction
+says, without velocity, and reads none of the input the ring keeps. The bot counts what became of the server's packets
+(filed, agreed, echoes, unstamped, too old, anomalies, rewinds, replayed ticks and abandoned rewinds): an internal
+bot's `_player.corrections.stats`.
 
 ## Controls and look
 
@@ -273,14 +319,16 @@ Dimension changes are not followed yet: the world stays in start_game's dimensio
     differently;
   - `ServerWorld` (`test/bedrock/common/world.ts`) is the server's world: columns built with prismarine-chunk, sent
     and answered as the version's servers do, and `join`, which spawns the player as servers do and ticks until
-    `spawn`, failing on any `error`;
+    `spawn`, failing on any `error`; its start_game names the movement authority the version's servers named, and
+    keeps 20 ticks;
   - `BEDROCK_VERSIONS=1.16.201,1.26` runs some versions only.
 - **What servers send**: the tests use the packets and values servers sent the vanilla Bedrock client, recorded on
   every version, small ones as their bytes. Versions whose servers send alike are a group, and each group's tests run
   on each of its versions (the time: `set_time` 1.16.201 – 1.26.20, world clocks 1.26.30+, `tick_sync` answers up to
-  1.20.50; the world: by how a column comes, a block changes and the dimension is named; the local player: by when it
-  is held and initialized, the auth input's layout, its flags, and how a teleport is answered). The workspace's
-  `pnpm test:recorded` replays the recordings themselves.
+  1.20.50; the world: by how a column comes, a block changes and the dimension is named; the corrections: by the
+  ring's size, the correction's shape, the movement authority, how the velocity is set and the player respawned; the
+  local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
+  answered). The workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 

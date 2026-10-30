@@ -15,6 +15,8 @@ const MAX_SIZE = 1000
 export class History<Input, Snapshot, Filing> {
   private records: Array<HistoryRecord<Input, Snapshot, Filing>> = []
   private size = 1
+  /** a filing asks the next tick to rewind */
+  private armed = false
 
   /** start_game's rewind_history_size (0 keeps one tick); clears the ring */
   resize (size: number): void {
@@ -24,6 +26,7 @@ export class History<Input, Snapshot, Filing> {
 
   clear (): void {
     this.records = []
+    this.armed = false
   }
 
   /** a tick that does not follow the newest record starts the ring again */
@@ -50,16 +53,17 @@ export class History<Input, Snapshot, Filing> {
     return this.size
   }
 
-  /** files a packet on the record of its tick, which must be in the ring */
-  file (tick: number, filing: Filing): void {
+  /** files a packet on the record of its tick, which must be in the ring; one that `arms` asks the next tick to rewind */
+  file (tick: number, filing: Filing, arms: boolean): void {
     const record = this.get(tick)
     if (record === undefined) throw new Error(`no record of tick ${tick} to file on`)
     record.filings.push(filing)
+    if (arms) this.armed = true
   }
 
-  /** the oldest record a packet was filed on: the replay starts after it */
+  /** once a rewind is asked for, the oldest record a packet was filed on: the replay starts after it */
   get anchor (): HistoryRecord<Input, Snapshot, Filing> | undefined {
-    return this.records.find(record => record.filings.length > 0)
+    return this.armed ? this.records.find(record => record.filings.length > 0) : undefined
   }
 
   get pending (): boolean {
@@ -73,5 +77,6 @@ export class History<Input, Snapshot, Filing> {
 
   clearFilings (): void {
     for (const record of this.records) record.filings.length = 0
+    this.armed = false
   }
 }

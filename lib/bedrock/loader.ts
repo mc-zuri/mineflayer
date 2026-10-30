@@ -86,12 +86,14 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   bot._core = core
   const controls = new Controls(bot)
   const player = new LocalPlayer(bot, controls)
+  bot._player = player
   bot._world = new NetworkWorld(bot, () => player.feet)
   const session = new Session(bot, options.viewDistance, bot._world, player)
+  // a tick ends with the player's movement recorded and shown, then spawn
+  player.install(core)
   session.install(core)
   bot._world.install(core)
   controls.install(core)
-  player.install(core)
   bot.waitForTicks = async ticks => {
     // before start_game, the ticks after it
     if (ticks > 0) await core.waits.untilTick((core.tick ?? 0) + ticks)

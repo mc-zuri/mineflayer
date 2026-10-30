@@ -203,15 +203,16 @@ describe('bedrock controls', () => {
       assert.deepStrictEqual(await lookAt(0, -10, -10), [180, 45, true])
     })
 
-    it('ends a tick with spawn, physicsTick, physicTick, then move', async () => {
+    it('ends a tick with the player\'s movement recorded, then spawn, physicsTick, physicTick and move', async () => {
       const testBot = await bedrockTestBot(codec)
       const { bot, internal, server } = testBot
       const events: string[] = []
       for (const event of ['spawn', 'physicsTick', 'physicTick', 'move'] as const) bot.on(event, () => { events.push(`${event} ${internal._core.tick ?? '-'}`) })
+      bot.on('spawn', () => { events.push(`recorded ${internal._player.corrections.history.newest ?? '-'}`) })
       // a look asked for in tick 2 is reported in tick 4, the tick it spawns
       bot.on('physicsTick', () => { if (internal._core.tick === 2) bot.look(0, 0).catch(() => {}) })
       await new ServerWorld(server).join(testBot)
-      assert.deepStrictEqual(events.slice(-4), ['spawn 4', 'physicsTick 4', 'physicTick 4', 'move 4'])
+      assert.deepStrictEqual(events.slice(-5), ['spawn 4', 'recorded 4', 'physicsTick 4', 'physicTick 4', 'move 4'])
     })
 
     it('waits for ticks: from start_game\'s tick 0 before it, none at once', async () => {

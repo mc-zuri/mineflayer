@@ -1,10 +1,13 @@
 import assert from 'assert'
+import { EventEmitter } from 'events'
+import type TypedEmitter from 'typed-emitter'
 import { BedrockCore } from '../../lib/bedrock/core/core.ts'
 import { FrameTimer, TICK_NS } from '../../lib/bedrock/core/frame_timer.ts'
 import { History } from '../../lib/bedrock/core/history.ts'
 import { resolveSchedule } from '../../lib/bedrock/core/schedule.ts'
 import type { SystemDecl } from '../../lib/bedrock/core/schedule.ts'
 import type { OutgoingPacket, TickContext } from '../../lib/bedrock/core/types.ts'
+import type { BedrockBotEvents } from '../../lib/types/api/index.ts'
 import { ManualDriver } from './common/driver.ts'
 
 const MS = 1_000_000
@@ -226,11 +229,15 @@ describe('bedrock core', () => {
       assert.throws(() => resolveSchedule([system('b', { after: 'c' }), system('c', { before: 'b' })]), { message: 'no system to place b after c, c before b' })
     })
 
-    it('run only while their gate is open; a rewind replays only the replaying ones, dropping their packets', async () => {
+    it('run only while their gate is open; a rewind replays only the replaying ones, dropping their packets and events', async () => {
       const ran: string[] = []
+      const events: TypedEmitter<BedrockBotEvents> = new EventEmitter()
+      let heard = 0
+      events.on('physicsTick', () => { heard++ })
       const record = (ctx: TickContext, name: string): void => {
         ran.push(`${name} ${ctx.tick}${ctx.replaying ? ' replayed' : ''}`)
         ctx.outbox.queue('tick_sync', { request_time: 0n, response_time: 0n })
+        core.emit(events, 'physicsTick')
       }
       const { core, driver, batches } = harness(core => {
         core.system('m', system('always', { at: 'LocalPlayerRewindSystem' }, ctx => { record(ctx, 'always') }))
@@ -244,12 +251,25 @@ describe('bedrock core', () => {
       await driver.tick()
       core.activation.active = true
       await driver.tick()
-      core.replay(2)
+      const replayed = [core.replay(2)]
       core.activation.active = false
-      core.replay(3)
+      replayed.push(core.replay(3))
+      core.emit(events, 'physicsTick')
       assert.deepStrictEqual(ran, ['always 1', 'always 2', 'present 2', 'always 3', 'present 3', 'active 3', 'present 2 replayed', 'active 2 replayed', 'present 3 replayed'])
+      assert.deepStrictEqual(replayed, [true, true])
       assert.strictEqual(core.stats.gated, 3)
-      assert.strictEqual(batches.flat().length, 6)
+      assert.deepStrictEqual([batches.flat().length, heard], [6, 7])
+    })
+
+    it('replayed, stop at the first that throws, which is reported', () => {
+      const ran: string[] = []
+      const { core, errors } = harness(core => {
+        core.system('m', system('first', { at: 'LocalPlayerRewindSystem' }, ctx => { ran.push(`first ${ctx.tick}`) }, 'always', true))
+        core.system('m', system('throws', { at: 'PredictedMovementSystem' }, ctx => { throw new Error(`replaying ${ctx.tick}`) }, 'always', true))
+        core.system('m', system('last', { at: 'HitResultSystem' }, ctx => { ran.push(`last ${ctx.tick}`) }, 'always', true))
+      })
+      assert.strictEqual(core.replay(4), false)
+      assert.deepStrictEqual([ran, errors.map(error => error.message)], [['first 4'], ['replaying 4']])
     })
 
     it('are registered before the core is sealed, and a packet has one handler', () => {
@@ -499,19 +519,31 @@ describe('bedrock core', () => {
       assert.deepStrictEqual([history.oldest, history.newest], [undefined, undefined])
     })
 
-    it('files packets on their tick; the oldest filed record anchors a rewind', () => {
+    it('files packets on their tick; once one asks for a rewind, the oldest filed record anchors it', () => {
       const history = new History<string, number, string>()
       history.resize(5)
       for (const tick of [1, 2, 3]) history.record(tick, '', tick)
-      assert.strictEqual(history.pending, false)
-      history.file(3, 'late')
-      history.file(2, 'early')
-      assert.strictEqual(history.anchor?.tick, 2)
-      assert.strictEqual(history.pending, true)
-      assert.throws(() => { history.file(9, 'ahead') }, { message: 'no record of tick 9 to file on' })
+      history.file(2, 'played again by a rewind', false)
+      assert.deepStrictEqual([history.anchor, history.pending], [undefined, false])
+      history.file(3, 'rewinds', true)
+      history.file(1, 'played again too', false)
+      assert.deepStrictEqual([history.anchor?.tick, history.pending], [1, true])
+      assert.throws(() => { history.file(9, 'ahead', true) }, { message: 'no record of tick 9 to file on' })
       history.clearFilings()
+      assert.deepStrictEqual([history.pending, history.get(1)?.filings, history.get(3)?.filings], [false, [], []])
+      history.file(2, 'after the rewind', false)
       assert.strictEqual(history.pending, false)
-      assert.deepStrictEqual(history.get(3)?.filings, [])
+    })
+
+    it('asks for no rewind once cleared', () => {
+      const history = new History<string, number, string>()
+      history.resize(5)
+      history.record(1, '', 1)
+      history.file(1, 'rewinds', true)
+      history.clear()
+      history.record(2, '', 2)
+      history.file(2, 'played again by a rewind', false)
+      assert.strictEqual(history.pending, false)
     })
   })
 })
