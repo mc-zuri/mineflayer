@@ -4,6 +4,7 @@ import { BedrockCore } from './core/core.ts'
 import type { InboxWriter, Ns, Transport } from './core/types.ts'
 import { monotonicClock, startRealtimeDriver } from './drivers/realtime.ts'
 import { Session } from './modules/session.ts'
+import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
 import time from './plugins/time.ts'
 import { connectBedrockProtocol } from './transport/adapter.ts'
@@ -83,6 +84,8 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   bot._core = core
   const session = new Session(bot, options.viewDistance)
   session.install(core)
+  bot._world = new NetworkWorld(bot)
+  bot._world.install(core)
 
   pluginLoader(bot, options)
   const internalPlugins = Object.entries(plugins)

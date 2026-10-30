@@ -1,10 +1,11 @@
 import { createBedrockBot } from '../../../lib/bedrock/loader.ts'
 import type { BedrockCore } from '../../../lib/bedrock/core/core.ts'
-import type { InboxWriter, OutgoingPacket, Transport } from '../../../lib/bedrock/core/types.ts'
+import type { InboxWriter, OutgoingPacket, ServerboundName, Transport } from '../../../lib/bedrock/core/types.ts'
 import { latestSupportedBedrockVersion, testedBedrockVersions } from '../../../lib/bedrock/version.ts'
 import type { BedrockBot, BedrockBotOptions, BedrockVersion } from '../../../lib/types/api/index.ts'
 import type { BedrockBotInternal } from '../../../lib/types/bedrock-internal.ts'
 import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
+import type { BedrockServerboundPackets } from '../../../lib/types/protocol/bedrock-client.ts'
 import { blankPacket, readPacket, roundTrip } from './codec.ts'
 import type { BedrockCodec } from './codec.ts'
 import { ManualDriver } from './driver.ts'
@@ -85,6 +86,12 @@ export class FakeBedrockClient implements Transport {
   /** the names of the packets the bot queued in tick `tick`, in order */
   inTick (tick: number): string[] {
     return this.batches.flat().filter(packet => packet.tick === tick && packet.phase === 'T3').map(packet => packet.name)
+  }
+
+  /** the bot's `name` packets, as it queued them */
+  sentOf<Name extends ServerboundName> (name: Name): Array<BedrockServerboundPackets[Name]> {
+    // the bot queued them as `name` (and they read back as written)
+    return this.batches.flat().filter(packet => packet.name === name).map(packet => packet.params as BedrockServerboundPackets[Name])
   }
 
   private deliver (name: string, params: object, size: number): void {

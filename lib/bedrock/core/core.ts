@@ -1,3 +1,6 @@
+import type TypedEmitter from 'typed-emitter'
+import type { Arguments } from 'typed-emitter'
+import type { BedrockBotEvents } from '../../types/api/index.ts'
 import type { BedrockClientboundPackets } from '../../types/protocol/bedrock-client.ts'
 import { FrameTimer } from './frame_timer.ts'
 import { Inbox } from './inbox.ts'
@@ -166,6 +169,11 @@ export class BedrockCore {
     for (const { owner, system } of this.scheduled()) {
       if (system.replay && this.gateOpen(system.gate)) this.guard(owner, () => system.run({ tick, now: this.now, replaying: true, outbox: INERT_OUTBOX }))
     }
+  }
+
+  /** a domain event: each listener is called apart, so that one throwing is reported and the others still hear it */
+  emit<Name extends keyof BedrockBotEvents> (emitter: TypedEmitter<BedrockBotEvents>, name: Name, ...args: Arguments<BedrockBotEvents[Name]>): void {
+    for (const listener of emitter.rawListeners(name)) this.guard('a listener', () => { Reflect.apply(listener, emitter, args) })
   }
 
   /** an unrecoverable error: the connection closes, and every wait rejects */

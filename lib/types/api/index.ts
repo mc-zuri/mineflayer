@@ -88,7 +88,12 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick'>
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'chunkColumnLoad' | 'blockUpdate'> & BlockUpdateAtEvents
+
+/** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
+export interface BlockUpdateAtEvents {
+  [event: `blockUpdate:(${number}, ${number}, ${number})`]: (oldBlock: Block, newBlock: Block) => Promise<void> | void
+}
 
 export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   username: string
@@ -97,6 +102,12 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   version: BedrockVersion
   registry: Registry
   time: Time | TimeNotSynced
+  /** the blocks the server sent, as received */
+  world: world.WorldSync
+  /** null where the bot has no column, or the section was asked for and is not answered yet */
+  blockAt: (point: Vec3) => Block | null
+  /** resolves once the columns around the player's are loaded; rejects after 200 ticks */
+  waitForChunksToLoad: () => Promise<void>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   loadPlugin: (plugin: BedrockPlugin) => void
