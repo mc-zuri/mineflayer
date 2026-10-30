@@ -94,6 +94,25 @@ function canonical (params: object | undefined): string {
   }, 1)
 }
 
+/**
+ * whether the two read the same, quickly: true only where canonical would write them alike (the same values, Buffers
+ * of the same bytes, objects with the same keys but for undefined ones); anything else is left to canonical
+ */
+function same (a: Field, b: Field): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Buffer.isBuffer(a) || Buffer.isBuffer(b)) return Buffer.isBuffer(a) && Buffer.isBuffer(b) && a.equals(b)
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((field: Field, index) => same(field, b[index]))
+  }
+  if (typeof a.valueOf() === 'bigint' || typeof b.valueOf() === 'bigint') return false
+  const keysOf = (field: object): string[] => Object.entries(field).filter(([, value]) => value !== undefined).map(([key]) => key)
+  const [aKeys, bKeys] = [keysOf(a), keysOf(b)]
+  const aFields: Record<string, Field> = { ...a }
+  const bFields: Record<string, Field> = { ...b }
+  return aKeys.length === bKeys.length && aKeys.every(key => Object.hasOwn(bFields, key) && same(aFields[key], bFields[key]))
+}
+
 export function roundTrip (codec: BedrockCodec, name: string, params: object): object {
   const buffer = codec.serializer.createPacketBuffer({ name, params })
   const where = `${codec.version} ${name} (0x${buffer.subarray(0, 64).toString('hex')}${buffer.length > 64 ? '...' : ''})`
@@ -101,7 +120,7 @@ export function roundTrip (codec: BedrockCodec, name: string, params: object): o
   assert.strictEqual(read.data.name, name, `${where}: read back as packet ${read.data.name}: ${codec.version} has no ${name}`)
   assert.strictEqual(read.metadata.size, buffer.length, `${where}: ${buffer.length - read.metadata.size} bytes not read`)
   assert.ok(read.data.params !== undefined, `${where}: no params read`)
-  assert.strictEqual(canonical(read.data.params), canonical(params), `${where}: read back differently`)
+  if (!same(read.data.params, params)) assert.strictEqual(canonical(read.data.params), canonical(params), `${where}: read back differently`)
   const rewritten = codec.serializer.createPacketBuffer({ name, params: read.data.params })
   assert.ok(rewritten.equals(buffer), `${where}: written again, it is 0x${rewritten.toString('hex')}`)
   return read.data.params
