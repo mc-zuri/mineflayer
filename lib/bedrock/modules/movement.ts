@@ -2,7 +2,7 @@ import assert from 'assert'
 import prismarineEntity from 'prismarine-entity'
 import type { Entity } from 'prismarine-entity'
 import { createMovementState, EYE_HEIGHT, feetFromEye, reportedEyePosition, rulesFor, simulateTick, sneakScaledMove } from 'prismarine-physics/lib/bedrock/index.ts'
-import type { BedrockRules, MovementState, TickActions, Vec3Data } from 'prismarine-physics/lib/bedrock/index.ts'
+import type { BedrockRules, MovementState, TickActions, TickInput, TickResult, Vec3Data } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { Registry } from 'prismarine-registry'
 import { Vec3 } from 'vec3'
 import { fromNotchianPitch, fromNotchianYaw, toNotchianPitch, toNotchianYaw } from '../../conversions.ts'
@@ -29,6 +29,11 @@ const NO_ACTIONS: TickActions = Object.freeze({ startSprinting: false, stopSprin
 const HELD = Object.freeze({ velocity: STILL, horizontalCollision: false, verticalCollision: false, stepSlide: 0, reportedFeetY: null })
 /** a teleport this far, or farther, starts the ring again */
 const FAR_TELEPORT = 16
+const SNEAKING_FLAG = 1n
+const SPRINTING_FLAG = 3n
+
+/** what the server echoes of the player's flags */
+type Echoed = Pick<MovementState, 'sprinting' | 'sneaking'>
 
 type EntityLoader = (registry: Registry) => typeof Entity
 
@@ -39,6 +44,14 @@ function assertEntityLoader (loader: object): asserts loader is EntityLoader {
 
 function isFar (from: Vec3f, to: Vec3f): boolean {
   return (to.x - from.x) ** 2 + (to.y - from.y) ** 2 + (to.z - from.z) ** 2 >= FAR_TELEPORT ** 2
+}
+
+/** the sprint and the sneak among an entity's flags: on 1.16.201 minecraft-data names them index, and reads them as a long */
+function sprintAndSneak (metadata: BedrockClientboundPackets['set_entity_data']['metadata']): Echoed | undefined {
+  const flags = metadata.find(({ key }) => key === 'flags' || key === 'index')?.value
+  if (typeof flags === 'bigint') return { sprinting: (flags >> SPRINTING_FLAG & 1n) === 1n, sneaking: (flags >> SNEAKING_FLAG & 1n) === 1n }
+  if (typeof flags === 'object' && 'sprinting' in flags) return { sprinting: flags.sprinting, sneaking: flags.sneaking }
+  return undefined
 }
 
 function sameVector (a: Vec3f, b: Vec3f): boolean {
@@ -73,6 +86,8 @@ export class LocalPlayer {
   private input: MovementInput | undefined
   /** what the tick's movement started */
   private actions: TickActions = NO_ACTIONS
+  /** the server's last echo of the player's flags, unlike them, for the next tick */
+  private echoed: Echoed | undefined
   private readonly bot: BedrockBotInternal
   private readonly controls: Controls
   private readonly rules: BedrockRules
@@ -154,6 +169,9 @@ export class LocalPlayer {
     core.handle(OWNER, 'correct_player_move_prediction', packet => { this.correct(packet) })
     core.handle(OWNER, 'set_entity_motion', packet => {
       if (this.isLocalPlayer(packet.runtime_entity_id)) this.setMotion(packet)
+    })
+    core.handle(OWNER, 'set_entity_data', packet => {
+      if (this.isLocalPlayer(packet.runtime_entity_id)) this.echo(packet)
     })
     core.handle(OWNER, 'set_movement_authority', packet => { this.corrections.rewinds = rewindsUnder(packet.movement_authority) })
     core.system(OWNER, { name: 'movement.rewind', place: { at: 'LocalPlayerRewindSystem' }, gate: 'active', replay: false, run: () => { this.rewind(core) } })
@@ -282,6 +300,20 @@ export class LocalPlayer {
   }
 
   /**
+   * the server's echo of the player's flags, as it last saw them: a tick or two behind. The vanilla client takes their
+   * sprint and sneak as its own, so that its next tick starts or stops them again by the keys; the last echo before a
+   * tick counts
+   */
+  private echo (packet: BedrockClientboundPackets['set_entity_data']): void {
+    // stamped from 1.21.70 with a tick, and recorded it always agrees with the player's flags: the bot ignores it
+    if (packet.tick !== 0n) return
+    const flags = sprintAndSneak(packet.metadata)
+    if (flags === undefined) return
+    const { sprinting, sneaking } = this.state
+    this.echoed = flags.sprinting === sprinting && flags.sneaking === sneaking ? undefined : flags
+  }
+
+  /**
    * The first system of a tick after a packet was filed on a past one: the ticks since are played again from that tick,
    * with the packets filed on each, and the player is where they lead. A system throwing abandons it.
    */
@@ -316,12 +348,27 @@ export class LocalPlayer {
     const before = this.state
     const { state, actions } = input === 'held'
       ? { state: { ...before, ...HELD }, actions: NO_ACTIONS }
-      : simulateTick(before, input, this.bot._world.physicsWorld(before.position.y), this.rules)
+      : this.physics(before, input, replaying ? undefined : this.echoed)
     this.state = state
     if (replaying) return
+    // a tick played again acts on no echo (the ticks before this one came before it): the ring starts again with this one
+    if (this.echoed !== undefined) this.corrections.history.clear()
+    this.echoed = undefined
     this.input = input
     this.actions = actions
     this.sendBesides(outbox, before, actions)
+  }
+
+  /**
+   * the physics' tick; after an echo the vanilla client starts and stops the sprint and the sneak from the echoed flags,
+   * and sprints as they lead to, but moves as its last tick left it: in its pose, as fast as its sprint was
+   */
+  private physics (before: MovementState, input: TickInput, echoed: Echoed | undefined): TickResult {
+    const world = this.bot._world.physicsWorld(before.position.y)
+    const moved = simulateTick(before, input, world, this.rules)
+    if (echoed === undefined) return moved
+    const told = simulateTick({ ...before, ...echoed }, input, world, this.rules)
+    return { state: { ...moved.state, sprinting: told.state.sprinting }, actions: told.actions }
   }
 
   private recordedInput (tick: number): MovementInput {

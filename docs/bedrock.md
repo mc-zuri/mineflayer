@@ -153,6 +153,7 @@ pass:
   also in the first auth input when it came before the server showed the player.
 - **correct_player_move_prediction** and **set_entity_motion** (of the player's runtime id) correct it: see
   corrections below.
+- **set_entity_data** of the player's runtime id echoes its flags: see the echo under physics below.
 - `bot.entity` shows the player's position, velocity, `onGround` and `isCollidedHorizontally` /
   `isCollidedVertically` as the packet pass leaves them, and as each tick ends.
 - `move` is emitted at the end of a tick whose auth input reported another position or rotation than the one before,
@@ -222,8 +223,10 @@ What is filed:
 
 move_player places the player at once either way. A packet that acts at once (move_player, unless filed; respawn;
 set_entity_motion; a correction under the `server` or `client` authority) starts the ring again: the ticks before it
-would lead elsewhere. A system that throws while a tick is played again abandons the rewind: the player stays where it
-was, and the ring starts again.
+would lead elsewhere. An echo of other flags than the player's (see physics) acts on the next tick only, and a tick
+played again acts on no echo: a rewind that tick begins with plays the ticks before it again as they were, and the ring
+starts again with that tick. A system that throws while a tick is played again abandons the rewind: the player stays
+where it was, and the ring starts again.
 
 A tick played again is the physics' tick again, on what the tick read (its input to the physics, or that
 physicsEnabled held the player), from where the packets filed before it put the player (its box following its feet).
@@ -288,7 +291,22 @@ Besides the auth input, before it in the tick, the vanilla client tells the serv
 `bot.physicsEnabled = false` (or the option `physicsEnabled: false`) holds the player: from the next frame it stands
 where it is, without velocity, moving into nothing (`bot.entity` shows no collision), and its auth inputs report its
 eye over its feet (on the tick after a step too), no key and no move (looks, a teleport's answer and the server's
-corrections still act). Set back to true, it moves from the next frame.
+corrections still act; a held tick drops an echo the server sent before it, see below). Set back to true, it moves from
+the next frame.
+
+**The echo.** The server sends set_entity_data of the player's flags. Up to 1.21.60 it is unstamped (tick 0), with the
+flags as the server last saw them, a tick or two behind, and the vanilla client takes its sprint and sneak as its own in
+the packet pass: its next tick starts or stops them again by the keys, and tells the server so again. As recorded: after
+the keys are released, every echo still saying it sprints gives the next auth input `stop_sprinting` again (on
+1.16.201 player_action `stop_sprint`), and a sneak's alike; falling with sprint held, an echo saying it does not sprint
+gives `start_sprinting` again; a sprint a wall stopped, echoed as sprinting, is stopped again, not started and stopped.
+It moves as its own last tick left it, though: in its pose (an echo resizes nothing) and as fast as its sprint was. The
+bot does so with the last echo before a tick that differs from the player's flags (that tick starts the ring again, see
+corrections): the tick's starts and stops, and whether it sprints after it, follow the echoed flags; its move follows
+the player's own. So, though not recorded, a sprint the sprint key no longer holds ends on an echo saying it does not
+sprint. An echo without the flags changes nothing (minecraft-data names them `index` on 1.16.201). From 1.21.70 the
+server stamps the echo with a tick; recorded, it always agrees with the player's flags when it arrives, and the bot
+ignores it.
 
 There is no `bot.physics` (Java's gravity, speeds and friction to tune): the vanilla client's are fixed floats, which
 the engine takes from the version.
@@ -304,8 +322,6 @@ Where the bot differs from the vanilla client:
 - the vanilla client jumps onto a block in its way by itself (auto-jump); the bot does not;
 - up to 1.20.0 the vanilla client also sends level_sound_event `Land` (or `Fall`, after a fall) in the tick it lands,
   before its move_player; the bot does not;
-- up to 1.21.50 the vanilla client sometimes sets a start or stop flag again on a later tick, or on 1.16.201 sends a
-  `stop_sprint` or `stop_sneak` again, with nothing changed; the bot reports each once;
 - up to 1.18.0 the vanilla client writes `head_yaw` (of the auth input and the landing move_player) in [0, 360); the
   bot writes the yaw.
 

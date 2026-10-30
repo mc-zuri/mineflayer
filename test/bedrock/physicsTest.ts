@@ -3,17 +3,18 @@ import prismarineRegistry from 'prismarine-registry'
 import { Vec3 } from 'vec3'
 import { latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
 import type { BedrockVersion, ControlState } from '../../lib/types/api/index.ts'
-import { bedrockCodec } from './common/codec.ts'
+import { bedrockCodec, blankPacket } from './common/codec.ts'
 import { bedrockTestBot, bedrockTestVersionsFrom, inputFlags } from './common/server.ts'
 import type { AuthInput, TestBot } from './common/server.ts'
 import { eyeOf, ServerWorld } from './common/world.ts'
-import type { BlockAt, Point3 } from './common/world.ts'
+import type { BlockAt, Point3, Rotation, StartGame } from './common/world.ts'
 
 // The physics move the local player every tick, and the auth input reports where they left it (the eye, the delta) and
 // what they did (a start, a stop, a collision), as the vanilla client of each version reports it: the values are the
 // recorded ones, the same on every version unless a group says otherwise. The physics' own rules are
 // prismarine-physics' tests; these follow them through the bot. The player joins with its feet at (0.5, 12, 30.5) on a
-// stone floor, looking south (yaw 0), as the recordings stand it, and is let stand a tick before each case.
+// stone floor, looking south (yaw 0), as the recordings stand it, and is let stand a tick before each case. A play the
+// server echoes the player's flags to is told against the same play without the echoes, as the recordings tell them.
 
 const FEET = Object.freeze({ x: 0.5, y: 12, z: 30.5 })
 /** the eye of the feet standing on the floor */
@@ -34,11 +35,18 @@ interface Joined extends TestBot {
   world: ServerWorld
 }
 
-/** a bot joined at FEET (and `blocks` besides the floor), standing a tick */
-async function joined (version: BedrockVersion, blocks: readonly BlockAt[] = []): Promise<Joined> {
+interface Setup {
+  /** besides the floor */
+  blocks?: readonly BlockAt[]
+  rotation?: Rotation
+  game?: StartGame
+}
+
+/** a bot joined at FEET, standing a tick */
+async function joined (version: BedrockVersion, { blocks = [], ...join }: Setup = {}): Promise<Joined> {
   const testBot = await bedrockTestBot(bedrockCodec(version))
   const world = new ServerWorld(testBot.server, { blocks })
-  await world.join(testBot, { feet: FEET })
+  await world.join(testBot, { feet: FEET, ...join })
   await testBot.driver.tick()
   return { ...testBot, world }
 }
@@ -194,7 +202,7 @@ describe('bedrock physics', () => {
    * collisions, and in a tick held after (a held player moves into nothing)
    */
   async function intoWall (version: BedrockVersion): Promise<[number[], number[], boolean[], [boolean, boolean, boolean], [boolean, boolean, boolean]]> {
-    const testBot = await joined(version, [[0, 12, 32, 'stone'], [0, 13, 32, 'stone']])
+    const testBot = await joined(version, { blocks: [[0, 12, 32, 'stone'], [0, 13, 32, 'stone']] })
     const inputs: AuthInput[] = []
     for (let i = 0; i < 8; i++) inputs.push(await holding(testBot, ['forward']))
     const walking = collisionsOf(testBot)
@@ -245,11 +253,11 @@ describe('bedrock physics', () => {
   /** walks south onto a bottom slab at z 32, as recorded */
   async function upSlab (version: BedrockVersion): Promise<SteppedUp> {
     const slab: BlockAt[] = [[0, 12, 32, slabOf(version)]]
-    const walking = await joined(version, slab)
+    const walking = await joined(version, { blocks: slab })
     const inputs: AuthInput[] = []
     for (let i = 0; i < 12; i++) inputs.push(await holding(walking, ['forward']))
     const stepped = inputs.slice(5)
-    const held = await joined(version, slab)
+    const held = await joined(version, { blocks: slab })
     for (let i = 0; i < 7; i++) await holding(held, ['forward'])
     held.bot.physicsEnabled = false
     const heldInput = await holding(held, ['forward'])
@@ -269,7 +277,7 @@ describe('bedrock physics', () => {
       })
 
       it(`bedrock ${version}: lands from a jump off the step while the eye still slides, sending move_player at the eye the auth input reports`, async () => {
-        const testBot = await joined(version, [[0, 12, 32, slabOf(version)]])
+        const testBot = await joined(version, { blocks: [[0, 12, 32, slabOf(version)]] })
         for (let i = 0; i < 7; i++) await holding(testBot, ['forward'])
         await holding(testBot, ['forward', 'jump'])
         await testBot.driver.runUntil(() => testBot.bot.entity.onGround, 40)
@@ -414,6 +422,194 @@ describe('bedrock physics', () => {
           [30.574851989746094, SNEAK_MOVE, FORWARD, ['up', 'stop_sneaking', 'sneak_released_raw'], []],
           [30.697668075561523, FORWARD, FORWARD, ['up'], []]
         ])
+      })
+    }
+  })
+
+  type Echoed = Partial<Record<'sprinting' | 'sneaking', boolean>>
+
+  /** set_entity_data of the player's flags, as the server writes it: its echo of the player's sprint and sneak */
+  function echo ({ server }: TestBot, flags: Echoed, tick = 0n, runtimeId = 1n): void {
+    const params = { ...blankPacket(server.codec, 'set_entity_data'), runtime_entity_id: runtimeId, metadata: [{ key: 'flags', type: 'long', value: flags }], tick }
+    server.receive(server.codec.serializer.createPacketBuffer({ name: 'set_entity_data', params }))
+  }
+
+  /** the starts and stops among an auth input's flags */
+  function startsAndStops (input: AuthInput): string[] {
+    return flagsOf(input).filter(flag => /^(start|stop)_(sprinting|sneaking)$/.test(flag))
+  }
+
+  /** where an auth input reports the eye, and its delta */
+  function motionOf ({ position, delta }: AuthInput): [Point3, Point3] {
+    return [position, delta]
+  }
+
+  interface Play {
+    /** the starts and stops of its auth inputs */
+    told: string[][]
+    /** where they report the eye, and their delta */
+    moved: Array<[Point3, Point3]>
+  }
+
+  /** a play by a bot the server echoes flags to as the play says; and where the same play reports the player without */
+  async function echoing (version: BedrockVersion, play: (testBot: TestBot, echo: (flags: Echoed) => void) => Promise<AuthInput[]>, setup: Setup = {}): Promise<[Play, Array<[Point3, Point3]>]> {
+    const testBot = await joined(version, setup)
+    const inputs = await play(testBot, flags => { echo(testBot, flags) })
+    const unechoed = await play(await joined(version, setup), () => {})
+    return [{ told: inputs.map(startsAndStops), moved: inputs.map(motionOf) }, unechoed.map(motionOf)]
+  }
+
+  /** the player teleported to feet y 32: the auth input answering it, then three falling with `keys` held */
+  async function falling (testBot: TestBot, keys: readonly ControlState[]): Promise<AuthInput[]> {
+    teleportTo(testBot, eyeOf({ x: 0.5, y: 32, z: 30.5 }), false)
+    const inputs = [await holding(testBot, [])]
+    for (let i = 0; i < 3; i++) inputs.push(await holding(testBot, keys))
+    return inputs
+  }
+
+  describe('servers echoing the player\'s sprint and sneak unstamped, which the vanilla client takes as its own (1.16.210 – 1.21.60)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.210', 'bedrock_1.21.60')) {
+      it(`bedrock ${version}: stops a sprint again after an echo saying it sprints, the last echo before a tick counting, moving as without them`, async () => {
+        const [echoed, unechoed] = await echoing(version, async (testBot, echo) => {
+          const inputs = [await holding(testBot, ['forward', 'sprint']), await holding(testBot, ['forward', 'sprint']), await holding(testBot, [])]
+          echo({ sprinting: true })
+          inputs.push(await holding(testBot, []), await holding(testBot, []))
+          echo({ sprinting: true })
+          echo({ sprinting: false })
+          inputs.push(await holding(testBot, []))
+          return inputs
+        })
+        assert.deepStrictEqual(echoed, { told: [['start_sprinting'], [], ['stop_sprinting'], ['stop_sprinting'], [], []], moved: unechoed })
+      })
+
+      it(`bedrock ${version}: stops a sneak again after an echo saying it sneaks, moving as without it`, async () => {
+        const [echoed, unechoed] = await echoing(version, async (testBot, echo) => {
+          const inputs = [await holding(testBot, ['forward', 'sneak']), await holding(testBot, [])]
+          echo({ sneaking: true })
+          inputs.push(await holding(testBot, []), await holding(testBot, []))
+          return inputs
+        })
+        assert.deepStrictEqual(echoed, { told: [['start_sneaking'], ['stop_sneaking'], ['stop_sneaking'], []], moved: unechoed })
+      })
+
+      it(`bedrock ${version}: starts a sprint again while falling, the key held, after an echo saying it does not sprint, as fast as its sprint`, async () => {
+        const [echoed, unechoed] = await echoing(version, async (testBot, echo) => {
+          const inputs = await falling(testBot, ['forward', 'sprint'])
+          echo({ sprinting: false })
+          inputs.push(await holding(testBot, ['forward', 'sprint']), await holding(testBot, ['forward', 'sprint']))
+          return inputs
+        })
+        assert.deepStrictEqual(echoed, { told: [[], ['start_sprinting'], [], [], ['start_sprinting'], []], moved: unechoed })
+      })
+
+      it(`bedrock ${version}: starts a sneak again while falling, the key held, after an echo saying it does not sneak, its pose kept`, async () => {
+        const [echoed, unechoed] = await echoing(version, async (testBot, echo) => {
+          const inputs = await falling(testBot, ['forward', 'right', 'sneak'])
+          echo({ sneaking: false })
+          inputs.push(await holding(testBot, ['forward', 'right', 'sneak']), await holding(testBot, ['forward', 'right', 'sneak']))
+          return inputs
+        })
+        assert.deepStrictEqual(echoed, { told: [[], ['start_sneaking'], [], [], ['start_sneaking'], []], moved: unechoed })
+      })
+
+      it(`bedrock ${version}: ends a sprint the sprint key no longer holds after an echo saying it does not sprint, telling no stop (not recorded: the echo taken as its own)`, async () => {
+        const testBot = await joined(version)
+        const inputs = [await holding(testBot, ['forward', 'sprint']), await holding(testBot, ['forward'])]
+        echo(testBot, { sprinting: false })
+        inputs.push(await holding(testBot, ['forward']), await holding(testBot, []))
+        assert.deepStrictEqual(inputs.map(startsAndStops), [['start_sprinting'], [], [], []])
+      })
+
+      it(`bedrock ${version}: acts on no echo of another entity, nor on one without the flags`, async () => {
+        const testBot = await joined(version)
+        const inputs = [await holding(testBot, ['forward', 'sprint']), await holding(testBot, [])]
+        echo(testBot, { sprinting: true }, 0n, 2n)
+        testBot.server.send('set_entity_data', { runtime_entity_id: 1n, metadata: [{ key: 'potion_color', type: 'int', value: 0 }], tick: 0n })
+        inputs.push(await holding(testBot, []))
+        assert.deepStrictEqual([inputs.map(startsAndStops), testBot.internal._core.stats.errors], [[['start_sprinting'], ['stop_sprinting'], []], 0])
+      })
+
+      it(`bedrock ${version}: acts on no echo the server sent before a tick physicsEnabled held`, async () => {
+        const testBot = await joined(version)
+        const inputs = [await holding(testBot, ['forward', 'sprint']), await holding(testBot, [])]
+        echo(testBot, { sprinting: true })
+        testBot.bot.physicsEnabled = false
+        inputs.push(await holding(testBot, []))
+        testBot.bot.physicsEnabled = true
+        inputs.push(await holding(testBot, []))
+        assert.deepStrictEqual(inputs.map(startsAndStops), [['start_sprinting'], ['stop_sprinting'], [], []])
+      })
+
+      it(`bedrock ${version}: plays the ticks before an echo of other flags than the player's again without it, and starts the ring again with the tick acting on it; not on one of the same`, async () => {
+        /** sprints, then walks: corrected on the tick before its last, `flags` echoed with it, and so again a tick after */
+        const corrected = async (flags?: Echoed): Promise<[[Point3, Point3], number, number]> => {
+          const testBot = await joined(version, { game: { movement_authority: 'server_with_rewind' } })
+          const correct = (): void => { testBot.server.send('correct_player_move_prediction', { position: eyeOf({ x: 0.5, y: 12, z: 31 }), delta: { x: 0, y: 0, z: 0 }, on_ground: true, tick: BigInt(tickOf(testBot) - 1) }) }
+          await holding(testBot, ['forward', 'sprint'])
+          for (let i = 0; i < 3; i++) await holding(testBot, ['forward'])
+          if (flags !== undefined) echo(testBot, flags)
+          correct()
+          const acting = await holding(testBot, ['forward'])
+          correct()
+          await holding(testBot, ['forward'])
+          const { tooOld, rewinds } = testBot.internal._player.corrections.stats
+          return [motionOf(acting), tooOld, rewinds]
+        }
+        const [unechoed] = await corrected()
+        assert.deepStrictEqual([await corrected({ sprinting: false }), await corrected({ sprinting: true })], [[unechoed, 1, 1], [unechoed, 0, 2]])
+      })
+    }
+  })
+
+  describe('servers whose wall stops a sprint, echoing it unstamped (1.16.210 – 1.21.50)', () => {
+    /** stone two blocks wide at z 32, as high as a jump, and a look 3 degrees west of south, along it */
+    const wall: Setup = { blocks: [-1, 0].flatMap((x): BlockAt[] => [[x, 12, 32, 'stone'], [x, 13, 32, 'stone'], [x, 14, 32, 'stone']]), rotation: { yaw: 3, pitch: 0 } }
+
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.210', 'bedrock_1.21.50')) {
+      it(`bedrock ${version}: only stops a sprint the wall stopped after an echo saying it sprints, in the air as fast as without it`, async () => {
+        const [echoed, unechoed] = await echoing(version, async (testBot, echo) => {
+          await holding(testBot, ['forward', 'sprint', 'jump'])
+          for (let i = 0; i < 6; i++) await holding(testBot, ['forward', 'sprint'])
+          const inputs = [await holding(testBot, ['forward', 'sprint'])]
+          echo({ sprinting: true })
+          inputs.push(await holding(testBot, ['forward', 'sprint']), await holding(testBot, ['forward', 'sprint']))
+          return inputs
+        }, wall)
+        assert.deepStrictEqual(echoed, { told: [['stop_sprinting'], ['stop_sprinting'], ['start_sprinting', 'stop_sprinting']], moved: unechoed })
+      })
+    }
+  })
+
+  describe('servers echoing the player\'s flags named index, told of a sprint and a sneak by player_action (1.16.201)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.16.201')) {
+      it(`bedrock ${version}: sends stop_sprint and stop_sneak again after an echo saying it sprints or sneaks`, async () => {
+        const testBot = await joined(version)
+        // as recorded: the sprint is bit 3, the sneak bit 1
+        const echoIndex = (flags: bigint): void => { testBot.server.send('set_entity_data', { runtime_entity_id: 1, metadata: [{ key: 'index', type: 'long', value: flags }], tick: 0n }) }
+        const inputs = [await holding(testBot, ['forward', 'sprint']), await holding(testBot, [])]
+        echoIndex(422246825345032n)
+        inputs.push(await holding(testBot, []), await holding(testBot, ['sneak']), await holding(testBot, []))
+        echoIndex(422246825345026n)
+        inputs.push(await holding(testBot, []))
+        echoIndex(422246825345024n)
+        inputs.push(await holding(testBot, []))
+        assert.deepStrictEqual(inputs.map(input => besides(testBot, Number(input.tick))), [
+          [actionOf('start_sprint')], [actionOf('stop_sprint')], [actionOf('stop_sprint')], [actionOf('start_sneak')], [actionOf('stop_sneak')], [actionOf('stop_sneak')], []
+        ])
+      })
+    }
+  })
+
+  describe('servers stamping the echo with a tick, recorded agreeing with the player\'s flags, which the bot ignores (1.21.70+)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.21.70')) {
+      it(`bedrock ${version}: stops no sprint again after a stamped echo saying it sprints, nor starts one after one saying it does not`, async () => {
+        const testBot = await joined(version)
+        const inputs = [await holding(testBot, ['forward', 'sprint']), await holding(testBot, [])]
+        echo(testBot, { sprinting: true }, BigInt(tickOf(testBot)))
+        inputs.push(await holding(testBot, []), await holding(testBot, ['forward', 'sprint']))
+        echo(testBot, { sprinting: false }, BigInt(tickOf(testBot)))
+        inputs.push(await holding(testBot, ['forward', 'sprint']))
+        assert.deepStrictEqual(inputs.map(startsAndStops), [['start_sprinting'], ['stop_sprinting'], [], ['start_sprinting'], []])
       })
     }
   })
