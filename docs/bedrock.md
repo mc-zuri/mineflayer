@@ -2,7 +2,8 @@
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time and the world's
-blocks, and ends; the rest of the API is Java's only so far.
+blocks, holds its controls and looks, telling the server every tick, and ends; it does not move by itself yet (the
+physics come next), and the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -14,7 +15,10 @@ const bot = mineflayer.createBot({
   username: 'Player' // default; the bot logs in offline (without an Xbox account)
 })
 
-bot.on('spawn', () => console.log('spawned'))
+bot.on('spawn', () => {
+  bot.setControlState('forward', true) // reported from the next tick
+  bot.lookAt(bot.entity.position.offset(10, 1.62001, 0)).then(() => console.log('looking east'))
+})
 bot.on('time', () => console.log(`time of day: ${bot.time.timeOfDay}`))
 bot.on('kicked', (reason) => console.log(`kicked: ${reason}`))
 bot.on('end', (reason) => console.log(`ended: ${reason}`))
@@ -51,12 +55,19 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 
 - `bot.version` (`'bedrock_1.21.130'`), `bot.majorVersion` (`'1.21'`), `bot.protocolVersion` (`898`),
   `bot.registry` (minecraft-data and prismarine-registry of the version), `bot.username`.
+- `bot.entity`: the local player (a prismarine-entity `Entity`, from start_game): its feet's `position`, `velocity`,
+  `yaw` and `pitch` (mineflayer's radians), `onGround`, and `isCollidedHorizontally` / `isCollidedVertically`
+  (see the local player below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
+- `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
+  `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
+  (see controls and look below).
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
-- Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `spawn` (play_status
-  player_spawn: the bot tells the server the player is initialized), `time`, `physicsTick` (`physicTick`: every tick,
-  from start_game), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
+- Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `spawn` (the player
+  is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
+  `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
+  the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, `kicked (reason, loggedIn)`, `end (reason)`, `error`.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
     as Java's.
@@ -90,11 +101,101 @@ packet arrived before:
 | resource_packs_info, then resource_pack_stack | resource_pack_client_response have_all_packs, then completed (from 1.26.40 with the status's name) |
 | network_stack_latency, when it asks for an answer | the same timestamp, asking none |
 | start_game | request_chunk_radius (`viewDistance`; from 1.19.80 with the vanilla client's maximum, 28), tick_sync (up to 1.20.50), serverbound_loading_screen 1 (from 1.21.20) |
-| play_status player_spawn | set_local_player_as_initialized |
 
-In its ticks the bot asks for the sections of the columns sent without them (subchunk_request, from 1.18.0: see the
-world). The vanilla client asks after its auth input, from its first; the bot, which sends no auth input yet, asks
-from the tick that shows the column, before it spawns.
+In its ticks the bot sends its auth input (player_auth_input), then asks for the sections of the columns sent without
+them (subchunk_request, from 1.18.0), as the vanilla client does, from when the server shows the player: see the local
+player and the world.
+
+Events come at their point in the frame:
+
+| Event | When |
+| --- | --- |
+| `login`, `time`, `forcedMove`, `blockUpdate`, `kicked`, `end`, `error` | the packet pass |
+| `chunkColumnLoad` | the start of a tick |
+| `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order |
+
+## The local player
+
+The server places the player, and shows it: the bot sends an auth input every tick from then, as the vanilla client
+of the version does (these are the recorded joins of every version):
+
+1. **start_game** creates `bot.entity` where it says (its eye: the feet are 1.62001 below, as floats), looking as it
+   says; `onGround` is false.
+2. **respawn**, ready (its state 1; `x`, `y`, `z` up to 1.16.210, `position` after), places it, and with
+   **play_status player_spawn** spawns it. Once both came and the column under the feet is shown, the server shows the
+   player: the bot sends an auth input from the next tick on. After 200 ticks without that column it shows the player
+   anyway, emitting an `error` that names the column.
+3. **Held**: from 1.18.0 the player does not move until the 3 × 3 columns around it are shown with every section
+   asked for answered (or 200 ticks passed, with an `error` naming the columns missing). Its auth inputs until then
+   report no key and no move. Up to 1.17.40 it moves from its first auth input.
+4. **Initialized**: the bot sends set_local_player_as_initialized right after the auth input of the vanilla client's
+   tick, and emits `spawn` at the end of that tick, or of the first tick the player moves, whichever is later:
+
+| Versions | set_local_player_as_initialized | `spawn` |
+| --- | --- | --- |
+| 1.16.201 – 1.17.40 | after the auth input of the 5th tick the player moves | that tick |
+| 1.18.0 – 1.20.50 | after the 13th's | that tick |
+| 1.20.61 – 1.21.2 | after the 8th's | that tick |
+| 1.21.20+ | after the last held auth input, right after serverbound_loading_screen 2 | the first tick the player moves |
+
+The vanilla client sends it a while after play_status player_spawn (bedrock-protocol at once). The server shows the
+player in two steps here, auth inputs and then movement, as the recordings show: not on player_spawn alone.
+
+The player does not move by itself yet: it stays where the server put it, standing still (the auth input's `delta` is
+0), until the physics come. The server moves it in the packet pass:
+
+- **move_player** of the player's runtime id (start_game's, by its low 32 bits: move_player's is a varint) places it,
+  emitting `forcedMove`, and turns it; its `rotation` mode only turns it. The next auth input answers it: it reports
+  where the server put the eye, without velocity; from 1.19.60 with the `handled_teleport` flag; from 1.21.70
+  client_camera_aim_assist clears the aim assist after it. The last move of a frame is answered, also in the first auth
+  input when it came before the server showed the player.
+- `move` is emitted at the end of a tick whose auth input reported another position or rotation than the one before,
+  with the feet that one reported.
+
+The auth input, as each version writes it (the vanilla client's values: a keyboard and a mouse, on the screen):
+
+| Versions | Fields |
+| --- | --- |
+| 1.16.201 | the rotation (`head_yaw` its yaw), the eye, the move vector, the flags (a varint), `input_mode` `touch` (minecraft-data names 1.16.201's mouse so), `play_mode` `screen`, the tick, `delta` |
+| 1.16.210 – 1.18.30 | the flags a varint64, `input_mode` `mouse`; no item, item stack or block action |
+| 1.19.1 – 1.19.63 | `interaction_model` `touch` |
+| 1.19.70 – 1.21.30 | `analogue_move_vector` (0, 0); no vehicle |
+| 1.21.42 | `interact_rotation` and `camera_orientation`, (0, 0) and (0, 0, 0) while held |
+| 1.21.50 – 1.26.30 | `raw_move_vector`: the move vector before sneaking scales it; the flags a varint128 |
+| 1.26.40 – 1.26.45 | the flags a list of those set; every absent field written present, then absent, as the vanilla client does |
+| 1.26.51+ | the flags a list; the absent fields absent |
+
+The tick is the bot's (from start_game), never the server's. The flags, by their names in the version, while the
+player moves (held, only `block_breaking_delay_enabled`, and a teleport's):
+
+| Flag | When |
+| --- | --- |
+| `up`, `down`, `left`, `right` | forward, back, left, right held |
+| `jump_down`, `jumping`, `want_up`; `north_jump` up to 1.20.80 | jump held |
+| `sprint_down` | sprint held |
+| `sneak_down`, `sneaking`, `want_down` | sneak held |
+| `jump_pressed_raw`, `jump_released_raw`, `jump_current_raw` (and sneak's), from 1.21.50 | jump (sneak) pressed, released since the last auth input that reported the keys; held |
+| `block_breaking_delay_enabled`, from 1.21.0 | always |
+| `handled_teleport`, from 1.19.60 | the auth input answers a teleport |
+
+## Controls and look
+
+- **`setControlState(control, state)`** (forward, back, left, right, jump, sprint, sneak): `getControlState` and
+  `controlState` read it at once (`controlState.jump = true` sets it too). The key is pressed or released in the next
+  frame's input pass; the tick's input system makes the keys the move vector (x left, z forward; a diagonal as long as
+  a side, 0.70710677; 0.3 of it while sneak is held) and the flags. A control set in a `physicsTick` listener of tick
+  n shows in the auth input of tick n + 1. A press or a release is kept until an auth input that reports the keys:
+  a tap shorter than a tick, or one before the player moves, still reaches the server.
+- **`look(yaw, pitch)`** and **`lookAt(point)`** (from the eye, 1.62001 above the feet) turn the player to
+  mineflayer's radians, as Bedrock's degrees (floats), the yaw in (−180, 180]: the vanilla client reports looking east
+  as −90 (recorded), not 270; whether it reports north as 180 or −180 was not recorded. The look is taken in the next
+  frame's input pass, applied after that frame's ticks (`bot.entity` turns then: the last look of a frame wins), and
+  reported by the auth input of the frame after: a look asked for in a `physicsTick` listener of tick n shows in the
+  auth input of tick n + 2, and resolves at the end of that tick. A look the player looks already, with no look under
+  way, resolves at once. `force` does nothing: the look is always whole.
+- **`waitForTicks(ticks)`** resolves at the end of the tick `ticks` ticks on (counted from start_game's tick 0
+  before it); 0 or less resolves at once.
+- Every promise the bot gave rejects when it ends.
 
 ## Time
 
@@ -117,8 +218,8 @@ ticks; each emits `time`. In between, the age advances every tick, and the time 
 the server sent. `bot.blockAt(point)` reads it, and is `null` where the bot has no column, or where it asked for the
 section and has no answer yet; above and below the sections it asks for, a column is air.
 `bot.waitForChunksToLoad()` resolves at the end of the frame where the columns within 2 of the player's (5 × 5, as
-Java's) are shown with every section, and rejects after 200 ticks (Java's after 10 s). The server's packets act at
-their point in the frame:
+Java's; around where the player is then) are shown with every section, and rejects after 200 ticks (Java's after
+10 s). The server's packets act at their point in the frame:
 
 - **A column** (level_chunk) is read in the packet pass, and shown from the start of the next tick, which emits
   `chunkColumnLoad`: always the next tick, with no random delay. The bot keeps every column: it unloads none. A
@@ -147,10 +248,11 @@ How a column comes depends on the version:
 
 The bot asks for every section of the dimension (the overworld's −4 to 19, the nether's 0 to 7, the end's 0 to 15),
 the highest section a server names notwithstanding (the vanilla client asks above it too), in the tick that shows the
-column: at most 256 sections a tick, the columns nearest the player's first. Until the bot follows the player, that is
-the column of start_game's position; a column more than 127 columns from it is not asked for, on every version (from
-1.18.11 the offsets are bytes). A section answered as air is known air; one the server could not give (any other
-result, such as `player_not_found`) is asked for again in a later tick. Up to 1.26.30 a column with a count of 0 is
+column, after the tick's auth input: from the tick after the server shows the player (see the local player), at most
+256 sections a tick, the columns nearest the player's first, as offsets from the player's column (where the server
+placed it); a column more than 127 columns from it is not asked for, on every version (from 1.18.11 the offsets are
+bytes). A section answered as air is known air; one the server could not give (any other result, such as
+`player_not_found`) is asked for again in a later tick. Up to 1.26.30 a column with a count of 0 is
 whole, and air.
 
 Dropped (and counted): a column of another dimension (level_chunk names it from 1.20.61), a column or section for the
@@ -170,12 +272,15 @@ Dimension changes are not followed yet: the world stays in start_game's dimensio
     version does not have, a field it does not have or lacks, a value its type does not hold, without an error but
     differently;
   - `ServerWorld` (`test/bedrock/common/world.ts`) is the server's world: columns built with prismarine-chunk, sent
-    and answered as the version's servers do;
+    and answered as the version's servers do, and `join`, which spawns the player as servers do and ticks until
+    `spawn`, failing on any `error`;
   - `BEDROCK_VERSIONS=1.16.201,1.26` runs some versions only.
 - **What servers send**: the tests use the packets and values servers sent the vanilla Bedrock client, recorded on
   every version, small ones as their bytes. Versions whose servers send alike are a group, and each group's tests run
   on each of its versions (the time: `set_time` 1.16.201 – 1.26.20, world clocks 1.26.30+, `tick_sync` answers up to
-  1.20.50; the world: by how a column comes, a block changes and the dimension is named). The workspace's `pnpm test:recorded` replays the recordings themselves.
+  1.20.50; the world: by how a column comes, a block changes and the dimension is named; the local player: by when it
+  is held and initialized, the auth input's layout, its flags, and how a teleport is answered). The workspace's
+  `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 
@@ -195,7 +300,9 @@ What was found getting here, beyond mineflayer:
     (`delayedInit`, `autoInitPlayer: false`), so that it answers them, in its frames.
   - Up to 1.16.210 network_stack_latency's flag is named `unknown_flag`: bedrock-protocol, which checks
     `needs_response`, never answers there.
-- **prismarine-registry, prismarine-chunk, prismarine-world:** see
+  - Its `createSerializer` and `createDeserializer` compile the version's protocol each time, and what they compile
+    stays in memory (about 5 MB a codec): the tests make one codec a version.
+- **prismarine-registry, prismarine-chunk, prismarine-world, prismarine-entity:** see
   [API mismatches](typescript/api-mismatches.md#dependency-typings) for their typings.
   - Up to 1.17.40 a column (prismarine-chunk's 1.3 column) cannot be read without its sections:
     `networkDecodeNoCache` throws on a count of −1, and reads −2 as no sections.

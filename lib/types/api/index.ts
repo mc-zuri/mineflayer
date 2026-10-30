@@ -88,11 +88,17 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'chunkColumnLoad' | 'blockUpdate'> & BlockUpdateAtEvents
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'> & BlockUpdateAtEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
   [event: `blockUpdate:(${number}, ${number}, ${number})`]: (oldBlock: Block, newBlock: Block) => Promise<void> | void
+}
+
+/** the local player: its feet's position */
+export interface BedrockPlayer extends Entity {
+  isCollidedHorizontally: boolean
+  isCollidedVertically: boolean
 }
 
 export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
@@ -101,7 +107,19 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   majorVersion: string
   version: BedrockVersion
   registry: Registry
+  /** from start_game */
+  entity: BedrockPlayer
   time: Time | TimeNotSynced
+  /** the controls held: set, each acts from the next frame */
+  controlState: ControlStateStatus
+  setControlState: (control: ControlState, state: boolean) => void
+  getControlState: (control: ControlState) => boolean
+  clearControlStates: () => void
+  /** resolves once an auth input carried the look (at once when the player looks so already); force does nothing */
+  look: (yaw: number, pitch: number, force?: boolean) => Promise<void>
+  lookAt: (point: Vec3, force?: boolean) => Promise<void>
+  /** resolves at the end of the tick `ticks` ticks from now */
+  waitForTicks: (ticks: number) => Promise<void>
   /** the blocks the server sent, as received */
   world: world.WorldSync
   /** null where the bot has no column, or the section was asked for and is not answered yet */

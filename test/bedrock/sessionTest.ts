@@ -5,6 +5,8 @@ import { bedrockCodec } from './common/codec.ts'
 import type { BedrockCodec } from './common/codec.ts'
 import { bedrockTestBot, bedrockTestVersions, bedrockTestVersionsFrom } from './common/server.ts'
 import type { FakeBedrockClient, SentPacket } from './common/server.ts'
+import { ServerWorld } from './common/world.ts'
+import type { Joined } from './common/world.ts'
 
 // What the bot answers the server's handshake with, as the vanilla client of each version answers it, in the packet
 // pass of the frame that received it.
@@ -12,6 +14,18 @@ import type { FakeBedrockClient, SentPacket } from './common/server.ts'
 function sentInOneFlush (server: FakeBedrockClient): SentPacket[] {
   assert.strictEqual(server.batches.length, 1)
   return server.sent
+}
+
+/** joins, then ticks twice more: the server, where the auth inputs started and the player moved, and the ends of the tick that spawned */
+async function joined (codec: BedrockCodec): Promise<{ server: FakeBedrockClient, joined: Joined, spawned: string[] }> {
+  const testBot = await bedrockTestBot(codec)
+  const { bot, internal, server, driver } = testBot
+  const spawned: string[] = []
+  bot.on('spawn', () => { spawned.push(`spawn ${internal._core.tick ?? '-'}`) })
+  bot.on('physicsTick', () => { if (spawned.length === 1) spawned.push(`physicsTick ${internal._core.tick ?? '-'}`) })
+  const joined = await new ServerWorld(server).join(testBot)
+  await driver.ticks(2)
+  return { server, joined, spawned }
 }
 
 describe('bedrock session', () => {
@@ -98,9 +112,122 @@ describe('bedrock session', () => {
     }
   })
 
+  describe('servers whose player moves from its first auth input (up to 1.17.40)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.17.40')) {
+      it(`bedrock ${version}: sends auth inputs from the tick after the column under the spawned player shows, and is initialized after the fifth`, async () => {
+        const { server, joined: { firstAuthInput, moving }, spawned } = await joined(bedrockCodec(version))
+        assert.deepStrictEqual([firstAuthInput, moving], [2, 2])
+        assert.deepStrictEqual([1, 2, 5, 6, 7].map(tick => server.inTick(tick)), [[], ['player_auth_input'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
+        assert.deepStrictEqual(server.sentOf('set_local_player_as_initialized'), [{ runtime_entity_id: 1n }])
+        assert.deepStrictEqual(spawned, ['spawn 6', 'physicsTick 6'])
+      })
+    }
+  })
+
+  /** the packets of each tick from the first auth input on (the first's requests aside), and the initialization */
+  function joinedTicks (server: FakeBedrockClient, ticks: readonly number[]): string[][] {
+    return ticks.map(tick => tick === 2 ? server.inTick(tick).filter(name => name !== 'subchunk_request') : server.inTick(tick))
+  }
+
+  describe('servers holding the player until the columns around it are loaded, initialized after the 13th tick it moves (1.18.0 – 1.20.50)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.18.0', 'bedrock_1.20.50')) {
+      it(`bedrock ${version}: sends auth inputs from the tick after the column under the spawned player shows, and is initialized after the 13th it moves`, async () => {
+        const { server, joined: { firstAuthInput, moving }, spawned } = await joined(bedrockCodec(version))
+        assert.deepStrictEqual([firstAuthInput, moving], [2, 4])
+        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 15, 16, 17]), [[], ['player_auth_input'], ['player_auth_input'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
+        assert.deepStrictEqual(server.sentOf('set_local_player_as_initialized'), [{ runtime_entity_id: 1n }])
+        assert.deepStrictEqual(spawned, ['spawn 16', 'physicsTick 16'])
+      })
+    }
+  })
+
+  describe('servers holding the player until the columns around it are loaded, initialized after the 8th tick it moves (1.20.61 – 1.21.2)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.20.61', 'bedrock_1.21.2')) {
+      it(`bedrock ${version}: sends auth inputs from the tick after the column under the spawned player shows, and is initialized after the 8th it moves`, async () => {
+        const { server, joined: { firstAuthInput, moving }, spawned } = await joined(bedrockCodec(version))
+        assert.deepStrictEqual([firstAuthInput, moving], [2, 4])
+        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 10, 11, 12]), [[], ['player_auth_input'], ['player_auth_input'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
+        assert.deepStrictEqual(server.sentOf('set_local_player_as_initialized'), [{ runtime_entity_id: 1n }])
+        assert.deepStrictEqual(spawned, ['spawn 11', 'physicsTick 11'])
+      })
+    }
+  })
+
+  describe('servers holding the player until the columns around it are loaded, told by the loading screen (1.21.20+)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.21.20')) {
+      it(`bedrock ${version}: sends auth inputs from the tick after the column under the spawned player shows, and ends the loading screen and is initialized after the last held`, async () => {
+        const { server, joined: { firstAuthInput, moving }, spawned } = await joined(bedrockCodec(version))
+        assert.deepStrictEqual([firstAuthInput, moving], [2, 4])
+        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 4]), [[], ['player_auth_input'], ['player_auth_input', 'serverbound_loading_screen', 'set_local_player_as_initialized'], ['player_auth_input']])
+        assert.deepStrictEqual(server.sentOf('serverbound_loading_screen'), [{ type: 1 }, { type: 2 }])
+        assert.deepStrictEqual(server.sentOf('set_local_player_as_initialized'), [{ runtime_entity_id: 1n }])
+        assert.deepStrictEqual(spawned, ['spawn 4', 'physicsTick 4'])
+      })
+    }
+  })
+
   describe(`no version differs in: (on ${latestSupportedBedrockVersion})`, () => {
     let codec: BedrockCodec
     before(() => { codec = bedrockCodec(latestSupportedBedrockVersion) })
+
+    it('shows the player once respawn says it is ready, play_status having spawned it', async () => {
+      const { server, driver } = await bedrockTestBot(codec)
+      const world = new ServerWorld(server)
+      world.startGame()
+      await world.sendAround()
+      server.send('play_status', { status: 'player_spawn' })
+      server.send('respawn', { position: { x: 0.5, y: 13.6200103759765625, z: 0.5 }, state: 0, runtime_entity_id: 1n })
+      await driver.ticks(3)
+      assert.deepStrictEqual(server.sentOf('player_auth_input'), [])
+      server.send('respawn', { position: { x: 0.5, y: 13.6200103759765625, z: 0.5 }, state: 1, runtime_entity_id: 1n })
+      await driver.ticks(2)
+      assert.deepStrictEqual([server.inTick(4), server.inTick(5)[0]], [[], 'player_auth_input'])
+    })
+
+    it('shows the player once play_status spawned it, respawn having said it is ready', async () => {
+      const { server, driver } = await bedrockTestBot(codec)
+      const world = new ServerWorld(server)
+      world.startGame()
+      await world.sendAround()
+      server.send('respawn', { position: { x: 0.5, y: 13.6200103759765625, z: 0.5 }, state: 1, runtime_entity_id: 1n })
+      await driver.ticks(3)
+      assert.deepStrictEqual(server.sentOf('player_auth_input'), [])
+      server.send('play_status', { status: 'player_spawn' })
+      await driver.ticks(2)
+      assert.deepStrictEqual([server.inTick(4), server.inTick(5)[0]], [[], 'player_auth_input'])
+    })
+
+    it('waits 200 ticks for the column under the spawned player, then shows it without, naming the column', async () => {
+      const { bot, server, driver } = await bedrockTestBot(codec)
+      const errors: string[] = []
+      bot.on('error', error => { errors.push(error.message) })
+      const world = new ServerWorld(server)
+      world.startGame({ x: 40.5, y: 12, z: -7.5 })
+      world.column(0, 0)
+      await world.sendColumn(0, 0)
+      world.spawn()
+      await driver.ticks(199)
+      assert.deepStrictEqual([errors, server.sentOf('player_auth_input')], [[], []])
+      await driver.ticks(2)
+      assert.deepStrictEqual(errors, ['the column (2, -1) under the player was not sent 200 ticks after it spawned'])
+      assert.deepStrictEqual([server.inTick(200), server.inTick(201)], [[], ['player_auth_input', 'subchunk_request']])
+    })
+
+    it('holds the player 200 ticks for the columns around it, then moves it without, naming them', async () => {
+      const { bot, internal, server, driver } = await bedrockTestBot(codec)
+      const errors: string[] = []
+      bot.on('error', error => { errors.push(error.message) })
+      const world = new ServerWorld(server)
+      world.startGame({ x: 40.5, y: 12, z: -7.5 })
+      world.spawn()
+      world.column(2, -1)
+      await world.load(driver, [[2, -1]])
+      await driver.ticks(197)
+      assert.deepStrictEqual([errors, internal._core.activation.active], [[], false])
+      await driver.tick()
+      assert.deepStrictEqual(errors, ['the columns (1, -2), (1, -1), (1, 0), (2, -2), (2, 0), (3, -2), (3, -1), (3, 0) around the player were not loaded 200 ticks after it showed'])
+      assert.deepStrictEqual([server.inTick(201), internal._core.activation.active], [['player_auth_input', 'serverbound_loading_screen', 'set_local_player_as_initialized'], true])
+    })
 
     it('asks for the chunk radius it was given', async () => {
       const { server, driver } = await bedrockTestBot(codec, { viewDistance: 5 })
@@ -130,16 +257,6 @@ describe('bedrock session', () => {
       assert.strictEqual(server.closed, true)
       await driver.frame(0)
       assert.deepStrictEqual(await ended, ['socketClosed'])
-    })
-
-    it('reports player_spawn before start_game', async () => {
-      const { bot, server, driver } = await bedrockTestBot(codec)
-      const errors: string[] = []
-      bot.on('error', error => { errors.push(error.message) })
-      server.send('play_status', { status: 'player_spawn' })
-      await driver.frame(0)
-      assert.deepStrictEqual(errors, ['play_status player_spawn before start_game'])
-      bot.end()
     })
 
     it('reports the connection\'s errors', async () => {

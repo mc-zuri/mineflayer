@@ -6,7 +6,7 @@ import type { RegistryBedrock } from 'prismarine-registry'
 import { isBedrockVersionAtLeast } from '../../../lib/bedrock/version.ts'
 import type { BedrockVersion } from '../../../lib/types/api/index.ts'
 import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
-import type { FakeBedrockClient } from './server.ts'
+import type { FakeBedrockClient, TestBot } from './server.ts'
 import type { ManualDriver } from './driver.ts'
 
 /** [x, y, z, name]: a block, in world coordinates */
@@ -30,6 +30,19 @@ function sectionsOf ({ x, y, z, origin, requests }: SubchunkRequest): Array<read
     : [origin.x + offset.x, origin.y + offset.y, origin.z + offset.z] as const)
 }
 
+export interface Point3 { x: number, y: number, z: number }
+
+/** Bedrock degrees */
+export interface Rotation { yaw: number, pitch: number }
+
+/** where a join made the bot's auth inputs start, and the player move */
+export interface Joined {
+  /** the tick of the first auth input */
+  firstAuthInput: number
+  /** the first tick the player moves */
+  moving: number
+}
+
 /** a stone floor at y 11 under the column, and stone at (1, 12, 0) of column (0, 0) */
 export function stoneFloor (x: number, z: number): BlockAt[] {
   const blocks: BlockAt[] = []
@@ -50,6 +63,7 @@ export class ServerWorld {
   private readonly ChunkColumn: typeof BedrockChunk
   private readonly columns = new Map<string, BedrockChunk>()
   private answered = 0
+  private feet: Point3 = { x: 0.5, y: 12, z: 0.5 }
 
   constructor (server: FakeBedrockClient, { hashes = false, dimension = 'overworld' }: { hashes?: boolean, dimension?: Dimension } = {}) {
     this.server = server
@@ -68,14 +82,65 @@ export class ServerWorld {
   }
 
   /** start_game, the player's feet at `feet` */
-  startGame (feet = { x: 0.5, y: 12, z: 0.5 }): void {
-    const eye = { x: feet.x, y: Math.fround(feet.y + 1.62001), z: feet.z }
+  startGame (feet = this.feet, rotation: Rotation = { yaw: 0, pitch: 0 }): void {
+    this.feet = feet
+    const eye = eyeOf(feet)
     this.server.send('start_game', {
       runtime_entity_id: 1n,
+      rotation: { x: rotation.pitch, z: rotation.yaw },
       ...this.atLeast('bedrock_1.16.210') ? { player_position: eye } : { spawn: eye },
       dimension: this.atLeast('bedrock_1.18.30') ? this.dimension : this.dimensionId,
       ...this.atLeast('bedrock_1.19.80') ? { block_network_ids_are_hashes: this.hashes } : {}
     })
+  }
+
+  /** respawn's ready state at start_game's feet, then play_status player_spawn: the server spawned the player */
+  spawn (): void {
+    const eye = eyeOf(this.feet)
+    if (this.atLeast('bedrock_1.16.220')) this.server.send('respawn', { position: eye, state: 1, runtime_entity_id: 1n })
+    else this.server.send('respawn', { ...eye, state: 1, runtime_entity_id: this.atLeast('bedrock_1.16.210') ? 1n : 1 })
+    this.server.send('play_status', { status: 'player_spawn' })
+  }
+
+  /**
+   * start_game, the 3 × 3 columns around the feet (a stone floor under them) and the spawn; then ticks, answering the
+   * bot's requests, until it spawned, with no error
+   */
+  async join ({ bot, internal, driver }: TestBot, { feet = this.feet, rotation }: { feet?: Point3, rotation?: Rotation } = {}): Promise<Joined> {
+    let spawned = false
+    bot.once('spawn', () => { spawned = true })
+    const errors: string[] = []
+    const onError = (error: Error): void => { errors.push(error.message) }
+    bot.on('error', onError)
+    this.startGame(feet, rotation)
+    await this.sendAround()
+    this.spawn()
+    const { activation } = internal._core
+    let firstAuthInput: number | undefined
+    let moving: number | undefined
+    for (let ticks = 0; ticks < 300; ticks++) {
+      if (spawned) break
+      await driver.tick()
+      const tick = internal._core.tick ?? 0
+      if (activation.present) firstAuthInput ??= tick + 1
+      if (activation.active) moving ??= tick + 1
+      await this.answer()
+    }
+    bot.off('error', onError)
+    assert.ok(spawned && firstAuthInput !== undefined && moving !== undefined, `${this.version}: not spawned in 300 ticks`)
+    assert.deepStrictEqual(errors, [], `${this.version}: errors joining`)
+    return { firstAuthInput, moving }
+  }
+
+  /** the 3 × 3 columns around start_game's feet, a stone floor under them */
+  async sendAround (): Promise<void> {
+    const [x, z] = [Math.floor(this.feet.x) >> 4, Math.floor(this.feet.z) >> 4]
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        this.column(x + dx, z + dz)
+        await this.sendColumn(x + dx, z + dz)
+      }
+    }
   }
 
   stateId (name: string): number {
@@ -132,10 +197,13 @@ export class ServerWorld {
     }
   }
 
-  /** the columns sent, then the answers to the bot's requests, until it knows every section */
+  /**
+   * the columns sent, then the answers to the bot's requests, until it knows every section: a bot that sends no auth
+   * input yet starts asking the tick after the player's column shows
+   */
   async load (driver: ManualDriver, columns: ReadonlyArray<readonly [number, number]>): Promise<void> {
     for (const [x, z] of columns) await this.sendColumn(x, z)
-    await driver.tick()
+    await driver.ticks(2)
     await this.answer()
     await driver.tick()
   }
@@ -169,4 +237,9 @@ export class ServerWorld {
   private atLeast (since: BedrockVersion): boolean {
     return isBedrockVersionAtLeast(this.version, since)
   }
+}
+
+/** the vanilla client's eye over the feet, a float */
+export function eyeOf (feet: Point3): Point3 {
+  return { x: feet.x, y: Math.fround(feet.y + Math.fround(1.62001)), z: feet.z }
 }

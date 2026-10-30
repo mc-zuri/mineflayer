@@ -54,7 +54,7 @@ function keyOf (x: number, z: number): string {
 }
 
 /** the column (or section) holding a block coordinate */
-function chunkCoordinate (coordinate: number): number {
+export function chunkCoordinate (coordinate: number): number {
   return Math.floor(coordinate) >> 4
 }
 
@@ -71,15 +71,16 @@ export class NetworkWorld {
   private ChunkColumn: typeof BedrockChunk | undefined
   private dimension = 0
   private sections = OVERWORLD_SECTIONS
-  /** the player's column (start_game's, until the bot follows the player): the requests' origin */
-  private playerColumn = { x: 0, z: 0 }
+  /** the player's feet: its column is the requests' origin */
+  private readonly playerFeet: () => Vec3
   /** the columns in bot.world */
   private readonly shown = new Map<string, Column>()
   /** each column as last received, shown or staged: what a section or block change writes to */
   private readonly latest = new Map<string, Column>()
 
-  constructor (bot: BedrockBotInternal) {
+  constructor (bot: BedrockBotInternal, playerFeet: () => Vec3) {
     this.bot = bot
+    this.playerFeet = playerFeet
     this.world = new (prismarineWorld(bot.version))().sync
   }
 
@@ -87,8 +88,8 @@ export class NetworkWorld {
     this.bot.world = this.world
     this.bot.blockAt = point => this.sectionKnown(point.x, point.y, point.z) ? this.world.getBlock(point) : null
     this.bot.waitForChunksToLoad = async () => {
-      const missing = this.missingAroundPlayer()
-      await core.waits.until(() => this.missingAroundPlayer() === 0, CHUNKS_TO_LOAD_TICKS, `Timeout waiting for ${missing} chunks to load after ${CHUNKS_TO_LOAD_TICKS} ticks`)
+      const missing = this.notLoadedAround(this.playerFeet(), CHUNKS_TO_LOAD_RADIUS).length
+      await core.waits.until(() => this.loadedAround(this.playerFeet(), CHUNKS_TO_LOAD_RADIUS), CHUNKS_TO_LOAD_TICKS, `Timeout waiting for ${missing} chunks to load after ${CHUNKS_TO_LOAD_TICKS} ticks`)
     }
     this.world.on('chunkColumnLoad', (corner: Vec3) => { core.emit(this.bot, 'chunkColumnLoad', corner) })
     this.world.on('blockUpdate', (oldBlock: Block, newBlock: Block) => {
@@ -109,8 +110,8 @@ export class NetworkWorld {
       // extra is the second layer
       for (const block of packet.blocks) this.setBlock(block.position, block.runtime_id)
     })
-    // from the tick that shows a column, also before spawn: the vanilla client asks after its auth input, not sent yet
-    core.system(OWNER, { name: 'world.requestSubchunks', place: { at: 'MolangUpdateSystem' }, gate: 'always', replay: false, run: ctx => { this.requestSections(ctx.outbox) } })
+    // after the tick's auth input, as the vanilla client asks
+    core.system(OWNER, { name: 'world.requestSubchunks', place: { at: 'MolangUpdateSystem' }, gate: 'present', replay: false, run: ctx => { this.requestSections(ctx.outbox) } })
   }
 
   /** whether the column of block (x, z) is shown */
@@ -126,20 +127,17 @@ export class NetworkWorld {
 
   /** whether every column within `radius` columns of `feet`'s is shown with every section */
   loadedAround (feet: Vec3, radius: number): boolean {
-    return this.missingAround(chunkCoordinate(feet.x), chunkCoordinate(feet.z), radius) === 0
+    return this.notLoadedAround(feet, radius).length === 0
   }
 
-  private missingAroundPlayer (): number {
-    return this.missingAround(this.playerColumn.x, this.playerColumn.z, CHUNKS_TO_LOAD_RADIUS)
-  }
-
-  /** how many columns within `radius` columns of column (x, z) are not shown with every section */
-  private missingAround (x: number, z: number, radius: number): number {
-    let missing = 0
+  /** the columns within `radius` columns of `feet`'s not shown with every section */
+  notLoadedAround (feet: Vec3, radius: number): Array<{ x: number, z: number }> {
+    const [x, z] = [chunkCoordinate(feet.x), chunkCoordinate(feet.z)]
+    const missing: Array<{ x: number, z: number }> = []
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dz = -radius; dz <= radius; dz++) {
         const column = this.shown.get(keyOf(x + dx, z + dz))
-        if (column === undefined || !this.sections.every(y => this.knows(column, y))) missing++
+        if (column === undefined || !this.sections.every(y => this.knows(column, y))) missing.push({ x: x + dx, z: z + dz })
       }
     }
     return missing
@@ -157,8 +155,6 @@ export class NetworkWorld {
     // a name from 1.18.30
     this.dimension = typeof packet.dimension === 'number' ? packet.dimension : DIMENSIONS.indexOf(packet.dimension)
     this.sections = sectionsOf(this.dimension)
-    // 1.16.201 names it spawn, and has no requests
-    if (packet.player_position !== undefined) this.playerColumn = { x: chunkCoordinate(packet.player_position.x), z: chunkCoordinate(packet.player_position.z) }
   }
 
   private startRegistry (registry: RegistryBedrock, packet: BedrockClientboundPackets['start_game']): void {
@@ -236,7 +232,8 @@ export class NetworkWorld {
   }
 
   private requestSections (outbox: OutboxWriter): void {
-    const { x: originX, z: originZ } = this.playerColumn
+    const feet = this.playerFeet()
+    const [originX, originZ] = [chunkCoordinate(feet.x), chunkCoordinate(feet.z)]
     const distance = (column: Column): number => Math.max(Math.abs(column.x - originX), Math.abs(column.z - originZ))
     const columns = [...this.shown.values()]
       .filter(column => distance(column) <= MAX_OFFSET)

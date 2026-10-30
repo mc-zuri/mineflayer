@@ -428,6 +428,25 @@ describe('bedrock core', () => {
       assert.strictEqual(rejected, 'too slow')
     })
 
+    it('resolve, told their tick later, at the end of that tick; and reject when the bot ends before', async () => {
+      const { core, driver } = harness()
+      core.startTicks()
+      await driver.frame(0)
+      const done: string[] = []
+      const told = core.waits.untilDue()
+      const untold = core.waits.untilDue()
+      told.promise.then(() => { done.push(`told at ${core.tick ?? '-'}`) })
+      untold.promise.catch((error: Error) => { done.push(`untold: ${error.message}`) })
+      await driver.ticks(2)
+      told.due(3)
+      await driver.tick()
+      assert.deepStrictEqual(done, ['told at 3'])
+      core.fault('the test ended')
+      await driver.frame(0)
+      assert.deepStrictEqual(done, ['told at 3', 'untold: the test ended'])
+      await assert.rejects(core.waits.untilDue().promise, { message: 'the test ended' })
+    })
+
     it('are met on their last tick if their condition holds then', async () => {
       const { core, driver } = harness()
       core.startTicks()

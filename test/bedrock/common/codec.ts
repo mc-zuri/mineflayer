@@ -13,13 +13,21 @@ export interface BedrockCodec {
   blanks: Map<string, object>
 }
 
+const codecs = new Map<BedrockVersion, BedrockCodec>()
+
+/** the version's codec, made once: what bedrock-protocol compiles for a codec stays in memory after it */
 export function bedrockCodec (version: BedrockVersion): BedrockCodec {
-  return {
-    version,
-    serializer: createSerializer(bedrockProtocolVersionOf(version)),
-    deserializer: createDeserializer(bedrockProtocolVersionOf(version)),
-    blanks: new Map()
+  let codec = codecs.get(version)
+  if (codec === undefined) {
+    codec = {
+      version,
+      serializer: createSerializer(bedrockProtocolVersionOf(version)),
+      deserializer: createDeserializer(bedrockProtocolVersionOf(version)),
+      blanks: new Map()
+    }
+    codecs.set(version, codec)
   }
+  return codec
 }
 
 type Field = string | number | boolean | bigint | object | null | undefined

@@ -57,16 +57,16 @@ function subchunkBlock ([x, y, z]: Point, stateId: number): MCProtocol.Bedrock.W
 
 /**
  * sections 0 to 2 of column (0, 0) answered (stone, air, and one the server could not give) show from the next tick:
- * not in the frame's packet pass; the one not given is asked for again
+ * not in the frame's packet pass; the one not given is asked for again, after the `asked` sections asked before
  */
-async function showsAnsweredSectionsNextTick ({ bot, internal, driver }: TestBot, world: ServerWorld): Promise<void> {
+async function showsAnsweredSectionsNextTick ({ bot, internal, driver }: TestBot, world: ServerWorld, asked: number): Promise<void> {
   await driver.frame(0)
   assert.deepStrictEqual(namesAt(bot, [[1, 12, 0], [0, 20, 0], [0, 40, 0]]), [null, null, null])
   await driver.tick()
   // section 1 is air; section 2 was not given, -1 not answered
   assert.deepStrictEqual(namesAt(bot, [[1, 12, 0], [0, 11, 15], [0, 12, 0], [0, 20, 0], [0, 40, 0], [0, -0.5, 0]]), ['stone', 'stone', 'air', 'air', null, null])
   assert.strictEqual(internal._world.loadedAround(new Vec3(0.5, 12, 0.5), 0), false)
-  assert.deepStrictEqual(world.asked().slice(24), [{ dimension: 0, x: 0, y: 2, z: 0 }])
+  assert.deepStrictEqual(world.asked().slice(asked), [{ dimension: 0, x: 0, y: 2, z: 0 }])
 }
 
 /** the heightmap fields of a section of a subchunk, as the version's servers write them (none sent) */
@@ -130,15 +130,18 @@ describe('bedrock world', () => {
 
   describe('servers sending a column without its sections, then each section asked for in its own packet (1.18.0)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.18.0', 'bedrock_1.18.0')) {
-      it(`bedrock ${version}: asks for every section in the tick that shows the column, and shows each answer from the next tick`, async () => {
+      it(`bedrock ${version}: asks for every section after its first auth input, and shows each answer from the next tick`, async () => {
         const testBot = await bedrockTestBot(bedrockCodec(version))
         const { bot, internal, server, driver } = testBot
         const world = new ServerWorld(server)
         world.startGame()
+        world.spawn()
         const column = world.column(0, 0)
         server.send('level_chunk', { x: 0, z: 0, sub_chunk_count: -1, payload: await column.networkEncodeNoCache() })
         await driver.tick()
-        assert.deepStrictEqual(server.inTick(internal._core.tick ?? -1), Array(24).fill('subchunk_request'))
+        assert.deepStrictEqual(server.sentOf('subchunk_request'), [])
+        await driver.tick()
+        assert.deepStrictEqual(server.inTick(internal._core.tick ?? -1), ['player_auth_input', ...Array(24).fill('subchunk_request')])
         assert.deepStrictEqual(server.sentOf('subchunk_request'), sectionsFrom(-4, 19).map(y => ({ dimension: 0, x: 0, y, z: 0 })))
         assert.deepStrictEqual(namesAt(bot, [[1, 12, 0]]), [null])
         // 1.18.0 has no result for a section of air: it is a section of air
@@ -146,7 +149,7 @@ describe('bedrock world', () => {
         server.send('subchunk', { dimension: 0, x: 0, y: 0, z: 0, data: await column.networkEncodeSubChunkNoCache(0), request_result: 'success', heightmap_type: 'no_data' })
         server.send('subchunk', { dimension: 0, x: 0, y: 1, z: 0, data: await column.networkEncodeSubChunkNoCache(1), request_result: 'success', heightmap_type: 'no_data' })
         server.send('subchunk', { dimension: 0, x: 0, y: 2, z: 0, data: Buffer.alloc(0), request_result: 'chunk_not_found', heightmap_type: 'no_data' })
-        await showsAnsweredSectionsNextTick(testBot, world)
+        await showsAnsweredSectionsNextTick(testBot, world, 24)
       })
     }
   })
@@ -157,10 +160,12 @@ describe('bedrock world', () => {
         const { bot, internal, server, driver } = await bedrockTestBot(bedrockCodec(version))
         const world = new ServerWorld(server)
         world.startGame()
+        world.spawn()
         server.send('level_chunk', { x: 0, z: 0, sub_chunk_count: 0, payload: await world.column(0, 0, []).networkEncodeNoCache() })
         await driver.ticks(2)
         assert.deepStrictEqual(namesAt(bot, [[1, 12, 0], [0, -64, 0]]), ['air', 'air'])
         assert.ok(internal._world.loadedAround(new Vec3(0.5, 12, 0.5), 0))
+        assert.deepStrictEqual(server.inTick(internal._core.tick ?? -1), ['player_auth_input'])
         assert.deepStrictEqual(server.sentOf('subchunk_request'), [])
       })
     }
@@ -168,17 +173,21 @@ describe('bedrock world', () => {
 
   describe('servers sending a column without its sections, then the sections asked for by offsets from the player\'s column (1.18.11 – 1.26.20)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.18.11', 'bedrock_1.26.20')) {
-      it(`bedrock ${version}: asks for every section in the tick that shows the column, and shows each answer from the next tick`, async () => {
+      it(`bedrock ${version}: asks for every section after its first auth input, the player's column first, and shows each answer from the next tick`, async () => {
         const testBot = await bedrockTestBot(bedrockCodec(version))
         const { internal, server, driver } = testBot
         const world = new ServerWorld(server)
         world.startGame({ x: 40.5, y: 12, z: -7.5 })
+        world.spawn()
+        world.column(2, -1, [])
+        await world.sendColumn(2, -1)
         const column = world.column(0, 0)
         server.send('level_chunk', { x: 0, z: 0, sub_chunk_count: -2, highest_subchunk_count: 4, payload: await column.networkEncodeNoCache() })
-        await driver.tick()
-        assert.deepStrictEqual(server.inTick(internal._core.tick ?? -1), ['subchunk_request'])
+        await driver.ticks(2)
+        assert.deepStrictEqual(server.inTick(internal._core.tick ?? -1), ['player_auth_input', 'subchunk_request'])
         const origin = { x: 2, y: 0, z: -1 }
-        assert.deepStrictEqual(server.sentOf('subchunk_request'), [{ dimension: 0, origin, requests: sectionsFrom(-4, 19).map(y => ({ dx: -2, dy: y, dz: 1 })) }])
+        const requests = ([[0, 0], [-2, 1]] as const).flatMap(([dx, dz]) => sectionsFrom(-4, 19).map(y => ({ dx, dy: y, dz })))
+        assert.deepStrictEqual(server.sentOf('subchunk_request'), [{ dimension: 0, origin, requests }])
         server.send('subchunk', {
           cache_enabled: false,
           dimension: 0,
@@ -189,23 +198,27 @@ describe('bedrock world', () => {
             { dx: -2, dy: 2, dz: 1, result: 'player_not_found', payload: Buffer.alloc(0), ...noHeightmaps(version) }
           ]
         })
-        await showsAnsweredSectionsNextTick(testBot, world)
+        await showsAnsweredSectionsNextTick(testBot, world, 48)
       })
     }
   })
 
   describe('servers sending a column without its sections, then the sections asked for by byte offsets from the player\'s column (1.26.30)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.26.30', 'bedrock_1.26.30')) {
-      it(`bedrock ${version}: asks for every section in the tick that shows the column, and shows each answer from the next tick`, async () => {
+      it(`bedrock ${version}: asks for every section after its first auth input, the player's column first, and shows each answer from the next tick`, async () => {
         const testBot = await bedrockTestBot(bedrockCodec(version))
         const { server, driver } = testBot
         const world = new ServerWorld(server)
         world.startGame({ x: 40.5, y: 12, z: -7.5 })
+        world.spawn()
+        world.column(2, -1, [])
+        await world.sendColumn(2, -1)
         const column = world.column(0, 0)
         server.send('level_chunk', { x: 0, z: 0, sub_chunk_count: -2, highest_subchunk_count: 5, payload: await column.networkEncodeNoCache() })
-        await driver.tick()
+        await driver.ticks(2)
         const origin = { x: 2, y: 0, z: -1 }
-        assert.deepStrictEqual(server.sentOf('subchunk_request'), [{ dimension: 0, requests: sectionsFrom(-4, 19).map(y => ({ x: -2, y, z: 1 })), origin }])
+        const requests = ([[0, 0], [-2, 1]] as const).flatMap(([x, z]) => sectionsFrom(-4, 19).map(y => ({ x, y, z })))
+        assert.deepStrictEqual(server.sentOf('subchunk_request'), [{ dimension: 0, requests, origin }])
         server.send('subchunk', {
           cache_enabled: false,
           dimension: 0,
@@ -216,23 +229,27 @@ describe('bedrock world', () => {
             { dx: -2, dy: 2, dz: 1, result: 'player_not_found', payload: Buffer.alloc(0), heightmap_type: 'no_data', render_heightmap_type: 'no_data' }
           ]
         })
-        await showsAnsweredSectionsNextTick(testBot, world)
+        await showsAnsweredSectionsNextTick(testBot, world, 48)
       })
     }
   })
 
   describe('servers sending a column of no sections, then the sections asked for by byte offsets from the player\'s column (1.26.40+)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.26.40')) {
-      it(`bedrock ${version}: asks for every section in the tick that shows the column, and shows each answer from the next tick`, async () => {
+      it(`bedrock ${version}: asks for every section after its first auth input, the player's column first, and shows each answer from the next tick`, async () => {
         const testBot = await bedrockTestBot(bedrockCodec(version))
         const { server, driver } = testBot
         const world = new ServerWorld(server)
         world.startGame({ x: 40.5, y: 12, z: -7.5 })
+        world.spawn()
+        world.column(2, -1, [])
+        await world.sendColumn(2, -1)
         const column = world.column(0, 0)
         server.send('level_chunk', { x: 0, z: 0, sub_chunk_count: 0, highest_subchunk_count: 0, payload: await column.networkEncodeNoCache() })
-        await driver.tick()
+        await driver.ticks(2)
         const origin = { x: 2, y: 0, z: -1 }
-        assert.deepStrictEqual(server.sentOf('subchunk_request'), [{ dimension: 0, requests: sectionsFrom(-4, 19).map(y => ({ x: -2, y, z: 1 })), origin }])
+        const requests = ([[0, 0], [-2, 1]] as const).flatMap(([x, z]) => sectionsFrom(-4, 19).map(y => ({ x, y, z })))
+        assert.deepStrictEqual(server.sentOf('subchunk_request'), [{ dimension: 0, requests, origin }])
         server.send('subchunk', {
           cache_enabled: false,
           dimension: 0,
@@ -243,7 +260,7 @@ describe('bedrock world', () => {
             { dx: -2, dy: 2, dz: 1, result: 'player_not_found', heightmap_type: 'no_data', render_heightmap_type: 'no_data' }
           ]
         })
-        await showsAnsweredSectionsNextTick(testBot, world)
+        await showsAnsweredSectionsNextTick(testBot, world, 48)
       })
     }
   })
@@ -254,6 +271,7 @@ describe('bedrock world', () => {
         const { bot, server, driver } = await bedrockTestBot(bedrockCodec(version))
         const world = new ServerWorld(server)
         world.startGame()
+        world.spawn()
         world.column(0, 0)
         world.column(1, -1, [])
         await world.load(driver, [[0, 0]])
@@ -283,6 +301,7 @@ describe('bedrock world', () => {
         const { bot, server, driver } = await bedrockTestBot(bedrockCodec(version))
         const world = new ServerWorld(server)
         world.startGame()
+        world.spawn()
         world.column(0, 0)
         await world.load(driver, [[0, 0]])
         const dirt = world.stateId('dirt')
@@ -319,9 +338,10 @@ describe('bedrock world', () => {
     const { internal, server, driver } = await bedrockTestBot(codec)
     const world = new ServerWorld(server, { dimension })
     world.startGame()
+    world.spawn()
     world.column(0, 0, [])
     await world.sendColumn(0, 0)
-    await driver.tick()
+    await driver.ticks(2)
     return [world.asked().map(section => [section.dimension, section.x, section.y, section.z]), heights.map(y => internal._world.sectionKnown(0, y, 0))]
   }
 
@@ -350,6 +370,7 @@ describe('bedrock world', () => {
     const { bot, server, driver } = await bedrockTestBot(codec)
     const world = new ServerWorld(server, { hashes })
     world.startGame()
+    world.spawn()
     world.column(0, 0)
     await world.load(driver, [[0, 0]])
     const block = bot.blockAt(new Vec3(1, 12, 0))
@@ -384,13 +405,14 @@ describe('bedrock world', () => {
       const { internal, server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame({ x: 16.5, y: 12, z: 31.5 })
+      world.spawn()
       const arrived = [[4, 1], [1, 1], [0, 2], [3, 3], [2, 1], [1, -1], [-2, -2], [2, 2], [1, 3], [-1, 1], [3, 0]] as const
       for (const [x, z] of arrived) {
         world.column(x, z, [])
         await world.sendColumn(x, z)
       }
       const columnsAsked = (): string[] => [...new Set(world.asked().map(({ x, z }) => `${x},${z}`))]
-      await driver.tick()
+      await driver.ticks(2)
       assert.strictEqual(world.asked().length, 256)
       assert.deepStrictEqual(columnsAsked(), ['1,1', '0,2', '2,1', '2,2', '3,3', '1,-1', '1,3', '-1,1', '3,0', '4,1', '-2,-2'])
       assert.deepStrictEqual(world.asked().slice(240).map(({ y }) => y), sectionsFrom(-4, 11))
@@ -405,18 +427,20 @@ describe('bedrock world', () => {
       const { server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame()
-      for (const [x, z] of [[128, 0], [0, -128], [127, -127]] as const) {
+      world.spawn()
+      for (const [x, z] of [[0, 0], [128, 0], [0, -128], [127, -127]] as const) {
         world.column(x, z, [])
         await world.sendColumn(x, z)
       }
       await driver.ticks(2)
-      assert.deepStrictEqual([...new Set(world.asked().map(({ x, z }) => `${x},${z}`))], ['127,-127'])
+      assert.deepStrictEqual([...new Set(world.asked().map(({ x, z }) => `${x},${z}`))], ['0,0', '127,-127'])
     })
 
     it('knows a column, its sections and the columns around a point as the answers come, and air above and below the sections', async () => {
       const { bot, internal, server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame()
+      world.spawn()
       const around = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 0], [0, 1], [1, -1], [1, 1]] as const
       for (const [x, z] of around) world.column(x, z)
       const feet = new Vec3(0.5, 12, 0.5)
@@ -437,6 +461,7 @@ describe('bedrock world', () => {
       await driver.tick()
       assert.deepStrictEqual(known(), [true, false, false, false, false, true, true, false, false])
       assert.deepStrictEqual(namesAt(bot, [[1, 330, 0], [1, -70, 0]]), ['air', 'air'])
+      await driver.tick()
       await world.answer()
       await driver.tick()
       assert.deepStrictEqual(known(), [true, false, true, true, false, true, true, true, false])
@@ -450,9 +475,10 @@ describe('bedrock world', () => {
       const { bot, server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame()
+      world.spawn()
       world.column(0, 0)
       await world.sendColumn(0, 0)
-      await driver.tick()
+      await driver.ticks(2)
       const changes = await eventsOf(bot, async () => {
         await world.answer()
         server.send('update_block', { position: { x: 0, y: 20, z: 0 }, block_runtime_id: world.stateId('dirt'), layer: 0 })
@@ -467,6 +493,7 @@ describe('bedrock world', () => {
       const { bot, internal, server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame()
+      world.spawn()
       const column = world.column(0, 0)
       await world.load(driver, [[0, 0]])
       const dirt = world.stateId('dirt')
@@ -493,9 +520,10 @@ describe('bedrock world', () => {
       const { bot, server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame()
+      world.spawn()
       world.column(0, 0)
       await world.sendColumn(0, 0)
-      await driver.tick()
+      await driver.ticks(2)
       await world.sendColumn(0, 0)
       await world.answer()
       await driver.ticks(2)
@@ -507,6 +535,7 @@ describe('bedrock world', () => {
       const { bot, internal, server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame()
+      world.spawn()
       world.column(0, 0)
       const errors: string[] = []
       bot.on('error', error => { errors.push(error.message) })
@@ -522,7 +551,7 @@ describe('bedrock world', () => {
         server.send('update_subchunk_blocks', { x: 0, y: 0, z: 0, blocks: [subchunkBlock([1, 12, 0], dirt), subchunkBlock([2, 12, 0], dirt)], extra: [] })
         await driver.frame(0)
       })
-      assert.deepStrictEqual(events, ['chunkColumnLoad (0, 0, 0)', 'physicsTick', 'physicsTick', 'blockUpdate stone -> dirt', 'blockUpdate:(1, 12, 0) stone -> dirt', 'blockUpdate air -> dirt'])
+      assert.deepStrictEqual(events, ['chunkColumnLoad (0, 0, 0)', 'physicsTick', 'physicsTick', 'physicsTick', 'blockUpdate stone -> dirt', 'blockUpdate:(1, 12, 0) stone -> dirt', 'blockUpdate air -> dirt'])
       assert.deepStrictEqual(namesAt(bot, [[1, 12, 0], [2, 12, 0]]), ['dirt', 'dirt'])
       assert.strictEqual(heardOnce, 1)
       assert.deepStrictEqual(errors, Array(4).fill('a listener failed'))
@@ -535,6 +564,7 @@ describe('bedrock world', () => {
       bot.waitForChunksToLoad().then(() => { loaded = true }, () => {})
       const world = new ServerWorld(server)
       world.startGame({ x: 40.5, y: 12, z: -7.5 })
+      world.spawn()
       // the 5 × 5 around column (2, -1) but its corner (4, 1): 576 sections, 256 asked a tick
       for (let x = 0; x <= 4; x++) {
         for (let z = -3; z <= 1; z++) {
@@ -555,6 +585,7 @@ describe('bedrock world', () => {
       const { bot, server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame()
+      world.spawn()
       const nearest = sectionsFrom(-1, 1).flatMap(x => sectionsFrom(-1, 1).map(z => [x, z] as const))
       for (const [x, z] of nearest) world.column(x, z, [])
       await world.load(driver, nearest)
@@ -570,11 +601,13 @@ describe('bedrock world', () => {
       const { bot, server, driver } = await bedrockTestBot(codec)
       const world = new ServerWorld(server)
       world.startGame()
+      world.spawn()
       const column = world.column(0, 0, [[0, -64, 0, 'air'], [0, -48, 0, 'air'], [0, -32, 0, 'air'], [0, -16, 0, 'air'], [1, 12, 0, 'stone']])
       const sections = await Promise.all(sectionsFrom(-4, 0).map(async y => await column.networkEncodeSubChunkNoCache(y)))
       server.send('level_chunk', { x: 0, z: 0, sub_chunk_count: 5, payload: Buffer.concat([...sections, await column.networkEncodeNoCache()]) })
       await driver.ticks(2)
       assert.deepStrictEqual(namesAt(bot, [[1, 12, 0], [0, 12, 0], [0, 100, 0]]), ['stone', 'air', 'air'])
+      assert.strictEqual(server.sentOf('player_auth_input').length, 1)
       assert.deepStrictEqual(server.sentOf('subchunk_request'), [])
     })
 

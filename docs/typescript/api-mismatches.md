@@ -96,7 +96,7 @@ types the thing itself; each is a candidate for a fix upstream.
 | prismarine-chat | `ChatMessage.fromNotch(str: string)` | 1.20.3+ messages are NBT text components, which it takes | `lib/types/vendor/prismarine-chat.d.ts` |
 | prismarine-chat | `new ChatMessage(message)` takes a string, a number or `MessageBuilder`s | it takes a JSON text component (an object, or an array of them), which mineflayer passes | `lib/types/vendor/prismarine-chat.d.ts` (`TextComponent`) |
 | prismarine-chat | `MessageBuilder.fromString(str)` returns a `MessageBuilder` | it returns `null` for an empty string (mineflayer checks) | |
-| prismarine-entity | named exports only (`Entity`) | `module.exports` is the loader `(version) => Entity` | |
+| prismarine-entity | named exports only (`Entity`) | `module.exports` is the loader `(version) => Entity` (a registry too) | the Bedrock movement module asserts the default import is a function, which types it as the loader |
 | minecraft-protocol | `once('sessionce', ...)`, `once('end', (reasonce) => ...)` | the events are `session` and `end` (a search and replace of `on` with `once` in the typings) | `TypedClient` |
 | minecraft-protocol | no `connect_allowed` event, no `wait_connect` | autoVersion sets `wait_connect` and emits `connect_allowed` once it knows the server's version | `TypedClient` |
 | minecraft-protocol | `createClient(options)` takes a string `version` | it sets `version: false` itself when none is given (ask the server for its version), and takes it | `lib/types/vendor/minecraft-protocol.d.ts` |

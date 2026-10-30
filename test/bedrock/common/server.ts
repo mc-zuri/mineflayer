@@ -1,3 +1,4 @@
+import assert from 'assert'
 import { createBedrockBot } from '../../../lib/bedrock/loader.ts'
 import type { BedrockCore } from '../../../lib/bedrock/core/core.ts'
 import type { InboxWriter, OutgoingPacket, ServerboundName, Transport } from '../../../lib/bedrock/core/types.ts'
@@ -94,6 +95,13 @@ export class FakeBedrockClient implements Transport {
     return this.batches.flat().filter(packet => packet.name === name).map(packet => packet.params as BedrockServerboundPackets[Name])
   }
 
+  /** the bot's auth input of tick `tick` */
+  authInput (tick: number): AuthInput {
+    const input = this.sentOf('player_auth_input').find(sent => BigInt(sent.tick) === BigInt(tick))
+    assert.ok(input !== undefined, `${this.codec.version}: no auth input of tick ${tick}`)
+    return input
+  }
+
   private deliver (name: string, params: object, size: number): void {
     if (this.closed) throw new Error(`${this.codec.version}: ${name} sent to a closed connection`)
     this.inboxOrThrow().packet(name, params, size, this.now())
@@ -112,6 +120,16 @@ export class FakeBedrockClient implements Transport {
     if (this.inbox === undefined) throw new Error('no bot is connected')
     return this.inbox
   }
+}
+
+export type AuthInput = BedrockServerboundPackets['player_auth_input']
+
+/** an auth input's flags: those set, in the order of their bits, and how the version writes them */
+export function inputFlags ({ input_data: flags }: AuthInput): { written: 'number' | 'bigint' | 'list', set: string[] } {
+  assert.ok(flags !== undefined, 'the auth input has no flags')
+  if (Array.isArray(flags)) return { written: 'list', set: flags.map(String) }
+  const { _value: value, ...named } = flags
+  return { written: typeof value === 'bigint' ? 'bigint' : 'number', set: Object.entries(named).filter(([, on]) => on === true).map(([name]) => name) }
 }
 
 type Field = string | number | boolean | bigint | object | null | undefined

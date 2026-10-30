@@ -3,6 +3,8 @@ import prismarineRegistry from 'prismarine-registry'
 import { BedrockCore } from './core/core.ts'
 import type { InboxWriter, Ns, Transport } from './core/types.ts'
 import { monotonicClock, startRealtimeDriver } from './drivers/realtime.ts'
+import { Controls } from './modules/input.ts'
+import { LocalPlayer } from './modules/movement.ts'
 import { Session } from './modules/session.ts'
 import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
@@ -82,10 +84,18 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
     }
   })
   bot._core = core
-  const session = new Session(bot, options.viewDistance)
+  const controls = new Controls(bot)
+  const player = new LocalPlayer(bot, controls)
+  bot._world = new NetworkWorld(bot, () => player.feet)
+  const session = new Session(bot, options.viewDistance, bot._world, player)
   session.install(core)
-  bot._world = new NetworkWorld(bot)
   bot._world.install(core)
+  controls.install(core)
+  player.install(core)
+  bot.waitForTicks = async ticks => {
+    // before start_game, the ticks after it
+    if (ticks > 0) await core.waits.untilTick((core.tick ?? 0) + ticks)
+  }
 
   pluginLoader(bot, options)
   const internalPlugins = Object.entries(plugins)

@@ -168,19 +168,14 @@ describe('bedrock connection', () => {
         bot.end()
       })
 
-      it('logs in on start_game and spawns on play_status player_spawn, in the packet pass', async () => {
+      it('logs in on start_game, in the packet pass', async () => {
         const { bot, server, driver } = await bedrockTestBot(codec)
         const events: string[] = []
         bot.on('login', () => { events.push('login') })
-        bot.on('spawn', () => { events.push('spawn') })
         server.send('start_game', { runtime_entity_id: 7n })
-        server.send('play_status', { status: 'player_spawn' })
         assert.deepStrictEqual(events, [])
         await driver.frame(0)
-        assert.deepStrictEqual(events, ['login', 'spawn'])
-        assert.deepStrictEqual(server.sent.filter(packet => packet.name === 'set_local_player_as_initialized'), [
-          { name: 'set_local_player_as_initialized', params: { runtime_entity_id: 7n } }
-        ])
+        assert.deepStrictEqual(events, ['login'])
         bot.end()
       })
 
