@@ -95,7 +95,7 @@ export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => voi
 export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
   | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
   | 'teamCreated' | 'teamRemoved' | 'teamUpdated' | 'teamMemberAdded' | 'teamMemberRemoved'
-  | 'title' | 'title_times' | 'title_clear'> & BlockUpdateAtEvents
+  | 'title' | 'title_times' | 'title_clear' | 'bossBarCreated' | 'bossBarUpdated' | 'bossBarDeleted'> & BlockUpdateAtEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -147,6 +147,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   teamMap: { [name: string]: Team }
   /** header and footer always empty: Bedrock has neither */
   tablist: Tablist
+  /** the bars of the boss entities the bot has, in the order they were shown */
+  bossBars: BossBar[]
   end: (reason?: string) => void
   quit: (reason?: string) => void
   loadPlugin: (plugin: BedrockPlugin) => void

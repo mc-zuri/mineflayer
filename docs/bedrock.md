@@ -2,9 +2,9 @@
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
-the titles and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla
-client does, telling the server every tick, follows the server's corrections, and ends; the rest of the API is Java's
-only so far.
+the titles, the boss bars and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls and looks as
+the vanilla client does, telling the server every tick, follows the server's corrections, and ends; the rest of the
+API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -67,6 +67,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
 - `bot.scoreboards`, `bot.scoreboard`, `bot.teams`, `bot.teamMap`, `bot.tablist`: as Java's, as Bedrock has them (see
   scoreboards below).
+- `bot.bossBars`: as Java's, the bars of the boss entities the bot has (see boss bars below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -77,7 +78,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`,
   `scoreUpdated`, `scoreRemoved`, `scoreboardPosition` (see scoreboards below), `title (text, type)`,
-  `title_times (fadeIn, stay, fadeOut)`, `title_clear` (see titles below), `kicked (reason, loggedIn)`,
+  `title_times (fadeIn, stay, fadeOut)`, `title_clear` (see titles below), `bossBarCreated (bossBar)`,
+  `bossBarUpdated (bossBar)`, `bossBarDeleted (bossBar)` (see boss bars below), `kicked (reason, loggedIn)`,
   `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`,
   `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
@@ -111,6 +113,8 @@ packet arrived before:
 | play_status login_success | client_cache_status: no cache (the bot keeps none) |
 | resource_packs_info, then resource_pack_stack | resource_pack_client_response have_all_packs, then completed (from 1.26.40 with the status's name) |
 | network_stack_latency, when it asks for an answer | the same timestamp, asking none |
+| boss_event show_bar of an entity the bot has, which has no bar yet | boss_event register_player (see boss bars) |
+| boss_event hide_bar of a bar the bot shows | boss_event unregister_player |
 | start_game | request_chunk_radius (`viewDistance`; from 1.19.80 with the vanilla client's maximum, 28), tick_sync (up to 1.20.50), serverbound_loading_screen 1 (from 1.21.20) |
 
 In its ticks the bot sends its auth input (player_auth_input), then asks for the sections of the columns sent without
@@ -121,7 +125,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard and title events, `kicked`, `end`, `error` | the packet pass |
+| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title and boss bar events, `kicked`, `end`, `error` | the packet pass |
 | `chunkColumnLoad` | the start of a tick |
 | `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -459,6 +463,28 @@ The server's set_title acts in the packet pass, as Java's title packets; the bot
 - **The action bar** (set_title's action bar types) is chat's (`actionBar`), as on Java, where it comes as a chat
   message: the title plugin emits nothing for it.
 
+## Boss bars
+
+Bedrock has no `/bossbar`: a bar is a boss entity's (the ender dragon's, the wither's). The server's boss_event acts in
+the packet pass, as Java's boss bar packets, and the bot answers as the vanilla client.
+
+- **A bar is shown** (`bossBarCreated`) by the first show_bar of an entity the bot has (add_entity): the vanilla
+  client shows no bar of an entity it has not, and the server shows it again (every second in the End). The bot then
+  tells the server it shows it (register_player, with the player's unique id; from 1.26.30 with the bar's titles,
+  progress 0 and the style blue and progress, as the vanilla client writes it).
+- **It changes** (`bossBarUpdated`, for every packet, changed or not, as Java's) by show_bar again, the progress, the
+  title, the properties and the texture: from 1.26.30 every type carries every field, and each takes its own.
+- **It goes** (`bossBarDeleted`, before it leaves `bot.bossBars`, as Java's) with its entity (remove_entity: the
+  server does not hide it), by hide_bar (answered with unregister_player), and, every bar, with a dimension change,
+  where the vanilla client drops its entities.
+- **A `BossBar`** is Java's: `entityUUID` is the entity's unique id in decimal (`'-8589934590'`: Bedrock has no
+  UUID); `title` the server's title as Bedrock text, translated when it is a key of the version's language
+  (`entity.ender_dragon.name` is `'Ender Dragon'`); `health` the progress (0 – 1); `color` the bar's colour, Java's
+  names (Bedrock's rebecca purple, which Java has not, is `undefined`); `dividers` 0, 6, 10, 12 or 20 from the
+  overlay; `shouldDarkenSky` from the screen darkening (none from 1.26.30). Bedrock has no dragon bar or fog flag:
+  `isDragonBar` and `createFog` are false. Up to 1.16.210 show_bar has no style: the colour is `undefined` and the
+  dividers 0 until the server sends its texture.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -484,7 +510,9 @@ The server's set_title acts in the packet pass, as Java's title packets; the bot
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
   sent and how a correction acts; the scoreboards: by set_score's layout, one action for the packet's entries
   1.16.220 – 1.26.30, each entry its own type 1.26.40+; the titles: by set_title's layout, the type by its number
-  1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 – 1.21.2, with a filtered message 1.21.20+). The
+  1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 – 1.21.2, with a filtered message 1.21.20+; the boss
+  bars: by boss_event's layout, no style with the bar 1.16.201 – 1.16.210, a numbered style 1.16.220 – 1.21.50, a
+  filtered title 1.21.60 – 1.26.20, every field of every type with the player 1.26.30 – 1.26.45, without it 1.26.51+). The
   physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.

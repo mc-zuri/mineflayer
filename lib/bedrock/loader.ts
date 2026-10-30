@@ -8,6 +8,7 @@ import { LocalPlayer } from './modules/movement.ts'
 import { Session } from './modules/session.ts'
 import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
+import bossBar from './plugins/boss_bar.ts'
 import scoreboard from './plugins/scoreboard.ts'
 import tablist from './plugins/tablist.ts'
 import team from './plugins/team.ts'
@@ -23,7 +24,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   scoreboard,
   team,
   tablist,
-  title
+  title,
+  boss_bar: bossBar
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */
