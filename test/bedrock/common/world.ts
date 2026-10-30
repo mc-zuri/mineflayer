@@ -1,4 +1,7 @@
 import assert from 'assert'
+import { isDeepStrictEqual } from 'util'
+import prismarineBlock from 'prismarine-block'
+import type { Block } from 'prismarine-block'
 import prismarineChunk from 'prismarine-chunk'
 import type { BedrockChunk } from 'prismarine-chunk'
 import prismarineRegistry from 'prismarine-registry'
@@ -9,8 +12,11 @@ import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
 import type { ClientboundPacketsToWrite, FakeBedrockClient, TestBot } from './server.ts'
 import type { ManualDriver } from './driver.ts'
 
-/** [x, y, z, name]: a block, in world coordinates */
-export type BlockAt = readonly [number, number, number, string]
+/** some properties of a block's state: the others are its default state's */
+export type BlockProperties = Readonly<Record<string, string | number>>
+
+/** [x, y, z, name, properties]: a block, in world coordinates, in its default state but for `properties` */
+export type BlockAt = readonly [number, number, number, string, BlockProperties?]
 
 export type Dimension = 'overworld' | 'nether' | 'end'
 
@@ -65,6 +71,7 @@ export class ServerWorld {
   /** blocks besides the floor of the columns around the feet */
   private readonly blocks: readonly BlockAt[]
   private readonly ChunkColumn: typeof BedrockChunk
+  private readonly Block: typeof Block
   private readonly columns = new Map<string, BedrockChunk>()
   private answered = 0
   private feet: Point3 = { x: 0.5, y: 12, z: 0.5 }
@@ -80,6 +87,7 @@ export class ServerWorld {
     registry.handleStartGame({ block_network_ids_are_hashes: hashes })
     this.registry = registry
     this.ChunkColumn = prismarineChunk(registry)
+    this.Block = prismarineBlock(registry)
   }
 
   get dimensionId (): number {
@@ -154,18 +162,24 @@ export class ServerWorld {
     }
   }
 
-  stateId (name: string): number {
+  /** the state of the block `name`: its default one, but for `properties` */
+  stateId (name: string, properties: BlockProperties = {}): number {
     const block = this.registry.blocksByName[name]
     assert.ok(block !== undefined, `${this.version} has no ${name}`)
-    return block.defaultState
+    if (Object.keys(properties).length === 0) return block.defaultState
+    const wanted = { ...this.Block.fromStateId(block.defaultState, 0).getProperties(), ...properties }
+    for (let stateId = block.minStateId ?? 0; stateId <= (block.maxStateId ?? -1); stateId++) {
+      if (isDeepStrictEqual(this.Block.fromStateId(stateId, 0).getProperties(), wanted)) return stateId
+    }
+    assert.fail(`${this.version} has no ${name} ${JSON.stringify(properties)}`)
   }
 
   /** column (x, z): air but `blocks` */
   column (x: number, z: number, blocks: readonly BlockAt[] = stoneFloor(x, z)): BedrockChunk {
     const column = new this.ChunkColumn({ x, z })
-    for (const [bx, by, bz, name] of blocks) {
+    for (const [bx, by, bz, name, properties] of blocks) {
       assert.deepStrictEqual([bx >> 4, bz >> 4], [x, z], `${name} at (${bx}, ${by}, ${bz}) is not in column (${x}, ${z})`)
-      column.setBlockStateId({ x: bx & 15, y: by, z: bz & 15 }, this.stateId(name))
+      column.setBlockStateId({ x: bx & 15, y: by, z: bz & 15 }, this.stateId(name, properties))
     }
     this.columns.set(`${x},${z}`, column)
     return column

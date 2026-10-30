@@ -82,6 +82,8 @@ export interface BedrockBotOptions {
   viewDistance?: number
   /** whether the physics move the player @default true */
   physicsEnabled?: boolean
+  /** whether the player jumps by itself onto a block in its way, as the vanilla client's auto-jump does @default false */
+  autoJump?: boolean
 }
 
 export interface BedrockPluginOptions {
@@ -113,6 +115,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   entity: BedrockPlayer
   /** the physics move the player; false holds it where it is, standing still: acts from the next frame */
   physicsEnabled: boolean
+  /** the player jumps by itself onto a block in its way, as the vanilla client's auto-jump does: acts from the next frame */
+  autoJump: boolean
   time: Time | TimeNotSynced
   /** the controls held: set, each acts from the next frame */
   controlState: ControlStateStatus

@@ -25,8 +25,8 @@ const PLAYER_HEIGHT = 1.8
 const PLAYER_WIDTH = 0.6
 const STILL = Object.freeze({ x: 0, y: 0, z: 0 })
 const NO_ACTIONS: TickActions = Object.freeze({ startSprinting: false, stopSprinting: false, startSneaking: false, stopSneaking: false, startJumping: false })
-/** a held player: still, moving into nothing, its eye reported over its feet */
-const HELD = Object.freeze({ velocity: STILL, horizontalCollision: false, verticalCollision: false, stepSlide: 0, reportedFeetY: null })
+/** a held player: still, moving into nothing, its eye reported over its feet, no auto-jump asked for after */
+const HELD = Object.freeze({ velocity: STILL, horizontalCollision: false, verticalCollision: false, stepSlide: 0, reportedFeetY: null, autoJumpNext: false })
 /** a teleport this far, or farther, starts the ring again */
 const FAR_TELEPORT = 16
 const SNEAKING_FLAG = 1n
@@ -34,6 +34,12 @@ const SPRINTING_FLAG = 3n
 
 /** what the server echoes of the player's flags */
 type Echoed = Pick<MovementState, 'sprinting' | 'sneaking'>
+
+/** the bot's settings of the player's movement */
+export interface MovementSettings {
+  physicsEnabled: boolean
+  autoJump: boolean
+}
 
 type EntityLoader = (registry: Registry) => typeof Entity
 
@@ -93,9 +99,9 @@ export class LocalPlayer {
   private readonly rules: BedrockRules
   /** bot.entity from start_game */
   private readonly entity: BedrockPlayer
-  /** physicsEnabled as the input pass applied it, and as last set */
-  private physicsEnabled: boolean
-  private physicsRequested: boolean
+  /** the settings as the input pass applied them, and as last set */
+  private readonly settings: MovementSettings
+  private readonly requested: MovementSettings
   /** start_game's runtime id, its low 32 bits: move_player's is a varint */
   private runtimeId: bigint | undefined
   /** the runtime id as the vanilla client writes it in its own move_player and player_action */
@@ -112,12 +118,12 @@ export class LocalPlayer {
   /** looks asked for and not sent yet */
   private looking = 0
 
-  constructor (bot: BedrockBotInternal, controls: Controls, physicsEnabled: boolean) {
+  constructor (bot: BedrockBotInternal, controls: Controls, settings: MovementSettings) {
     this.bot = bot
     this.controls = controls
     this.rules = rulesFor(bot.version)
-    this.physicsEnabled = physicsEnabled
-    this.physicsRequested = physicsEnabled
+    this.settings = { ...settings }
+    this.requested = { ...settings }
     this.entity = this.createEntity()
   }
 
@@ -132,13 +138,15 @@ export class LocalPlayer {
       const delta = point.minus(this.feet.offset(0, EYE_HEIGHT, 0))
       await this.look(core, Math.atan2(-delta.x, -delta.z), Math.atan2(delta.y, Math.sqrt(delta.x * delta.x + delta.z * delta.z)))
     }
-    Object.defineProperty(this.bot, 'physicsEnabled', {
-      get: () => this.physicsRequested,
-      set: (enabled: boolean) => {
-        this.physicsRequested = enabled
-        core.command(() => { this.physicsEnabled = enabled })
-      }
-    })
+    for (const name of ['physicsEnabled', 'autoJump'] as const) {
+      Object.defineProperty(this.bot, name, {
+        get: () => this.requested[name],
+        set: (value: boolean) => {
+          this.requested[name] = value
+          core.command(() => { this.settings[name] = value })
+        }
+      })
+    }
     core.observe(OWNER, 'start_game', packet => {
       this.runtimeId = BigInt.asUintN(32, packet.runtime_entity_id)
       this.sentRuntimeId = Number(BigInt.asIntN(32, packet.runtime_entity_id))
@@ -378,11 +386,12 @@ export class LocalPlayer {
   }
 
   private liveInput (): MovementInput {
-    if (!this.physicsEnabled) return 'held'
+    if (!this.settings.physicsEnabled) return 'held'
     const { direction, keys } = this.controls.cooked
     return {
       move: sneakScaledMove(direction, keys.sneak.level, this.state),
       yaw: this.rotation.yaw,
+      pitch: this.rotation.pitch,
       jumping: keys.jump.level,
       sneakDown: keys.sneak.level,
       sprintDown: keys.sprint.level,
@@ -390,7 +399,8 @@ export class LocalPlayer {
       doubleTapSprints: false,
       // the bot keeps no food level yet
       tooHungryToSprint: false,
-      teleported: this.teleport !== undefined
+      teleported: this.teleport !== undefined,
+      autoJump: this.settings.autoJump
     }
   }
 
@@ -431,7 +441,7 @@ export class LocalPlayer {
     const { input, state } = this
     if (input === undefined || input === 'held') return undefined
     const { keys, direction } = this.controls.cooked
-    return { keys, move: input.move, direction, actions: this.actions, horizontalCollision: state.horizontalCollision, verticalCollision: state.verticalCollision }
+    return { keys, move: input.move, direction, actions: this.actions, autoJumping: state.autoJumping, horizontalCollision: state.horizontalCollision, verticalCollision: state.verticalCollision }
   }
 
   private atLeast (since: BedrockVersion): boolean {

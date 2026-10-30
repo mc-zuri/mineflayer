@@ -1,8 +1,8 @@
 import assert from 'assert'
 import prismarineRegistry from 'prismarine-registry'
 import { Vec3 } from 'vec3'
-import { latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
-import type { BedrockVersion, ControlState } from '../../lib/types/api/index.ts'
+import { isBedrockVersionAtLeast, latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
+import type { BedrockBotOptions, BedrockVersion, ControlState } from '../../lib/types/api/index.ts'
 import { bedrockCodec, blankPacket } from './common/codec.ts'
 import { bedrockTestBot, bedrockTestVersionsFrom, inputFlags } from './common/server.ts'
 import type { AuthInput, TestBot } from './common/server.ts'
@@ -38,13 +38,16 @@ interface Joined extends TestBot {
 interface Setup {
   /** besides the floor */
   blocks?: readonly BlockAt[]
+  /** FEET unless given */
+  feet?: Point3
   rotation?: Rotation
   game?: StartGame
+  options?: Omit<BedrockBotOptions, 'version'>
 }
 
 /** a bot joined at FEET, standing a tick */
-async function joined (version: BedrockVersion, { blocks = [], ...join }: Setup = {}): Promise<Joined> {
-  const testBot = await bedrockTestBot(bedrockCodec(version))
+async function joined (version: BedrockVersion, { blocks = [], options = {}, ...join }: Setup = {}): Promise<Joined> {
+  const testBot = await bedrockTestBot(bedrockCodec(version), options)
   const world = new ServerWorld(testBot.server, { blocks })
   await world.join(testBot, { feet: FEET, ...join })
   await testBot.driver.tick()
@@ -300,6 +303,203 @@ describe('bedrock physics', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.20.71')) {
       it(`bedrock ${version}: steps up a slab, reporting it on its tick; held after, the eye over the feet`, async () => {
         assert.deepStrictEqual(await upSlab(version), steppedUp([STANDING_Y, SLAB_Y, SLAB_Y, SLAB_Y, SLAB_Y, SLAB_Y, SLAB_Y]))
+      })
+    }
+  })
+
+  /** the jump's flags (and the jump key's) among those of an auth input */
+  function jumpFlags (input: AuthInput): string[] {
+    return flagsOf(input).filter(flag => /jump|want_up/.test(flag))
+  }
+
+  /** the recorded walk against a top slab: bottom slabs in the cells at z 136 and top slabs in those at z 138, x -6 to 1 */
+  function slabAndTopSlab (version: BedrockVersion): BlockAt[] {
+    const top = isBedrockVersionAtLeast(version, 'bedrock_1.20.30') ? { 'minecraft:vertical_half': 'top' } : { top_slot_bit: 1 }
+    return [-6, -5, -4, -3, -2, -1, 0, 1].flatMap((x): BlockAt[] => [[x, 12, 136, slabOf(version)], [x, 12, 138, slabOf(version), top]])
+  }
+
+  /** the recorded stairs: stone stairs up east at z 165, from (-10, 12) a block higher each block to (-6, 16) */
+  const STAIRS: readonly BlockAt[] = [-10, -9, -8, -7, -6].map((x): BlockAt => [x, x + 22, 165, 'stone_stairs'])
+
+  type Besides = Array<[number, Array<[string, object]>]>
+
+  interface AutoJumped {
+    /** the ticks whose auth inputs report a jump, and its flags */
+    jumps: Array<[number, string[]]>
+    /** the eyes and dy the auth inputs of the ticks picked report */
+    eyes: Point3[]
+    dy: number[]
+    /** what came before the auth inputs, on the ticks anything did */
+    besides: Besides
+  }
+
+  /** `keys` held for `walking` ticks, then nothing for `standing`, from a join as `setup` says: what the auth inputs tell */
+  async function walked (version: BedrockVersion, setup: Setup, [walking, standing]: [number, number], picked: readonly number[], keys: readonly ControlState[] = ['forward']): Promise<AutoJumped> {
+    const testBot = await joined(version, setup)
+    const inputs: AuthInput[] = []
+    for (let i = 0; i < walking + standing; i++) inputs.push(await holding(testBot, i < walking ? keys : []))
+    const at = (tick: number): AuthInput => {
+      const input = inputs[tick]
+      assert.ok(input !== undefined)
+      return input
+    }
+    return {
+      jumps: inputs.flatMap((input, tick): Array<[number, string[]]> => jumpFlags(input).length > 0 ? [[tick, jumpFlags(input)]] : []),
+      eyes: picked.map(tick => at(tick).position),
+      dy: picked.map(tick => at(tick).delta.y),
+      besides: inputs.flatMap((input, tick): Besides => {
+        const sent = besides(testBot, Number(input.tick))
+        return sent.length > 0 ? [[tick, sent]] : []
+      })
+    }
+  }
+
+  /** the ticks from the landing off the bottom slab to the landing of the jump against the top slab */
+  const OFF_SLAB = Object.freeze([18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30])
+
+  /**
+   * forward at yaw 0 from (-2.5, 12, 134.5) for 20 ticks, up the bottom slab, off it and against the top slab, then
+   * nothing for 12: as the vanilla client recorded it, jumping by itself on the 20th
+   */
+  async function againstTopSlab (version: BedrockVersion, options: Setup['options'] = { autoJump: true }): Promise<AutoJumped> {
+    return await walked(version, { blocks: slabAndTopSlab(version), feet: { x: -2.5, y: 12, z: 134.5 }, options }, [20, 12], OFF_SLAB)
+  }
+
+  /** the eyes against the top slab */
+  function offSlab (y: readonly number[]): Point3[] {
+    return y.map(y => ({ x: -2.5, y, z: 137.6999969482422 }))
+  }
+
+  /** from the landing off the bottom slab to the landing of the jump: up to 1.16.220 the first eyes still slide */
+  const SLID_OFF_SLAB_Y = [13.620001792907715, 14.040006637573242, 14.373209953308105, 14.621345520019531, ...JUMP_Y.slice(3)]
+  const OFF_SLAB_Y = [STANDING_Y, ...JUMP_Y]
+
+  /** the auto-jump against the top slab, as recorded: on the 20th tick, its eyes, flags and the packets before them */
+  function jumpedAgainstTopSlab (y: readonly number[], flags: string[], besides: Besides): AutoJumped {
+    return { jumps: [[19, flags]], eyes: offSlab(y), dy: [STANDING_DY, ...JUMP_DY], besides }
+  }
+
+  /** the landing move_player of the vanilla client up to 1.20.40, against the top slab */
+  function landedOffSlab (y: number): [string, object] {
+    return ['move_player', { ...LANDED[1], position: { x: -2.5, y, z: 137.6999969482422 } }]
+  }
+
+  /** the ticks after each jump up the stairs, and the last */
+  const UP_STAIRS = Object.freeze([10, 15, 22, 39])
+
+  /** forward at `yaw` from (-11.5, 12, 165.5) for 25 ticks, up the stairs, then nothing for 15: as recorded */
+  async function upStairs (version: BedrockVersion, yaw: number): Promise<AutoJumped> {
+    return await walked(version, { blocks: STAIRS, feet: { x: -11.5, y: 12, z: 165.5 }, rotation: { yaw, pitch: 0 }, options: { autoJump: true } }, [25, 15], UP_STAIRS)
+  }
+
+  /** up to 1.16.220 at yaw -90.033, as 1.16.201 recorded: the eye still slides up the step a jump left the ground by */
+  const SLID_UP_STAIRS = Object.freeze([
+    { x: -9.463218688964844, y: 14.407210350036621, z: 165.4988250732422 }, { x: -8.44770336151123, y: 15.405031204223633, z: 165.49826049804688 },
+    { x: -6.998173713684082, y: 16.904809951782227, z: 165.49745178222656 }, { x: -6.2905473709106445, y: 18.1198787689209, z: 165.4970703125 }
+  ])
+  /** 1.17.0 to 1.20.80 at yaw -90.027, as 1.17.0 recorded */
+  const UP_STAIRS_ON_MOVE = Object.freeze([
+    { x: -9.463218688964844, y: 14.6200103759765625, z: 165.49900817871094 }, { x: -8.44770336151123, y: 15.6200103759765625, z: 165.49851989746094 },
+    { x: -6.998173713684082, y: 17.1200103759765625, z: 165.49781799316406 }, { x: -6.290546417236328, y: 18.1200103759765625, z: 165.4974822998047 }
+  ])
+  /** from 1.21.0 at yaw -89.956, as 1.21.0 recorded: the look ahead asks for no jump onto the third step */
+  const UP_STAIRS_LOOKING_AHEAD = Object.freeze([
+    { x: -9.463218688964844, y: 14.6200103759765625, z: 165.5015869140625 }, { x: -8.44770336151123, y: 15.6200103759765625, z: 165.5023651123047 },
+    { x: -6.919774055480957, y: 17.1200103759765625, z: 165.5035400390625 }, { x: -6.228235244750977, y: 18.1200103759765625, z: 165.5040740966797 }
+  ])
+
+  /** the walk up the stairs, as recorded: the ticks it jumps on with the flags, the eyes after, the packets before them */
+  function jumpedUpStairs (jumps: readonly number[], flags: string[], eyes: readonly Point3[], besides: Besides): AutoJumped {
+    return { jumps: jumps.map((tick): [number, string[]] => [tick, flags]), eyes: [...eyes], dy: Array(4).fill(STANDING_DY), besides }
+  }
+
+  /** the landing move_player of the vanilla client up to 1.20.40 the tick after each jump up the stairs, at its eye */
+  function landedUpStairs (eyes: readonly Point3[], yaw: number): Besides {
+    return [10, 15, 22].map((tick, index): [number, Array<[string, object]>] => [tick, [['move_player', { ...LANDED[1], position: eyes[index], yaw, head_yaw: yaw }]]])
+  }
+
+  describe('servers told of an auto-jump by player_action jump, of a landing by move_player, the eye sliding up a step (1.16.201)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.16.201')) {
+      it(`bedrock ${version}: jumps by itself against the top slab on its move, reporting jumping but no jump key, as recorded`, async () => {
+        assert.deepStrictEqual(await againstTopSlab(version), jumpedAgainstTopSlab(SLID_OFF_SLAB_Y, ['jumping'], [
+          [18, [landedOffSlab(13.620001792907715)]], [19, [actionOf('jump')]], [30, [landedOffSlab(STANDING_Y)]]
+        ]))
+      })
+
+      it(`bedrock ${version}: walks up the stairs, each step its auto-jump asks for taking it off the ground, as recorded`, async () => {
+        const landed = landedUpStairs(SLID_UP_STAIRS, -90.032958984375)
+        const besides = [9, 14, 21].flatMap((tick, index): Besides => [[tick, [actionOf('jump')]], ...landed.slice(index, index + 1)])
+        assert.deepStrictEqual(await upStairs(version, -90.032958984375), jumpedUpStairs([9, 14, 21], ['jumping'], SLID_UP_STAIRS, besides))
+      })
+    }
+  })
+
+  describe('servers told of an auto-jump by its flags, of a landing by move_player, the eye sliding up a step (1.16.210 – 1.16.220)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.210', 'bedrock_1.16.220')) {
+      it(`bedrock ${version}: jumps by itself against the top slab on its move, reporting jumping and start_jumping but no jump key, as recorded`, async () => {
+        assert.deepStrictEqual(await againstTopSlab(version), jumpedAgainstTopSlab(SLID_OFF_SLAB_Y, ['jumping', 'start_jumping'], [
+          [18, [landedOffSlab(13.620001792907715)]], [30, [landedOffSlab(STANDING_Y)]]
+        ]))
+      })
+
+      it(`bedrock ${version}: walks up the stairs, each step its auto-jump asks for taking it off the ground, as recorded`, async () => {
+        assert.deepStrictEqual(await upStairs(version, -90.032958984375), jumpedUpStairs([9, 14, 21], ['jumping', 'start_jumping'], SLID_UP_STAIRS, landedUpStairs(SLID_UP_STAIRS, -90.032958984375)))
+      })
+    }
+  })
+
+  describe('servers told of an auto-jump by its flags, of a landing by move_player (1.17.0 – 1.20.40)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.17.0', 'bedrock_1.20.40')) {
+      it(`bedrock ${version}: jumps by itself against the top slab on its move, reporting jumping and start_jumping but no jump key, as recorded`, async () => {
+        assert.deepStrictEqual(await againstTopSlab(version), jumpedAgainstTopSlab(OFF_SLAB_Y, ['jumping', 'start_jumping'], [
+          [18, [landedOffSlab(STANDING_Y)]], [30, [landedOffSlab(STANDING_Y)]]
+        ]))
+      })
+
+      it(`bedrock ${version}: jumps by itself up the stairs on its move into each step, as recorded`, async () => {
+        assert.deepStrictEqual(await upStairs(version, -90.0274658203125), jumpedUpStairs([9, 14, 21], ['jumping', 'start_jumping'], UP_STAIRS_ON_MOVE, landedUpStairs(UP_STAIRS_ON_MOVE, -90.0274658203125)))
+      })
+    }
+  })
+
+  describe('servers told of an auto-jump by its flags, of a landing by the auth input alone (1.20.50 – 1.20.80)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.20.50', 'bedrock_1.20.80')) {
+      it(`bedrock ${version}: jumps by itself against the top slab on its move, reporting jumping and start_jumping but no jump key, as recorded`, async () => {
+        assert.deepStrictEqual(await againstTopSlab(version), jumpedAgainstTopSlab(OFF_SLAB_Y, ['jumping', 'start_jumping'], []))
+      })
+
+      it(`bedrock ${version}: jumps by itself up the stairs on its move into each step, as recorded`, async () => {
+        assert.deepStrictEqual(await upStairs(version, -90.0274658203125), jumpedUpStairs([9, 14, 21], ['jumping', 'start_jumping'], UP_STAIRS_ON_MOVE, []))
+      })
+    }
+  })
+
+  describe('servers whose client looks ahead for the auto-jump after its move, jumping on the next tick (1.21.0+)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.21.0')) {
+      it(`bedrock ${version}: jumps by itself against the top slab the tick after it landed there, reporting jumping and start_jumping but no jump key, as recorded`, async () => {
+        assert.deepStrictEqual(await againstTopSlab(version), jumpedAgainstTopSlab(OFF_SLAB_Y, ['jumping', 'start_jumping'], []))
+      })
+
+      it(`bedrock ${version}: jumps by itself up the stairs the tick after it finds a step a block up, as recorded`, async () => {
+        assert.deepStrictEqual(await upStairs(version, -89.9560775756836), jumpedUpStairs([9, 14], ['jumping', 'start_jumping'], UP_STAIRS_LOOKING_AHEAD, []))
+      })
+
+      it(`bedrock ${version}: backing into the top slab, jumps by itself looking down, but not looking away from the way it goes (not recorded: the pitch counts)`, async () => {
+        const backing = async (pitch: number): Promise<AutoJumped['jumps']> => {
+          const setup = { blocks: slabAndTopSlab(version), feet: { x: -2.5, y: 12, z: 134.5 }, rotation: { yaw: 180, pitch }, options: { autoJump: true } }
+          return (await walked(version, setup, [20, 12], [], ['back'])).jumps
+        }
+        assert.deepStrictEqual([await backing(0), await backing(90)], [[], [[19, ['jumping', 'start_jumping']]]])
+      })
+
+      it(`bedrock ${version}: drops the jump asked for by the tick it landed against the top slab when physicsEnabled holds the next, looking ahead again after`, async () => {
+        const testBot = await joined(version, { blocks: slabAndTopSlab(version), feet: { x: -2.5, y: 12, z: 134.5 }, options: { autoJump: true } })
+        for (let i = 0; i < 19; i++) await holding(testBot, ['forward'])
+        testBot.bot.physicsEnabled = false
+        await holding(testBot, ['forward'])
+        testBot.bot.physicsEnabled = true
+        const inputs = [await holding(testBot, ['forward']), await holding(testBot, ['forward'])]
+        assert.deepStrictEqual(inputs.map(input => [input.position.y, jumpFlags(input)]), [[STANDING_Y, []], [JUMP_Y[0], ['jumping', 'start_jumping']]])
       })
     }
   })
@@ -703,6 +903,20 @@ describe('bedrock physics', () => {
         const { y, dy, sent, kept, rewinds, replayedTicks } = await correctedMidFall(version)
         assert.deepStrictEqual({ y, dy, kept, rewinds, replayedTicks }, { y: [FALL_Y[5], FALL_Y[3], FALL_Y[4]], dy: [FALL_DY[5], FALL_DY[3], FALL_DY[4]], kept: sent, rewinds: 1, replayedTicks: 3 })
       })
+
+      it(`bedrock ${version}: plays the auto-jump against the top slab again as its ticks took it, though autoJump was unset since`, async () => {
+        const testBot = await joined(version, { blocks: slabAndTopSlab(version), feet: { x: -2.5, y: 12, z: 134.5 }, options: { autoJump: true } })
+        const inputs: AuthInput[] = []
+        for (let i = 0; i < 20; i++) inputs.push(await holding(testBot, ['forward']))
+        testBot.bot.autoJump = false
+        // the 18th tick, falling off the bottom slab, a quarter of a block east: the 19th looks ahead again, the 20th jumps
+        const falling = inputs[17]
+        assert.ok(falling !== undefined)
+        testBot.server.send('correct_player_move_prediction', { position: { ...falling.position, x: -2.25 }, delta: falling.delta, on_ground: false, tick: falling.tick })
+        const next = await holding(testBot, [])
+        const { rewinds, replayedTicks } = testBot.internal._player.corrections.stats
+        assert.deepStrictEqual([next.position, rewinds, replayedTicks], [{ x: -2.25, y: JUMP_Y[1], z: 137.6999969482422 }, 1, 2])
+      })
     }
   })
 
@@ -746,6 +960,28 @@ describe('bedrock physics', () => {
       const testBot = await joined(version)
       const inputs = [await holding(testBot, ['forward']), await holding(testBot, []), await holding(testBot, ['forward']), await holding(testBot, ['forward'])]
       assert.deepStrictEqual(inputs.map(sprintFlags), [['up'], [], ['up'], ['up']])
+    })
+
+    it('walks against the top slab without jumping by itself: the option autoJump is off unless set (the vanilla client\'s is on)', async () => {
+      assert.deepStrictEqual(await againstTopSlab(version, {}), { jumps: [], eyes: offSlab(Array(13).fill(STANDING_Y)), dy: Array(13).fill(STANDING_DY), besides: [] })
+    })
+
+    it('jumps by itself from the frame after bot.autoJump is set, and not from the frame after it is unset', async () => {
+      const testBot = await joined(version, { blocks: slabAndTopSlab(version), feet: { x: -2.5, y: 12, z: 134.5 } })
+      const { bot, server, driver } = testBot
+      for (let i = 0; i < 20; i++) await holding(testBot, ['forward'])
+      let read: boolean | undefined
+      // set in the first tick of a frame of two: the second does not look ahead yet
+      bot.once('physicsTick', () => {
+        bot.autoJump = true
+        read = bot.autoJump
+      })
+      await driver.frame(100)
+      const inputs = [server.authInput(tickOf(testBot) - 1), server.authInput(tickOf(testBot))]
+      inputs.push(await holding(testBot, ['forward']), await holding(testBot, ['forward']))
+      bot.autoJump = false
+      for (let i = 0; i < 16; i++) inputs.push(await holding(testBot, ['forward']))
+      assert.deepStrictEqual([read, bot.autoJump, inputs.flatMap((input, tick) => jumpFlags(input).length > 0 ? [tick] : [])], [true, false, [3]])
     })
 
     it('holds the player from the start with the option physicsEnabled false', async () => {

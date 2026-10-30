@@ -28,6 +28,8 @@ export interface Movement {
   readonly move: Vec2f
   readonly direction: Vec2f
   readonly actions: TickActions
+  /** the auto-jump held the jump: reported as jumping, as the jump key is */
+  readonly autoJumping: boolean
   readonly horizontalCollision: boolean
   readonly verticalCollision: boolean
 }
@@ -96,7 +98,8 @@ function flagsOf (version: BedrockVersion, { movement, teleportAck }: AuthInputS
     [back.level, ['down']],
     [left.level, ['left']],
     [right.level, ['right']],
-    [jump.level, ['jump_down', 'jumping', 'want_up']],
+    [jump.level, ['jump_down', 'want_up']],
+    [jump.level || movement.autoJumping, ['jumping']],
     [jump.level && !isBedrockVersionAtLeast(version, 'bedrock_1.21.0'), ['north_jump']],
     [sprint.level, ['sprint_down', 'sprinting']],
     [sneak.level, ['sneak_down', 'sneaking', 'want_down']],
