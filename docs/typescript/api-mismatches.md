@@ -109,6 +109,8 @@ types the thing itself; each is a candidate for a fix upstream.
 | bedrock-protocol | `ServerAdvertisement.protocol: number` (what `ping` resolves with) | a string | |
 | bedrock-protocol | `ClientStatus` is `Disconnected, Authenticating, Initializing, Initialized` | it has `Connecting` after `Disconnected`, so the typings' numbers are off by one from `Authenticating` on | |
 | bedrock-protocol | `ClientOptions.conLog?: any` | a function logging connection messages, `null` for none | |
+| prismarine-windows | `Window.updateSlot(slot, newItem: Item)` | it takes `null` for an empty slot (Java's plugins pass it) | the Bedrock inventory calls it with `Reflect.apply` |
+| prismarine-windows | the loader takes a version string | it takes a registry too | the Bedrock inventory passes its registry with `Reflect.apply`, so that a window names the items it makes as item_registry does |
 | prismarine-registry | the loader gives a `Registry` of either edition for any version | a `bedrock_` version's is a `RegistryBedrock` | the Bedrock world module tells it by its `handleStartGame` |
 | prismarine-chunk | `StorageType` is an ambient `const enum` | there is no value to name, and type stripping inlines none | the Bedrock world module passes `Runtime`'s number, 2 |
 | prismarine-world | `WorldSync.getBlock(pos)` returns a `Block` | `null` where no column is loaded | the Bedrock bot's `blockAt` checks the column first |

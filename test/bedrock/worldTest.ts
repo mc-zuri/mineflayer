@@ -20,6 +20,11 @@ function sectionsFrom (lowest: number, highest: number): number[] {
   return Array.from({ length: highest - lowest + 1 }, (_, index) => lowest + index)
 }
 
+/** the packets of a tick but the inventory's interact, which tells the hand in the first auth input's */
+function worldSentInTick (server: FakeBedrockClient, tick: number | undefined): string[] {
+  return server.inTick(tick ?? -1).filter(name => name !== 'interact')
+}
+
 function namesAt (bot: BedrockBot, points: readonly Point[]): Array<string | null> {
   return points.map(([x, y, z]) => bot.blockAt(new Vec3(x, y, z))?.name ?? null)
 }
@@ -141,7 +146,7 @@ describe('bedrock world', () => {
         await driver.tick()
         assert.deepStrictEqual(server.sentOf('subchunk_request'), [])
         await driver.tick()
-        assert.deepStrictEqual(server.inTick(internal._core.tick ?? -1), ['player_auth_input', ...Array(24).fill('subchunk_request')])
+        assert.deepStrictEqual(worldSentInTick(server, internal._core.tick), ['player_auth_input', ...Array(24).fill('subchunk_request')])
         assert.deepStrictEqual(server.sentOf('subchunk_request'), sectionsFrom(-4, 19).map(y => ({ dimension: 0, x: 0, y, z: 0 })))
         assert.deepStrictEqual(namesAt(bot, [[1, 12, 0]]), [null])
         // 1.18.0 has no result for a section of air: it is a section of air
@@ -165,7 +170,7 @@ describe('bedrock world', () => {
         await driver.ticks(2)
         assert.deepStrictEqual(namesAt(bot, [[1, 12, 0], [0, -64, 0]]), ['air', 'air'])
         assert.ok(internal._world.loadedAround(new Vec3(0.5, 12, 0.5), 0))
-        assert.deepStrictEqual(server.inTick(internal._core.tick ?? -1), ['player_auth_input'])
+        assert.deepStrictEqual(worldSentInTick(server, internal._core.tick), ['player_auth_input'])
         assert.deepStrictEqual(server.sentOf('subchunk_request'), [])
       })
     }
@@ -184,7 +189,7 @@ describe('bedrock world', () => {
         const column = world.column(0, 0)
         server.send('level_chunk', { x: 0, z: 0, sub_chunk_count: -2, highest_subchunk_count: 4, payload: await column.networkEncodeNoCache() })
         await driver.ticks(2)
-        assert.deepStrictEqual(server.inTick(internal._core.tick ?? -1), ['player_auth_input', 'subchunk_request'])
+        assert.deepStrictEqual(worldSentInTick(server, internal._core.tick), ['player_auth_input', 'subchunk_request'])
         const origin = { x: 2, y: 0, z: -1 }
         const requests = ([[0, 0], [-2, 1]] as const).flatMap(([dx, dz]) => sectionsFrom(-4, 19).map(y => ({ dx, dy: y, dz })))
         assert.deepStrictEqual(server.sentOf('subchunk_request'), [{ dimension: 0, origin, requests }])

@@ -117,7 +117,7 @@ describe('bedrock session', () => {
       it(`bedrock ${version}: sends auth inputs from the tick after the column under the spawned player shows, and is initialized after the fifth`, async () => {
         const { server, joined: { firstAuthInput, moving }, spawned } = await joined(bedrockCodec(version))
         assert.deepStrictEqual([firstAuthInput, moving], [2, 2])
-        assert.deepStrictEqual([1, 2, 5, 6, 7].map(tick => server.inTick(tick)), [[], ['player_auth_input'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
+        assert.deepStrictEqual([1, 2, 5, 6, 7].map(tick => server.inTick(tick)), [[], ['player_auth_input', 'interact'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
         assert.deepStrictEqual(server.sentOf('set_local_player_as_initialized'), [{ runtime_entity_id: 1n }])
         assert.deepStrictEqual(spawned, ['spawn 6', 'physicsTick 6'])
       })
@@ -134,7 +134,9 @@ describe('bedrock session', () => {
       it(`bedrock ${version}: sends auth inputs from the tick after the column under the spawned player shows, and is initialized after the 13th it moves`, async () => {
         const { server, joined: { firstAuthInput, moving }, spawned } = await joined(bedrockCodec(version))
         assert.deepStrictEqual([firstAuthInput, moving], [2, 4])
-        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 15, 16, 17]), [[], ['player_auth_input'], ['player_auth_input'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
+        // the inventory's interact, which tells the empty hand: up to 1.19.0 after the auth input, from 1.19.10 before it
+        const shown = isBedrockVersionAtLeast(version, 'bedrock_1.19.10') ? ['interact', 'player_auth_input'] : ['player_auth_input', 'interact']
+        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 15, 16, 17]), [[], shown, ['player_auth_input'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
         assert.deepStrictEqual(server.sentOf('set_local_player_as_initialized'), [{ runtime_entity_id: 1n }])
         assert.deepStrictEqual(spawned, ['spawn 16', 'physicsTick 16'])
       })
@@ -146,7 +148,7 @@ describe('bedrock session', () => {
       it(`bedrock ${version}: sends auth inputs from the tick after the column under the spawned player shows, and is initialized after the 8th it moves`, async () => {
         const { server, joined: { firstAuthInput, moving }, spawned } = await joined(bedrockCodec(version))
         assert.deepStrictEqual([firstAuthInput, moving], [2, 4])
-        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 10, 11, 12]), [[], ['player_auth_input'], ['player_auth_input'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
+        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 10, 11, 12]), [[], ['interact', 'player_auth_input'], ['player_auth_input'], ['player_auth_input'], ['player_auth_input', 'set_local_player_as_initialized'], ['player_auth_input']])
         assert.deepStrictEqual(server.sentOf('set_local_player_as_initialized'), [{ runtime_entity_id: 1n }])
         assert.deepStrictEqual(spawned, ['spawn 11', 'physicsTick 11'])
       })
@@ -158,7 +160,7 @@ describe('bedrock session', () => {
       it(`bedrock ${version}: sends auth inputs from the tick after the column under the spawned player shows, and ends the loading screen and is initialized after the last held`, async () => {
         const { server, joined: { firstAuthInput, moving }, spawned } = await joined(bedrockCodec(version))
         assert.deepStrictEqual([firstAuthInput, moving], [2, 4])
-        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 4]), [[], ['player_auth_input'], ['player_auth_input', 'serverbound_loading_screen', 'set_local_player_as_initialized'], ['player_auth_input']])
+        assert.deepStrictEqual(joinedTicks(server, [1, 2, 3, 4]), [[], ['interact', 'player_auth_input'], ['player_auth_input', 'serverbound_loading_screen', 'set_local_player_as_initialized'], ['player_auth_input']])
         assert.deepStrictEqual(server.sentOf('serverbound_loading_screen'), [{ type: 1 }, { type: 2 }])
         assert.deepStrictEqual(server.sentOf('set_local_player_as_initialized'), [{ runtime_entity_id: 1n }])
         assert.deepStrictEqual(spawned, ['spawn 4', 'physicsTick 4'])
@@ -181,7 +183,7 @@ describe('bedrock session', () => {
       assert.deepStrictEqual(server.sentOf('player_auth_input'), [])
       server.send('respawn', { position: { x: 0.5, y: 13.6200103759765625, z: 0.5 }, state: 1, runtime_entity_id: 1n })
       await driver.ticks(2)
-      assert.deepStrictEqual([server.inTick(4), server.inTick(5)[0]], [[], 'player_auth_input'])
+      assert.deepStrictEqual([server.inTick(4), server.inTick(5).slice(0, 2)], [[], ['interact', 'player_auth_input']])
     })
 
     it('shows the player once play_status spawned it, respawn having said it is ready', async () => {
@@ -194,7 +196,7 @@ describe('bedrock session', () => {
       assert.deepStrictEqual(server.sentOf('player_auth_input'), [])
       server.send('play_status', { status: 'player_spawn' })
       await driver.ticks(2)
-      assert.deepStrictEqual([server.inTick(4), server.inTick(5)[0]], [[], 'player_auth_input'])
+      assert.deepStrictEqual([server.inTick(4), server.inTick(5).slice(0, 2)], [[], ['interact', 'player_auth_input']])
     })
 
     it('waits 200 ticks for the column under the spawned player, then shows it without, naming the column', async () => {
@@ -210,7 +212,7 @@ describe('bedrock session', () => {
       assert.deepStrictEqual([errors, server.sentOf('player_auth_input')], [[], []])
       await driver.ticks(2)
       assert.deepStrictEqual(errors, ['the column (2, -1) under the player was not sent 200 ticks after it spawned'])
-      assert.deepStrictEqual([server.inTick(200), server.inTick(201)], [[], ['player_auth_input', 'subchunk_request']])
+      assert.deepStrictEqual([server.inTick(200), server.inTick(201)], [[], ['interact', 'player_auth_input', 'subchunk_request']])
     })
 
     it('holds the player 200 ticks for the columns around it, then moves it without, naming them', async () => {

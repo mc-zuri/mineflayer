@@ -90,6 +90,8 @@ export interface BedrockBotOptions {
   chatLengthLimit?: number
   /** whether the bot asks to respawn as soon as the player dies @default true */
   respawn?: boolean
+  /** whether a screen closes when its animation ends (from 1.21.120), as the vanilla client mostly does @default true */
+  screenAnimations?: boolean
 }
 
 export interface BedrockPluginOptions {
@@ -107,7 +109,8 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'entityShakingOffWater' | 'entityEatingGrass' | 'entityWake' | 'entityEat' | 'entityCriticalEffect' | 'entityMagicCriticalEffect' | 'entityCrouch'
   | 'entityUncrouch' | 'entitySleep' | 'entityElytraFlew' | 'entityEffect' | 'entityEffectEnd' | 'entityAttributes' | 'itemDrop' | 'playerCollect'
   | 'playerJoined' | 'playerUpdated' | 'playerLeft' | 'entityAttach' | 'entityDetach' | 'mount' | 'dismount'
-  | 'message' | 'messagestr' | 'chat' | 'whisper' | 'actionBar' | 'unmatchedMessage'> & BlockUpdateAtEvents & ChatPatternEvents
+  | 'message' | 'messagestr' | 'chat' | 'whisper' | 'actionBar' | 'unmatchedMessage'
+  | 'windowOpen' | 'windowClose' | 'heldItemChanged'> & BlockUpdateAtEvents & ChatPatternEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -203,6 +206,16 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   tablist: Tablist
   /** the bars of the boss entities the bot has, in the order they were shown */
   bossBars: BossBar[]
+  /** the player's items in Java's inventory window layout, the offhand in slot 45 */
+  inventory: Window<StorageEvents>
+  /** the screen open: the inventory or a crafting table */
+  currentWindow: Window | null
+  heldItem: Item | null
+  quickBarSlot: number
+  /** opens the inventory screen (its 2 × 2 crafting grid), as the vanilla client does: resolves once the server opened it */
+  openInventory: () => Promise<Window<StorageEvents>>
+  /** gives what the cursor and the grid hold back to the inventory, closes the screen, and resolves once the server closed it */
+  closeWindow: (window: Window) => Promise<void>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */
@@ -854,7 +867,7 @@ export declare class Painting {
   constructor (id: number, position: Vec3, name: string, direction: Vec3)
 }
 
-interface StorageEvents {
+export interface StorageEvents {
   open: () => void
   close: () => void
   updateSlot: (slot: number, oldItem: Item | null, newItem: Item | null) => void

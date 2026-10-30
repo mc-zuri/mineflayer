@@ -4,6 +4,7 @@ import { BedrockCore } from './core/core.ts'
 import type { InboxWriter, Ns, Transport } from './core/types.ts'
 import { monotonicClock, startRealtimeDriver } from './drivers/realtime.ts'
 import { Controls } from './modules/input.ts'
+import { Inventory } from './modules/inventory.ts'
 import { Lifecycle } from './modules/lifecycle.ts'
 import { LocalPlayer } from './modules/movement.ts'
 import { Session } from './modules/session.ts'
@@ -123,6 +124,7 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   const player = new LocalPlayer(bot, controls, { physicsEnabled: options.physicsEnabled ?? true, autoJump: options.autoJump ?? false })
   bot._player = player
   bot._world = new NetworkWorld(bot, () => player.feet)
+  bot._inventory = new Inventory(bot, { screenAnimations: options.screenAnimations ?? true })
   const session = new Session(bot, options.viewDistance === undefined ? undefined : chunkRadiusOf(options.viewDistance), bot._world, player)
   bot._session = session
   // a tick ends with the player's movement recorded and shown, then spawn
@@ -131,6 +133,7 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   new Lifecycle(bot, bot._world, player, { autoRespawn: options.respawn ?? true }).install(core)
   bot._world.install(core)
   controls.install(core)
+  bot._inventory.install(core)
   bot.waitForTicks = async ticks => {
     // before start_game, the ticks after it
     if (ticks > 0) await core.waits.untilTick((core.tick ?? 0) + ticks)

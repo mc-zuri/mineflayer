@@ -5,6 +5,7 @@ import type { BedrockClientboundPackets } from '../../types/protocol/bedrock-cli
 import { FrameTimer } from './frame_timer.ts'
 import { Inbox } from './inbox.ts'
 import { Outbox } from './outbox.ts'
+import { RequestIds } from './request_ids.ts'
 import { resolveSchedule } from './schedule.ts'
 import type { SystemDecl } from './schedule.ts'
 import type { ClientboundName, FrameContext, Gate, HandlerContext, LinkNotice, Ns, OutboxWriter, Phase, TickContext, Transport } from './types.ts'
@@ -37,6 +38,7 @@ const INERT_OUTBOX: OutboxWriter = Object.freeze({ queue: () => {} })
 export class BedrockCore {
   readonly inbox: Inbox
   readonly waits = new Waits()
+  readonly requestIds = new RequestIds()
   /** written by the session: whether the server shows the player, and whether it moves */
   readonly activation = { present: false, active: false }
   readonly stats = { frames: 0, ticks: 0, errors: 0, gated: 0, packets: new Map<string, PacketStats>() }

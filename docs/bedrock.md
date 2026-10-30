@@ -4,8 +4,8 @@ mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock v
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the game's state, the time,
 the scoreboards, the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows
 and the player list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does,
-telling the server every tick, follows the server's corrections, chats, and ends; the rest of the API is Java's only so
-far.
+telling the server every tick, follows the server's corrections, chats, keeps the player's items and opens and closes
+its inventory, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -56,6 +56,7 @@ Every Bedrock release from 1.16.201 to 1.26.60 (`mineflayer.testedBedrockVersion
 | `defaultChatPatterns` | `true` | as Java's: the chat patterns that emit `chat` and `whisper` (see chat below) |
 | `chatLengthLimit` | `512` | as Java's: a longer line is sent in parts (see chat below) |
 | `respawn` | `true` | as Java's: whether the bot asks to respawn as soon as the player dies (see health below) |
+| `screenAnimations` | `true` | whether, from 1.21.120, a screen closes when its animation ends, as the vanilla client mostly does; `false` closes it at once (see the inventory below) |
 
 The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 
@@ -84,6 +85,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   scoreboards below).
 - `bot.bossBars`: as Java's, the bars of the boss entities the bot has (see boss bars below).
 - `bot.players`, `bot.player`: the player list (see below).
+- `bot.inventory`, `bot.currentWindow`, `bot.heldItem`, `bot.quickBarSlot`, `bot.openInventory()` (Bedrock's),
+  `bot.closeWindow(window)`: the player's items and screens (see the inventory below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -105,6 +108,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   soundCategory, position, volume, pitch)` (see sounds below), `particle (particle)` (see particles below), `message
   (jsonMsg, position)`, `messagestr (message, position, jsonMsg)`, `chat` and `whisper (username, message, translate,
   jsonMsg)`, `actionBar (jsonMsg)`, `chat:<name> (matches)`, `unmatchedMessage (message, jsonMsg)` (see chat below),
+  `windowOpen (window)`, `windowClose (window)`, `heldItemChanged (item)` (see the inventory below),
   `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`,
   `teamMemberAdded`, `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
@@ -153,7 +157,8 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `heldItemChanged` | where the held slot changes: the packet pass, or the input pass of a request's prediction |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -893,6 +898,88 @@ the hotbar and sends of what is typed:
     `/tell <name>` (the e2e test's builds: 1.17.10 – 1.19.10 not tried), and 1.21.0 an operator's.
   - Java's waiting for a command before a chat message on 1.19.0 is not needed.
 
+## Inventory
+
+The bot keeps the player's items as the server sends them, in Bedrock's containers, and shows them in prismarine-windows
+`Window`s of Java's layouts (Java's before 1.14, which prismarine-windows gives Bedrock), `Item`s with their
+`stackId`:
+
+| `bot.inventory` slot | Bedrock | Crafting table window slot |
+| --- | --- | --- |
+| 0 | the crafting output (`ui` 50, `creative_output` in requests) | 0 |
+| 1 – 4 | the inventory's 2 × 2 grid (`ui` 28 – 31, `crafting_input`), row by row | 1 – 9: the 3 × 3 grid (32 – 40) |
+| 5 – 8 | the armor, 0 – 3 | |
+| 9 – 35 | the inventory, 9 – 35 | 10 – 36 |
+| 36 – 44 | the hotbar, 0 – 8 (`hotbar_and_inventory` 0 – 35 in requests) | 37 – 45 |
+| 45 | the offhand (its window's one item; slot 1 in requests) | |
+
+`window.selectedItem` is the cursor (`ui` 0). `bot.heldItem` is hotbar slot `bot.quickBarSlot`, which the server
+selects (player_hotbar). `bot.currentWindow` is the screen open: `bot.inventory` while the inventory screen is, a
+`minecraft:crafting_table` window while a crafting table's is, else `null`. A crafting table's window has the
+server's id for the screen (its dynamic ids 1 and 100, which the protocol names `first` and `last`, as numbers).
+
+- **Items** come in inventory_content and inventory_slot (the windows `inventory`, `armor`, `offhand` and `ui`; others
+  are counted and dropped), shown from the packet pass, and are named by the registry: from 1.21.60 the server names
+  them in item_registry, which the registry takes (`registry.handleItemRegistry`); before, start_game does. An item is
+  read as each version writes it: up to 1.16.210 an aux value of its metadata and count, wrapped with its stack id
+  (`runtime_id` on 1.16.201, `stack_id` on 1.16.210); from 1.16.220 a count and metadata; from 1.26.20 an ItemV4,
+  whose stack id is a variant naming its kind on 1.26.20 and 1.26.30. prismarine-item's `fromNotch` / `toNotch` read
+  and write some of these wrongly (see the notes), so the bot does it itself.
+- **Requests** (`item_stack_request`) are numbered -3, -5, -7 … with no gap, as the vanilla client numbers them (for as
+  long as its process runs: the tests' seam `_core.requestIds.continueProcess(next)` goes on with a recording's). A
+  request is made when asked, but leaves in the next tick, with the others made since in one packet, after what the
+  player holds (below): up to 1.19.0 after the tick's auth input, from 1.19.10 just before it, as the vanilla client
+  sends a click's on every recorded build (a hand-back's leave with the close when it leaves at once). A request names
+  each slot it moves from or to as the client does, when it is made: by the id of the last request that changed it,
+  earlier in the packet or still unanswered; else by its stack's id (0 when empty), the output's too. Its moves show at
+  once; a move the slots cannot make rejects before the request takes an id. An ok response keeps them where it lists a
+  slot (with the server's count and stack id, emptying it at 0; it never makes an item) and undoes them where not; a
+  refusal undoes them all and rejects, naming the status (`FailedToValidateSrcSlot`: Mojang's names, as the protocol
+  names only ok and error); no response in 100 ticks undoes them too and rejects (an answer after is ignored), and so
+  does the answer to a later request for one still unanswered, as the server answers in order. Where a later request changed the slot too, what it
+  changed it from is settled instead, so that once the last is answered the slot is the server's; a slot the server
+  sends while a request on it is pending stays as sent. From 1.26.60 the vanilla client brackets a click that places
+  from the cursor with serverbound_cursor_item_drag (start before the request, stop in the next tick); a hand-back has
+  none, and a request sends none. How the slots are written changes by version: `container_id` and `slot_id` on
+  1.16.201, a `cause` (-1) from 1.19.30, a full container name from 1.21.20 (with a dynamic id of 0 on 1.21.20), the
+  action's type again (`legacy_type_id`) and 32-bit stack ids from 1.26.40.
+- **What the player holds** is told to the server in the first tick the player is shown (its first auth input's), and in
+  the first tick after a packet changed the slots (inventory_content, inventory_slot, player_hotbar,
+  item_stack_response), if it changed since it was last told: a new item in the hand (another item, or to or from none)
+  as `interact mouse_over_entity` (no entity) then `mob_equipment` (another item being another network id, metadata or
+  block); only its count or NBT, `mob_equipment` alone; the offhand's, `mob_equipment` alone (the offhand window, slot
+  1). When first shown the hand is a new item, and an empty one is told by the interact alone (a respawn does not tell
+  it again). Up to 1.19.0 after the tick's auth input, from 1.19.10 before it (at the tick's `ActorLegacyTickSystem`),
+  as recorded. The item is the slot's without its stack id (an ItemV4 from 1.26.20).
+- **`bot.openInventory()`** (Bedrock's: Java's inventory has no screen to open) sends `interact open_inventory` and
+  resolves once the server opened the screen (container_open), with `bot.inventory`; at once if it is open, but while
+  it is closing it waits for the server's close and opens it again. It rejects
+  before start_game, over another screen, or when the server does not open it in 100 ticks.
+- **`bot.closeWindow(window)`** gives back what the screen holds, one request for each slot an item goes to, in one
+  packet: on the inventory screen the grid's items then the cursor's, on a crafting table the cursor's then the grid's;
+  each to the stacks of its item with room (64 for an item that names no stack size, as the game has it), then to empty
+  slots, from hotbar slot 0 on. What has no room stays. Then container_close (from 1.21.0 naming the screen's type
+  `none`): up to 1.21.111 in the same input pass, with the hand-back; from 1.21.120 the hand-back leaves in the next
+  tick, and the close in the frame after the screen's animation ended, 240 ms after the frame it was asked in for the
+  inventory, 390 ms for a crafting table. Recorded at 32 frames a second (up to 1.26.51) the client closes in the 9th
+  and 14th frames after the key's, at 16 (1.26.60) in the 5th and 8th: the frame after animations of about 228 to
+  241 ms and 386 to 398 ms, which no close in the animation's last frame fits at both rates; on 1.26.60 an inventory
+  closed after a recipe search, which a bot has not, closes a frame later still. Not every recorded client waits: some
+  1.26.20 and 1.26.51 close at once, in the hand-back's batch, which the option `screenAnimations: false` does. It
+  resolves once the server closed the screen too (its own container_close, which also closes a screen when the server
+  closes it, and then gives the items back itself: closing a screen the server closed first hands nothing back), and
+  rejects if the server refused to take an item back or did not close the screen in 100 ticks; asked again, it closes it
+  again. Closing a window that is not open does nothing.
+- **set_player_inventory_options** (1.20.50 – 1.21.101): the client tells the server once a process, 120 ms after a
+  screen's first opening, the screens it opened so far (the inventory's `layout`, the crafting table's
+  `crafting_layout`: `recipe_book` once opened). A bot is a process of its own; a test that continues a recording's
+  process sends none.
+- **Events**: `windowOpen` (container_open of the inventory or a crafting table), `windowClose` (the screen
+  closed), `heldItemChanged` (each update of the held slot, and a new selection).
+
+Not yet: clicks (`clickWindow`), using a block to open its screen, crafting, screens other than the inventory and the
+crafting table (counted, not shown), dropping what has no room, and the hotbar selection by the bot.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -940,7 +1027,8 @@ the hotbar and sends of what is typed:
   a handle 1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+; the
   particles: by spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+; the
   chat: by how the text packet, a command's output and an action bar title are laid out, and how the bot's chat and
-  commands are). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
+  commands are; the inventory: by how items, requests, responses, held items and closes are written, and when the held
+  item is told, each group playing a recorded spawn, give, move and close with the bot, byte for byte). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
   workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
@@ -967,6 +1055,14 @@ What was found getting here, beyond mineflayer:
     `ShieldItemID`, which its client sets from the item states of start_game (item_registry from 1.21.60). A codec
     of `createSerializer` or `createDeserializer` has none until it is set, and reads a shield wrongly: the tests'
     codec sets it from the start_game or item_registry it reads or writes, for its connection only.
+- **prismarine-item:** its Bedrock `fromNotch` / `toNotch` write an aux item without its network id (1.16.201,
+  1.16.210), write 1.16.220's items as aux items and cannot read them, and write a number as an ItemV4's stack id
+  variant as 0 (1.26.20, 1.26.30). `new Item()` without a stack id takes one of its own counting (`Item.nextStackId()`),
+  not the server's. The bot reads and writes items itself and gives every `Item` its stack id.
+- **prismarine-windows:** it has no Bedrock windows, and gives Java's layouts before 1.14; its inventory has no offhand
+  slot (45 slots), so the bot's has 46. Its loader takes a registry, which the bot gives it, so that a window names the
+  items it makes as item_registry does. See [API mismatches](typescript/api-mismatches.md#dependency-typings) for its
+  typings.
 - **prismarine-registry, prismarine-chunk, prismarine-world, prismarine-entity:** see
   [API mismatches](typescript/api-mismatches.md#dependency-typings) for their typings.
   - Up to 1.17.40 a column (prismarine-chunk's 1.3 column) cannot be read without its sections:

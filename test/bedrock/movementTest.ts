@@ -359,7 +359,7 @@ describe('bedrock movement', () => {
       server.send('move_player', { runtime_id: 1, position: { x: 0.5, y: 0.5007399916648865, z: 0.5 }, mode: 'teleport', teleport: { cause: 'unknown', source_entity_type: 0 } })
       await driver.ticks(3)
       assert.deepStrictEqual(server.inTick(1), [])
-      assert.deepStrictEqual([sentIn(server, 2), inputFlags(server.authInput(2)).set], [[['player_auth_input', 'client_camera_aim_assist', 'subchunk_request'], { x: 0.5, y: 0.5007399916648865, z: 0.5 }], ['handled_teleport', 'block_breaking_delay_enabled']])
+      assert.deepStrictEqual([sentIn(server, 2), inputFlags(server.authInput(2)).set], [[['interact', 'player_auth_input', 'client_camera_aim_assist', 'subchunk_request'], { x: 0.5, y: 0.5007399916648865, z: 0.5 }], ['handled_teleport', 'block_breaking_delay_enabled']])
       // the eye over the feet, as floats: one float off this eye
       assert.deepStrictEqual([sentIn(server, 3), inputFlags(server.authInput(3)).set], [[['player_auth_input'], { x: 0.5, y: 0.5007399320602417, z: 0.5 }], ['block_breaking_delay_enabled']])
     })

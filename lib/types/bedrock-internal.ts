@@ -1,5 +1,6 @@
 import type { Entity } from 'prismarine-entity'
 import type { BedrockCore } from '../bedrock/core/core.ts'
+import type { Inventory } from '../bedrock/modules/inventory.ts'
 import type { LocalPlayer } from '../bedrock/modules/movement.ts'
 import type { Session } from '../bedrock/modules/session.ts'
 import type { NetworkWorld } from '../bedrock/modules/world.ts'
@@ -32,6 +33,8 @@ export interface BedrockBotInternal extends BedrockBot {
   _entities: EntityIndex
   /** the counts of the messages the vanilla client would not show: a rawtext that is no valid one, a text type it does not know */
   _chat: { stats: { invalidRawText: number, unknownType: number } }
+  /** the player's items, the screens and the item stack requests */
+  _inventory: Inventory
   loadPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => void
   loadPlugins: (plugins: Array<BedrockPlugin | BedrockInternalPlugin>) => void
   hasPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => boolean
