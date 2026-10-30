@@ -1,10 +1,11 @@
 # Bedrock
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
-minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the game's state, the time, the scoreboards,
-the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows and the player
-list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does, telling the server
-every tick, follows the server's corrections, chats, and ends; the rest of the API is Java's only so far.
+minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the game's state, the time,
+the scoreboards, the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows
+and the player list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does,
+telling the server every tick, follows the server's corrections, chats, and ends; the rest of the API is Java's only so
+far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -74,6 +75,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.experience`, `bot.oxygenLevel`: as Java's (see experience and breath below).
 - `bot.spawnPoint`, `bot.isRaining`, `bot.rainState`, `bot.thunderState`: as Java's (see spawn point and weather
   below).
+- `bot.abilities`: as Java's (see abilities below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
 - `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
@@ -89,25 +91,22 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   `bot.removeChatPattern`, `bot.chatAddPattern`, `bot.awaitMessage(...)`; `bot.tabComplete` rejects (see chat below).
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
 - Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `game` (`bot.game`
-  changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn or a
-  dimension change: see health and dimension changes), `respawn` (a respawn, or a dimension change), `health`,
-  `death` (see health), `experience`, `breath` (see experience and breath), `spawnReset`, `rain`, `weatherUpdate`
-  (see spawn point and weather), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
-  `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
-  the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
-  `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities
-  below), `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`, `scoreUpdated`, `scoreRemoved`,
-  `scoreboardPosition` (see scoreboards below), `title (text, type)`,
-  `title_times (fadeIn, stay, fadeOut)`, `title_clear` (see titles below), `bossBarCreated (bossBar)`,
-  `bossBarUpdated (bossBar)`, `bossBarDeleted (bossBar)` (see boss bars below),
-  `soundEffectHeard (soundName, position, volume, pitch)`,
-  `hardcodedSoundEffectHeard (soundId, soundCategory, position, volume, pitch)` (see sounds below),
-  `particle (particle)` (see particles below),
-  `message (jsonMsg, position)`, `messagestr (message, position, jsonMsg)`, `chat` and
-  `whisper (username, message, translate, jsonMsg)`, `actionBar (jsonMsg)`, `chat:<name> (matches)`,
-  `unmatchedMessage (message, jsonMsg)` (see chat below), `kicked (reason, loggedIn)`, `end (reason)`, `error`. The
-  team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`, `teamMemberRemoved`) are declared, so
-  that code for both editions type checks, and never come.
+  changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn or a dimension
+  change: see health and dimension changes), `respawn` (a respawn, or a dimension change), `health`, `death` (see
+  health), `experience`, `breath` (see experience and breath), `spawnReset`, `rain`, `weatherUpdate` (see spawn point
+  and weather), `abilities (abilities)` (see abilities), `time`, `physicsTick` (`physicTick`: every tick, from
+  start_game), `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the
+  server moved the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`, `blockUpdate:(x, y, z)
+  (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities below),
+  `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`, `scoreUpdated`, `scoreRemoved`,
+  `scoreboardPosition` (see scoreboards below), `title (text, type)`, `title_times (fadeIn, stay, fadeOut)`,
+  `title_clear` (see titles below), `bossBarCreated (bossBar)`, `bossBarUpdated (bossBar)`, `bossBarDeleted (bossBar)`
+  (see boss bars below), `soundEffectHeard (soundName, position, volume, pitch)`, `hardcodedSoundEffectHeard (soundId,
+  soundCategory, position, volume, pitch)` (see sounds below), `particle (particle)` (see particles below), `message
+  (jsonMsg, position)`, `messagestr (message, position, jsonMsg)`, `chat` and `whisper (username, message, translate,
+  jsonMsg)`, `actionBar (jsonMsg)`, `chat:<name> (matches)`, `unmatchedMessage (message, jsonMsg)` (see chat below),
+  `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`,
+  `teamMemberAdded`, `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
     as Java's.
   - `kicked`'s reason is the disconnect packet's message as it is (Java's is a JSON text), or its reason code's name
@@ -154,7 +153,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -467,8 +466,9 @@ world's spawn after a death, of every version):
 - Where the vanilla client differs: up to 1.19.40 it asks for the new dimension's sections while the player is hidden;
   the bot from when it shows it. From 1.19.50 it acknowledges a dead player's change at once when the columns around the
   spawn are loaded already (its cache keeps them); the bot, which keeps none, once respawned and loaded. Its loading
-  screen hides 2 ticks after the ack (on 1.26.20 1, on 1.26.60 4 to 7); the bot's 2. Where 1.19.1 – 1.19.62 stand is not recorded:
-  the hidden player is recorded up to 1.18.30, the frozen one from 1.19.63; 1.19.50 is the boundary the bot takes.
+  screen hides 2 ticks after the ack (on 1.26.20 1, on 1.26.60 4 to 7); the bot's 2. Where 1.19.1 – 1.19.62 stand is not
+  recorded: the hidden player is recorded up to 1.18.30, the frozen one from 1.19.63; 1.19.50 is the boundary the bot
+  takes.
 
 ## Experience and breath
 
@@ -501,6 +501,32 @@ when it starts or stops raining, then `weatherUpdate` when a level changes, as J
 eases the sky towards the level; the bot takes the level at once (Java's server sends the eased levels). No recording
 has weather (the recorded worlds are clear), nor a world spawn moved or a player's spawn set: the levels' scale and
 these packets are as the protocol describes them, not checked against a server.
+
+## Abilities
+
+`bot.abilities` has Java's fields, and Java's defaults until the server tells them (not invulnerable, not flying, may
+not fly, no instant building, a flying speed of 0.05 and a walking speed of 0.1). Bedrock keeps a player's abilities in
+layers, from the lowest: cache, base, spectator, commands, editor and loading screen (a layer the version does not name
+ranks by its number). Each layer allows some abilities and sets those; an ability is the one the highest layer allowing
+it sets, or Java's default where none does. `invulnerable`, `flying`, `mayFly` and `instantBuild` are the layers'
+invulnerable, flying, may fly and instant build abilities, `flyingSpeed` and `walkingSpeed` their fly and walk speeds.
+
+- From 1.19.10 the server sends the layers with update_abilities: its base layer allows them all, as recorded. The
+  server tells each player the other players' too: the bot's names start_game's unique id. Up to 1.19.1 it sends
+  adventure_settings, whose `allow_flight` and `flying` flags are the base layer's `mayFly` and `flying` (whatever
+  player it names: the protocol data says servers may leave it 0), and the speeds stay Java's.
+- The game mode (see game state) sets the base layer's four flags as Java sets them: creative invulnerable, may fly
+  and instant building, keeping the flight it has; spectator invulnerable, may fly and flying; survival and adventure
+  none. Servers send no abilities after a game mode change (none after the recorded ones, 1.16.220 – 1.26.60), so
+  the bot applies the game mode itself, when it changes (a game type packet naming the player's game mode leaves the
+  layers). The recorded logins' base layer is the game mode's (a creative world's invulnerable, may fly and instant
+  building), and so is the flight the server grants a creative player who asks for it (recorded on 1.19.80).
+
+`abilities` is emitted with `bot.abilities` on each update_abilities of the player and adventure_settings, as Java's
+on each abilities packet, and when a game mode changes them. Where Java differs: Java's server sends its abilities
+packet after a game mode change. The speeds are 32-bit floats from update_abilities (0.05000000074505806, as Java's
+abilities packet reads). The bot does not fly yet (the physics have no flight): `flying` is what the server says. No
+recording has a layer but the base one: their order is the protocol's.
 
 ## Settings
 
@@ -887,38 +913,37 @@ the hotbar and sends of what is typed:
   - the versions are dealt to 4 processes run at once (`BEDROCK_TEST_JOBS` sets how many), each running every file
     for its versions (`scripts/test-bedrock.ts`); the tests of the latest version only run in each. Nothing waits real
     time: a tick is as long as the test takes to step it.
-- **What servers send**: the tests use the packets and values servers sent the vanilla Bedrock client, recorded on
-  every version, small ones as their bytes. Versions whose servers send alike are a group, and each group's tests run
-  on each of its versions (the time: `set_time` 1.16.201 – 1.26.20, world clocks 1.26.30+, `tick_sync` answers up to
-  1.20.50; the world: by how a column comes, a block changes and the dimension is named; the corrections: by the
-  ring's size, the correction's shape, the movement authority, how the velocity is set and the player respawned; the
-  local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
-  answered; the game state: by how start_game names the engine, the dimension and whether the world is hardcore, how
-  high the overworld is, how the game type is stamped, which game types are spectator, and where the start_game answer
-  says the game type falls back to the world's; the health and the experience: by how update_attributes writes an
-  attribute, how the
-  player action respawn is written and when a respawned player moves; the breath: by how set_entity_data writes the air; the spawn point and the weather: alike on every version; the dimension
-  changes: by whether the player
-  is hidden or frozen, when it moves, how the acknowledgement is written and whether a loading screen is named; the
-  settings: by how the chunk radius is asked for and the vanilla
-  client's radius; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
-  auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
-  sent and how a correction acts; the entities: by the layouts of the add packets, move_entity_delta, set_entity_motion,
-  the attributes and an effect's removal, how the metadata's flags are written, and what minecraft-data knows of the
-  entities; the links: by how set_entity_link is laid out; the players: by the layouts of player_list, add_player,
-  move_player and update_player_game_type; the scoreboards: by set_score's layout, one action for the packet's entries
-  1.16.220 – 1.26.30, each entry its own type 1.26.40+; the titles: by set_title's layout, the type by its number
-  1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 – 1.21.2, with a filtered message 1.21.20+; the boss
-  bars: by boss_event's layout, no style with the bar 1.16.201 – 1.16.210, a numbered style 1.16.220 – 1.21.50, a
-  filtered title 1.21.60 – 1.26.20, every field of every type with the player 1.26.30 – 1.26.45, without it 1.26.51+;
-  the sounds: by level_sound_event's layout and names, numbers 1.16.201 – 1.16.210, misaligned names
-  1.16.220 – 1.17.40, names 1.18.0 – 1.21.60, with the entity 1.21.70 – 1.26.10, with where it fires 1.26.20, the
-  server's names 1.26.30+, and by play_sound's, a varint y 1.16.201 – 1.26.0, a signed y 1.26.10, a handle
-  1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+; the particles: by
-  spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+; the chat: by how the
-  text packet, a command's output and an action bar title are laid out, and how the bot's chat and commands are). The
-  physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's
-  `pnpm test:recorded` replays the recordings themselves.
+- **What servers send**: the tests use the packets and values servers sent the vanilla Bedrock client, recorded on every
+  version, small ones as their bytes. Versions whose servers send alike are a group, and each group's tests run on each
+  of its versions (the time: `set_time` 1.16.201 – 1.26.20, world clocks 1.26.30+, `tick_sync` answers up to 1.20.50;
+  the world: by how a column comes, a block changes and the dimension is named; the corrections: by the ring's size, the
+  correction's shape, the movement authority, how the velocity is set and the player respawned; the local player: by
+  when it is held and initialized, the auth input's layout, its flags, and how a teleport is answered; the game state:
+  by how start_game names the engine, the dimension and whether the world is hardcore, how high the overworld is, how
+  the game type is stamped, which game types are spectator, and where the start_game answer says the game type falls
+  back to the world's; the health and the experience: by how update_attributes writes an attribute, how the player
+  action respawn is written and when a respawned player moves; the breath: by how set_entity_data writes the air; the
+  spawn point and the weather: alike on every version; the abilities: by whether the server sends adventure_settings or
+  update_abilities, and which abilities its base layer allows; the dimension changes: by whether the player is hidden or
+  frozen, when it moves, how the acknowledgement is written and whether a loading screen is named; the settings: by how
+  the chunk radius is asked for and the vanilla client's radius; the physics: by how a jump, a sprint, a sneak, a
+  landing, a step up and an auto-jump are told, when an auto-jump jumps and a sprint speeds the player, which collisions
+  are reported, how a column comes, how the echo is sent and how a correction acts; the entities: by the layouts of the
+  add packets, move_entity_delta, set_entity_motion, the attributes and an effect's removal, how the metadata's flags
+  are written, and what minecraft-data knows of the entities; the links: by how set_entity_link is laid out; the
+  players: by the layouts of player_list, add_player, move_player and update_player_game_type; the scoreboards: by
+  set_score's layout, one action for the packet's entries 1.16.220 – 1.26.30, each entry its own type 1.26.40+; the
+  titles: by set_title's layout, the type by its number 1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 –
+  1.21.2, with a filtered message 1.21.20+; the boss bars: by boss_event's layout, no style with the bar 1.16.201 –
+  1.16.210, a numbered style 1.16.220 – 1.21.50, a filtered title 1.21.60 – 1.26.20, every field of every type with the
+  player 1.26.30 – 1.26.45, without it 1.26.51+; the sounds: by level_sound_event's layout and names, numbers 1.16.201 –
+  1.16.210, misaligned names 1.16.220 – 1.17.40, names 1.18.0 – 1.21.60, with the entity 1.21.70 – 1.26.10, with where
+  it fires 1.26.20, the server's names 1.26.30+, and by play_sound's, a varint y 1.16.201 – 1.26.0, a signed y 1.26.10,
+  a handle 1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+; the
+  particles: by spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+; the
+  chat: by how the text packet, a command's output and an action bar title are laid out, and how the bot's chat and
+  commands are). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
+  workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 

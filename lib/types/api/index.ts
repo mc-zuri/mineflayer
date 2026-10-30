@@ -98,7 +98,7 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'game' | 'spawn' | 'respawn' | 'death' | 'health' | 'breath' | 'experience' | 'spawnReset' | 'rain' | 'weatherUpdate' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'game' | 'spawn' | 'respawn' | 'death' | 'health' | 'breath' | 'experience' | 'spawnReset' | 'rain' | 'weatherUpdate' | 'abilities' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
   | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
   | 'teamCreated' | 'teamRemoved' | 'teamUpdated' | 'teamMemberAdded' | 'teamMemberRemoved'
   | 'title' | 'title_times' | 'title_clear' | 'bossBarCreated' | 'bossBarUpdated' | 'bossBarDeleted'
@@ -162,6 +162,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   isRaining: boolean
   rainState: number
   thunderState: number
+  /** from update_abilities (adventure_settings up to 1.19.1) and the game mode */
+  abilities: Abilities
   /** asks the server to respawn the dead player, in the next frame; nothing while it lives */
   respawn: () => void
   /** Java's; only the view distance reaches the server */

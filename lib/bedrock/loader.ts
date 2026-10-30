@@ -9,6 +9,7 @@ import { LocalPlayer } from './modules/movement.ts'
 import { Session } from './modules/session.ts'
 import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
+import abilities from './plugins/abilities.ts'
 import bossBar from './plugins/boss_bar.ts'
 import breath from './plugins/breath.ts'
 import chat from './plugins/chat.ts'
@@ -30,10 +31,12 @@ import { bedrockProtocolVersionOf, isBedrockVersion, isSupportedBedrockVersion, 
 import type { BedrockBot, BedrockBotOptions, Bot } from '../types/api/index.ts'
 import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock-internal.ts'
 
-// the spawn point before game: login and game see start_game's; the weather after: rain comes after login, as Java's
+// the spawn point before game: login and game see start_game's; the weather after: rain comes after login, as Java's;
+// the abilities after game: a game mode change emits game, then abilities
 const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   spawn_point: spawnPoint,
   game,
+  abilities,
   experience,
   breath,
   rain,

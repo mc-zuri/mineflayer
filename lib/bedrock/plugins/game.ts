@@ -16,6 +16,44 @@ const LEGACY_GENERATOR = 0
 /** a game type as the version reads it: its name, or its id where the version names none */
 export type BedrockGameType = BedrockClientboundPackets['set_player_game_type']['gamemode']
 
+/**
+ * the player's game mode, as the packets tell it: start_game's game type of the player, which may fall back to the
+ * world's game mode, then the game type packets
+ */
+export class PlayerGameMode {
+  /** start_game's unique id of the player, which update_player_game_type names */
+  private uniqueId: bigint | undefined
+  private worldGameMode: GameMode = 'survival'
+  private gameType: BedrockGameType = 'fallback'
+
+  get gameMode (): GameMode {
+    return bedrockGameMode(this.gameType, this.worldGameMode)
+  }
+
+  start (packet: Pick<BedrockClientboundPackets['start_game'], 'entity_id' | 'world_gamemode' | 'player_gamemode'>): void {
+    this.uniqueId = packet.entity_id
+    this.worldGameMode = bedrockGameMode(packet.world_gamemode, 'survival')
+    this.gameType = packet.player_gamemode
+  }
+
+  set (gameType: BedrockGameType): void {
+    this.gameType = gameType
+  }
+
+  /** whether it is the player's: the server tells each player every player's game type */
+  update (packet: BedrockClientboundPackets['update_player_game_type']): boolean {
+    if (packet.player_unique_id !== this.uniqueId) return false
+    this.gameType = packet.gamemode
+    return true
+  }
+
+  /** whether the player's game mode follows the world's */
+  setWorld (gameType: BedrockGameType): boolean {
+    this.worldGameMode = bedrockGameMode(gameType, 'survival')
+    return this.gameType === 'fallback'
+  }
+}
+
 /** start_game's dimension: its id up to 1.18.11, its name from 1.18.30 */
 export type BedrockDimension = BedrockClientboundPackets['start_game']['dimension']
 
@@ -64,14 +102,10 @@ export default function inject (bot: BedrockBotInternal): void {
     enumerable: false,
     get: () => { throw new Error('bot.game.maxPlayers is not supported on Bedrock: no packet tells it') }
   })
-  /** start_game's unique id of the player, which update_player_game_type names */
-  let uniqueId: bigint | undefined
-  let worldGameMode: GameMode = 'survival'
-  let gameType: BedrockGameType = 'fallback'
+  const player = new PlayerGameMode()
 
-  function setGameType (type: BedrockGameType): void {
-    gameType = type
-    bot.game.gameMode = bedrockGameMode(type, worldGameMode)
+  function gameModeTold (): void {
+    bot.game.gameMode = player.gameMode
     bot._core.emit(bot, 'game')
   }
 
@@ -82,13 +116,11 @@ export default function inject (bot: BedrockBotInternal): void {
   }
 
   bot._core.observe(OWNER, 'start_game', packet => {
-    uniqueId = packet.entity_id
-    worldGameMode = bedrockGameMode(packet.world_gamemode, 'survival')
-    gameType = packet.player_gamemode
+    player.start(packet)
     const dimension = bedrockDimension(packet.dimension)
     Object.assign(bot.game, {
       levelType: levelTypeOf(packet.generator),
-      gameMode: bedrockGameMode(gameType, worldGameMode),
+      gameMode: player.gameMode,
       // from 1.20.80
       hardcore: packet.hardcore ?? false,
       dimension,
@@ -101,17 +133,14 @@ export default function inject (bot: BedrockBotInternal): void {
     bot._core.emit(bot, 'game')
   })
 
-  bot._core.handle(OWNER, 'set_player_game_type', packet => { setGameType(packet.gamemode) })
-
-  bot._core.handle(OWNER, 'update_player_game_type', packet => {
-    // the server tells each player every player's game type
-    if (packet.player_unique_id === uniqueId) setGameType(packet.gamemode)
+  bot._core.handle(OWNER, 'set_player_game_type', packet => {
+    player.set(packet.gamemode)
+    gameModeTold()
   })
 
-  bot._core.handle(OWNER, 'set_default_game_type', packet => {
-    worldGameMode = bedrockGameMode(packet.gamemode, 'survival')
-    if (gameType === 'fallback') setGameType(gameType)
-  })
+  bot._core.handle(OWNER, 'update_player_game_type', packet => { if (player.update(packet)) gameModeTold() })
+
+  bot._core.handle(OWNER, 'set_default_game_type', packet => { if (player.setWorld(packet.gamemode)) gameModeTold() })
 
   bot._core.handle(OWNER, 'set_difficulty', packet => { setDifficulty(packet.difficulty) })
 
