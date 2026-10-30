@@ -1,10 +1,33 @@
 import assert from 'assert'
-import { testedBedrockVersions } from '../../lib/bedrock/version.ts'
-import { bedrockCodec, blankPacket, roundTrip } from './common/codec.ts'
+import { isBedrockVersionAtLeast, latestSupportedBedrockVersion, testedBedrockVersions } from '../../lib/bedrock/version.ts'
+import type { BedrockVersion } from '../../lib/types/api/index.ts'
+import { bedrockCodec, blankPacket, readPacket, roundTrip } from './common/codec.ts'
 import type { BedrockCodec } from './common/codec.ts'
-import { bedrockTestVersions, FakeBedrockClient } from './common/server.ts'
+import { bedrockTestVersions, bedrockTestVersionsFrom, FakeBedrockClient } from './common/server.ts'
+import type { ClientboundPacketsToWrite } from './common/server.ts'
 
 const READ_BACK = /read back/
+const BLOCKING_TICK_NOT_READ = /8 bytes not read/
+
+/**
+ * the vanilla client's mob_equipment with a shield in its hand, and the shield's runtime id in it: the item's data ends
+ * with its blocking tick (8 bytes), which only an item of the shield's id has
+ */
+function shieldInHand (version: BedrockVersion): { shield: number, packet: Buffer } {
+  // recorded on 1.16.201, whose protocol has the shield's id
+  if (!isBedrockVersionAtLeast(version, 'bedrock_1.16.220')) return { shield: 355, packet: Buffer.from('1f0bc60502ffff010a00030644616d6167650000000000000000', 'hex') }
+  // recorded on 1.21.50: up to 1.26.10 alike but for the shield's id
+  if (!isBedrockVersionAtLeast(version, 'bedrock_1.26.20')) {
+    return { shield: 380, packet: Buffer.from('1f0af805010000000024ffff010a000003060044616d616765000000000000000000000000000000000000000000000000', 'hex') }
+  }
+  // recorded on 1.26.60: the item's id is a 16-bit integer
+  return { shield: 358, packet: Buffer.from('1f0a6601010000000024ffff010a000003060044616d616765000000000000000000000000000000000000000000000000', 'hex') }
+}
+
+/** the item state naming the shield, as item_registry has it */
+function registeredShield (runtimeId: number): ClientboundPacketsToWrite['item_registry']['itemstates'][number] {
+  return { name: 'minecraft:shield', runtime_id: runtimeId, component_based: false, version: 'legacy', nbt: { type: 'compound', name: '', value: {} } }
+}
 
 describe('bedrock codec', () => {
   describe('fails on what does not read back as written', () => {
@@ -73,6 +96,53 @@ describe('bedrock codec', () => {
       server.close()
       server.close()
       assert.throws(() => { server.send('set_time', { time: 1 }) }, { message: 'bedrock_1.21.130: set_time sent to a closed connection' })
+    })
+  })
+
+  describe("an item's blocking tick, which only the shield has", () => {
+    describe("up to 1.16.210, whose protocol has the shield's id", () => {
+      for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.16.210')) {
+        it(`bedrock ${version}: is read with no shield named`, () => {
+          readPacket(bedrockCodec(version), shieldInHand(version).packet)
+        })
+      }
+    })
+
+    describe("up to 1.21.50, the shield's id named in start_game's item states", () => {
+      for (const version of bedrockTestVersionsFrom('bedrock_1.16.220', 'bedrock_1.21.50')) {
+        it(`bedrock ${version}: is read once start_game named the shield, by that connection's codec only`, () => {
+          const { shield, packet } = shieldInHand(version)
+          const [codec, other] = [bedrockCodec(version), bedrockCodec(version)]
+          assert.throws(() => readPacket(codec, packet), BLOCKING_TICK_NOT_READ)
+          roundTrip(codec, 'start_game', { ...blankPacket(codec, 'start_game'), itemstates: [{ name: 'minecraft:shield', runtime_id: shield, component_based: false }] })
+          readPacket(codec, packet)
+          assert.throws(() => readPacket(other, packet), BLOCKING_TICK_NOT_READ)
+        })
+      }
+    })
+
+    describe("from 1.21.60, the shield's id named in item_registry", () => {
+      for (const version of bedrockTestVersionsFrom('bedrock_1.21.60')) {
+        it(`bedrock ${version}: is read once item_registry named the shield, by that connection's codec only`, () => {
+          const { shield, packet } = shieldInHand(version)
+          const [codec, other] = [bedrockCodec(version), bedrockCodec(version)]
+          assert.throws(() => readPacket(codec, packet), BLOCKING_TICK_NOT_READ)
+          roundTrip(codec, 'item_registry', { itemstates: [registeredShield(shield)] })
+          readPacket(codec, packet)
+          assert.throws(() => readPacket(other, packet), BLOCKING_TICK_NOT_READ)
+        })
+      }
+    })
+
+    it(`is read by the fake server the shield was named to, not by another of the same codec (on ${latestSupportedBedrockVersion})`, () => {
+      const codec = bedrockCodec(latestSupportedBedrockVersion)
+      const { shield, packet } = shieldInHand(latestSupportedBedrockVersion)
+      const [named, other] = [new FakeBedrockClient(codec), new FakeBedrockClient(codec)]
+      named.connect({ packet: () => {}, notice: () => {} })
+      named.send('item_registry', { itemstates: [registeredShield(shield)] })
+      named.receive(packet)
+      assert.throws(() => { other.receive(packet) }, BLOCKING_TICK_NOT_READ)
+      assert.throws(() => readPacket(codec, packet), BLOCKING_TICK_NOT_READ)
     })
   })
 

@@ -7,7 +7,7 @@ import type { BedrockBot, BedrockBotOptions, BedrockVersion } from '../../../lib
 import type { BedrockBotInternal } from '../../../lib/types/bedrock-internal.ts'
 import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
 import type { BedrockServerboundPackets } from '../../../lib/types/protocol/bedrock-client.ts'
-import { blankPacket, readPacket, roundTrip } from './codec.ts'
+import { bedrockCodec, blankPacket, readPacket, roundTrip } from './codec.ts'
 import type { BedrockCodec } from './codec.ts'
 import { ManualDriver } from './driver.ts'
 
@@ -47,8 +47,9 @@ export class FakeBedrockClient implements Transport {
   private inbox: InboxWriter | undefined
   private now: () => number = () => 0
 
+  /** a connection of the codec's version, with a codec of its own: the shield one server named is not another's */
   constructor (codec: BedrockCodec) {
-    this.codec = codec
+    this.codec = bedrockCodec(codec.version)
   }
 
   connect (inbox: InboxWriter): this {

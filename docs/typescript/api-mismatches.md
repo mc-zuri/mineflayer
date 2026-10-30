@@ -104,7 +104,7 @@ types the thing itself; each is a candidate for a fix upstream.
 | bedrock-protocol | `Client` has no `init`, `connect`, `onTick` or `serializer` | `new Client({ delayedInit: true })`, then `init()` (emits `connect_allowed`) and `connect()`; `onTick()` sends what `sendBuffer` queued as one batch; `serializer.createPacketBuffer` writes a packet | `lib/types/vendor/bedrock-protocol-client.d.ts` |
 | bedrock-protocol | `new Client(options: Options)`: no `username`, `connectTimeout`, `conLog`, `delayedInit`, `autoInitPlayer` | it takes them (`ClientOptions` has the first three, for `createClient`) | `lib/types/vendor/bedrock-protocol-client.d.ts` |
 | bedrock-protocol | `Client.close(reason?: string)` | `close()` takes no reason | |
-| bedrock-protocol | no typings for `src/transforms/serializer.js` | `createSerializer` / `createDeserializer` of a version | `lib/types/vendor/bedrock-protocol-serializer.d.ts` |
+| bedrock-protocol | no typings for `src/transforms/serializer.js` | `createSerializer` / `createDeserializer` of a version, whose `proto.setVariable` sets a value the protocol reads (`ShieldItemID`) | `lib/types/vendor/bedrock-protocol-serializer.d.ts` |
 | bedrock-protocol | `ServerAdvertisement.protocol: number` (what `ping` resolves with) | a string | |
 | bedrock-protocol | `ClientStatus` is `Disconnected, Authenticating, Initializing, Initialized` | it has `Connecting` after `Disconnected`, so the typings' numbers are off by one from `Authenticating` on | |
 | bedrock-protocol | `ClientOptions.conLog?: any` | a function logging connection messages, `null` for none | |

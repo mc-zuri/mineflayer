@@ -6,28 +6,77 @@ import type { Deserializer, Serializer } from 'bedrock-protocol/src/transforms/s
 import { bedrockProtocolVersionOf } from '../../../lib/bedrock/version.ts'
 import type { BedrockVersion } from '../../../lib/types/api/index.ts'
 
+/** one connection's codec */
 export interface BedrockCodec {
   version: BedrockVersion
+  serializer: Pick<Serializer, 'createPacketBuffer'>
+  deserializer: Pick<Deserializer, 'parsePacketBuffer'>
+  blanks: Map<string, object>
+}
+
+interface Compiled {
   serializer: Serializer
   deserializer: Deserializer
   blanks: Map<string, object>
 }
 
-const codecs = new Map<BedrockVersion, BedrockCodec>()
+const compiled = new Map<BedrockVersion, Compiled>()
 
-/** the version's codec, made once: what bedrock-protocol compiles for a codec stays in memory after it */
-export function bedrockCodec (version: BedrockVersion): BedrockCodec {
-  let codec = codecs.get(version)
+/** what bedrock-protocol compiles for a codec stays in memory after it: a version's is compiled once */
+function compiledOf (version: BedrockVersion): Compiled {
+  let codec = compiled.get(version)
   if (codec === undefined) {
     codec = {
-      version,
       serializer: createSerializer(bedrockProtocolVersionOf(version)),
       deserializer: createDeserializer(bedrockProtocolVersionOf(version)),
       blanks: new Map()
     }
-    codecs.set(version, codec)
+    compiled.set(version, codec)
   }
   return codec
+}
+
+/** the shield's runtime id, in the item states of start_game (up to 1.21.50) or item_registry (from 1.21.60) */
+function shieldNamedIn (name: string | number, params: object | undefined): number | undefined {
+  if (name !== 'start_game' && name !== 'item_registry') return undefined
+  const { itemstates } = params as { itemstates?: Array<{ name: string, runtime_id: number }> }
+  return itemstates?.find(state => state.name === 'minecraft:shield')?.runtime_id
+}
+
+/**
+ * a new codec of the version, for one connection: only an item of the shield's id has a blocking tick, and the id is
+ * the one the connection's start_game or item_registry named, as bedrock-protocol's client sets it
+ */
+export function bedrockCodec (version: BedrockVersion): BedrockCodec {
+  const { serializer, deserializer, blanks } = compiledOf(version)
+  let shieldItemId: number | undefined
+  // the compiled protocol is every connection's
+  const withShield = <Result>(use: () => Result): Result => {
+    serializer.proto.setVariable('ShieldItemID', shieldItemId)
+    deserializer.proto.setVariable('ShieldItemID', shieldItemId)
+    return use()
+  }
+  const named = (name: string | number, params: object | undefined): void => {
+    shieldItemId = shieldNamedIn(name, params) ?? shieldItemId
+  }
+  return {
+    version,
+    serializer: {
+      createPacketBuffer: packet => {
+        const buffer = withShield(() => serializer.createPacketBuffer(packet))
+        named(packet.name, packet.params)
+        return buffer
+      }
+    },
+    deserializer: {
+      parsePacketBuffer: buffer => {
+        const read = withShield(() => deserializer.parsePacketBuffer(buffer))
+        named(read.data.name, read.data.params)
+        return read
+      }
+    },
+    blanks
+  }
 }
 
 type Field = string | number | boolean | bigint | object | null | undefined

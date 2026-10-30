@@ -18,12 +18,20 @@ declare module 'bedrock-protocol/src/transforms/serializer.js' {
     fullBuffer: Buffer
   }
 
+  /** the compiled protocol */
+  export interface CompiledProtocol {
+    /** a value the protocol's types read as `/key`, such as `ShieldItemID` */
+    setVariable (key: string, value: unknown): void
+  }
+
   export interface Serializer {
+    readonly proto: CompiledProtocol
     /** a name the protocol does not have is written as id 0 */
     createPacketBuffer (packet: PacketToWrite): Buffer
   }
 
   export interface Deserializer {
+    readonly proto: CompiledProtocol
     parsePacketBuffer (buffer: Buffer): ParsedPacket
   }
 

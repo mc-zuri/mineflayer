@@ -570,7 +570,11 @@ What was found getting here, beyond mineflayer:
   - Up to 1.16.210 network_stack_latency's flag is named `unknown_flag`: bedrock-protocol, which checks
     `needs_response`, never answers there.
   - Its `createSerializer` and `createDeserializer` compile the version's protocol each time, and what they compile
-    stays in memory (about 5 MB a codec): the tests make one codec a version.
+    stays in memory (about 5 MB a codec): the tests compile each version once.
+  - Only the shield's item has a blocking tick, and from 1.16.220 the protocol takes the shield's id from a variable,
+    `ShieldItemID`, which its client sets from the item states of start_game (item_registry from 1.21.60). A codec
+    of `createSerializer` or `createDeserializer` has none until it is set, and reads a shield wrongly: the tests'
+    codec sets it from the start_game or item_registry it reads or writes, for its connection only.
 - **prismarine-registry, prismarine-chunk, prismarine-world, prismarine-entity:** see
   [API mismatches](typescript/api-mismatches.md#dependency-typings) for their typings.
   - Up to 1.17.40 a column (prismarine-chunk's 1.3 column) cannot be read without its sections:
