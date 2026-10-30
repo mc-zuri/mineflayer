@@ -71,6 +71,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.settings`, `bot.setSettings(options)`: as Java's; only the view distance reaches the server (see settings
   below).
 - `bot.health`, `bot.food`, `bot.foodSaturation`, `bot.isAlive`, `bot.respawn()`: as Java's (see health below).
+- `bot.experience`, `bot.oxygenLevel`: as Java's (see experience and breath below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
 - `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
@@ -88,7 +89,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `game` (`bot.game`
   changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn or a
   dimension change: see health and dimension changes), `respawn` (a respawn, or a dimension change), `health`,
-  `death` (see health), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
+  `death` (see health), `experience`, `breath` (see experience and breath), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities
@@ -150,7 +151,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `respawn`, `health`, `death`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -465,6 +466,21 @@ world's spawn after a death, of every version):
   spawn are loaded already (its cache keeps them); the bot, which keeps none, once respawned and loaded. Its loading
   screen hides 2 ticks after the ack (on 1.26.20 1, on 1.26.60 4 to 7); the bot's 2. Where 1.19.1 – 1.19.62 stand is not recorded:
   the hidden player is recorded up to 1.18.30, the frozen one from 1.19.63; 1.19.50 is the boundary the bot takes.
+
+## Experience and breath
+
+`bot.experience` is Java's `{ level: null, points: null, progress: null }` until the server tells the player's
+`minecraft:player.level` and `minecraft:player.experience` attributes (update_attributes of start_game's runtime id),
+then their `level` and `progress` (the bar, 0 to 1). Bedrock servers send no total: `points` are the level's on
+Java's curve, which Bedrock's equals (`L² + 6L` up to level 16, `2.5L² − 40.5L + 360` up to 31, `4.5L² − 162.5L +
+2220` after), and the bar's share of the next level's (`2L + 7` below 15, `5L − 38` below 30, `9L − 158` after),
+rounded: the recorded bar 0.1428571492433548 at level 0 is 1 point. A packet with one of them keeps the other.
+`experience` is emitted when a packet changes one of them (Java's on each experience packet: Bedrock servers send them
+again with the other attributes).
+
+`bot.oxygenLevel` is the player's air (set_entity_data's `air`, 300 when full) in Java's 20 bubbles,
+`Math.round(air / 15)`: undefined until the server tells it, as Java's. `breath` is emitted when the air changes (as
+recorded, servers send it a point a tick under water, then 4 a tick back up).
 
 ## Settings
 
@@ -859,8 +875,10 @@ the hotbar and sends of what is typed:
   local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
   answered; the game state: by how start_game names the engine, the dimension and whether the world is hardcore, how
   high the overworld is, how the game type is stamped, which game types are spectator, and where the start_game answer
-  says the game type falls back to the world's; the health: by how update_attributes writes an attribute, how the
-  player action respawn is written and when a respawned player moves; the dimension changes: by whether the player
+  says the game type falls back to the world's; the health and the experience: by how update_attributes writes an
+  attribute, how the
+  player action respawn is written and when a respawned player moves; the breath: by how set_entity_data writes the air; the dimension
+  changes: by whether the player
   is hidden or frozen, when it moves, how the acknowledgement is written and whether a loading screen is named; the
   settings: by how the chunk radius is asked for and the vanilla
   client's radius; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an

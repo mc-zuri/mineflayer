@@ -10,8 +10,10 @@ import { Session } from './modules/session.ts'
 import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
 import bossBar from './plugins/boss_bar.ts'
+import breath from './plugins/breath.ts'
 import chat from './plugins/chat.ts'
 import entities from './plugins/entities.ts'
+import experience from './plugins/experience.ts'
 import game from './plugins/game.ts'
 import particle from './plugins/particle.ts'
 import scoreboard from './plugins/scoreboard.ts'
@@ -28,6 +30,8 @@ import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock
 
 const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   game,
+  experience,
+  breath,
   settings,
   time,
   chat,
