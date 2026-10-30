@@ -95,7 +95,8 @@ export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => voi
 export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
   | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
   | 'teamCreated' | 'teamRemoved' | 'teamUpdated' | 'teamMemberAdded' | 'teamMemberRemoved'
-  | 'title' | 'title_times' | 'title_clear' | 'bossBarCreated' | 'bossBarUpdated' | 'bossBarDeleted'> & BlockUpdateAtEvents
+  | 'title' | 'title_times' | 'title_clear' | 'bossBarCreated' | 'bossBarUpdated' | 'bossBarDeleted'
+  | 'soundEffectHeard' | 'hardcodedSoundEffectHeard'> & BlockUpdateAtEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {

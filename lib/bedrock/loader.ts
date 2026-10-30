@@ -10,6 +10,7 @@ import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
 import bossBar from './plugins/boss_bar.ts'
 import scoreboard from './plugins/scoreboard.ts'
+import sound from './plugins/sound.ts'
 import tablist from './plugins/tablist.ts'
 import team from './plugins/team.ts'
 import time from './plugins/time.ts'
@@ -25,7 +26,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   team,
   tablist,
   title,
-  boss_bar: bossBar
+  boss_bar: bossBar,
+  sound
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

@@ -2,9 +2,9 @@
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
-the titles, the boss bars and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls and looks as
-the vanilla client does, telling the server every tick, follows the server's corrections, and ends; the rest of the
-API is Java's only so far.
+the titles, the boss bars, the sounds and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls
+and looks as the vanilla client does, telling the server every tick, follows the server's corrections, and ends; the
+rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -79,8 +79,10 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`,
   `scoreUpdated`, `scoreRemoved`, `scoreboardPosition` (see scoreboards below), `title (text, type)`,
   `title_times (fadeIn, stay, fadeOut)`, `title_clear` (see titles below), `bossBarCreated (bossBar)`,
-  `bossBarUpdated (bossBar)`, `bossBarDeleted (bossBar)` (see boss bars below), `kicked (reason, loggedIn)`,
-  `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`,
+  `bossBarUpdated (bossBar)`, `bossBarDeleted (bossBar)` (see boss bars below),
+  `soundEffectHeard (soundName, position, volume, pitch)`,
+  `hardcodedSoundEffectHeard (soundId, soundCategory, position, volume, pitch)` (see sounds below),
+  `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`,
   `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
     as Java's.
@@ -125,7 +127,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title and boss bar events, `kicked`, `end`, `error` | the packet pass |
+| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar and sound events, `kicked`, `end`, `error` | the packet pass |
 | `chunkColumnLoad` | the start of a tick |
 | `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -485,6 +487,22 @@ the packet pass, as Java's boss bar packets, and the bot answers as the vanilla 
   `isDragonBar` and `createFog` are false. Up to 1.16.210 show_bar has no style: the colour is `undefined` and the
   dividers 0 until the server sends its texture.
 
+## Sounds
+
+The server's sounds act in the packet pass, as Java's sound packets; the bot answers none, as the vanilla client.
+
+- **A sound by its name** (play_sound, as `/playsound`) emits `soundEffectHeard (soundName, position, volume, pitch)`:
+  Bedrock's name (`random.orb`), the position (the packet's coordinates / 8, as Java's), its volume and pitch.
+- **A sound by its type** (level_sound_event: the game's own sounds, a furnace, a step, a hit) emits
+  `soundEffectHeard` with the type's name, and volume and pitch 1: the packet has neither, the vanilla client takes
+  them from its sound definitions. Up to 1.26.20 the name is minecraft-data's (`FurnaceUse`), from 1.26.30 the
+  server's own (`block.furnace.lit`). minecraft-data's names are wrong for some types on 1.16.220 – 1.17.40, differ
+  between versions, and some types share the name `_` (see the notes).
+- **A type the version does not name** (always up to 1.16.210, where minecraft-data names none) emits
+  `hardcodedSoundEffectHeard (soundId, soundCategory, position, volume, pitch)` with its number, the category 0
+  (Java's master: Bedrock has no categories), and volume and pitch 1.
+- **Not yet:** `noteHeard`, which no recording of a note block shows yet. stop_sound and the music have no Java event.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -512,7 +530,11 @@ the packet pass, as Java's boss bar packets, and the bot answers as the vanilla 
   1.16.220 – 1.26.30, each entry its own type 1.26.40+; the titles: by set_title's layout, the type by its number
   1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 – 1.21.2, with a filtered message 1.21.20+; the boss
   bars: by boss_event's layout, no style with the bar 1.16.201 – 1.16.210, a numbered style 1.16.220 – 1.21.50, a
-  filtered title 1.21.60 – 1.26.20, every field of every type with the player 1.26.30 – 1.26.45, without it 1.26.51+). The
+  filtered title 1.21.60 – 1.26.20, every field of every type with the player 1.26.30 – 1.26.45, without it 1.26.51+;
+  the sounds: by level_sound_event's layout and names, numbers 1.16.201 – 1.16.210, misaligned names
+  1.16.220 – 1.17.40, names 1.18.0 – 1.21.60, with the entity 1.21.70 – 1.26.10, with where it fires 1.26.20, the
+  server's names 1.26.30+, and by play_sound's, a varint y 1.16.201 – 1.26.0, a signed y 1.26.10, a handle
+  1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+). The
   physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
@@ -546,5 +568,8 @@ What was found getting here, beyond mineflayer:
 - **minecraft-data** reads set_score's entries of 1.16.201 and 1.16.210 the wrong way round: its layout carries an
   entry's identity on a removal, where the wire carries it on a change, so a change reads short and a removal reads
   bytes the packet does not have.
+- **minecraft-data** names level_sound_event's types wrongly on 1.16.220 – 1.17.40: its table is shifted, so the
+  furnace's 283 reads as `JumpPrevent` (1.18.0 names it `FurnaceUse`). Its names of a type also change between
+  versions (`MobArmorStandPlace` and `ArmorStandPlace`), and from 1.19.1 some types share the name `_`.
 - **minecraft-data** compares its legacy Bedrock versions (0.14, 0.15) wrongly: `bedrock_0.14`'s version `>=`
   1.16.201 is true. mineflayer's Bedrock versions are a list, not comparisons.
