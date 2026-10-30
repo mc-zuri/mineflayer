@@ -96,7 +96,7 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'game' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
   | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
   | 'teamCreated' | 'teamRemoved' | 'teamUpdated' | 'teamMemberAdded' | 'teamMemberRemoved'
   | 'title' | 'title_times' | 'title_clear' | 'bossBarCreated' | 'bossBarUpdated' | 'bossBarDeleted'
@@ -142,6 +142,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   players: { [username: string]: Player }
   /** the local player's entry of the player list, from start_game */
   player: Player
+  /** from start_game; maxPlayers throws: no packet tells it */
+  game: GameState
   /** the physics move the player; false holds it where it is, standing still: acts from the next frame */
   physicsEnabled: boolean
   /** the player jumps by itself onto a block in its way, as the vanilla client's auto-jump does: acts from the next frame */
@@ -627,6 +629,9 @@ export interface GameState {
   difficulty: Difficulty
   maxPlayers: number
   serverBrand: string
+  /** the dimension's lowest block */
+  minY: number
+  height: number
 }
 
 export type LevelType =

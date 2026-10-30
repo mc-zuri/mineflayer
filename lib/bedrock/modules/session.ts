@@ -72,8 +72,7 @@ export class Session {
       core.startTicks()
       this.runtimeEntityId = packet.runtime_entity_id
       this.loggedIn = true
-      this.answerStartGame(ctx.outbox)
-      this.bot.emit('login')
+      this.answerStartGame(ctx.outbox, packet.player_gamemode === 'fallback')
     }, { critical: true })
     core.system(OWNER, { name: 'session.activate', place: { after: 'movement.sendInput' }, gate: 'present', replay: false, run: ctx => { this.activate(core, ctx) } })
     core.endOfTick(OWNER, ({ tick }) => {
@@ -135,11 +134,14 @@ export class Session {
     else outbox.queue('resource_pack_client_response', { response_status: status, resourcepackids: [] })
   }
 
-  private answerStartGame (outbox: OutboxWriter): void {
+  /** a player whose game type falls back to the world's says so: from 1.26.20 first */
+  private answerStartGame (outbox: OutboxWriter, fallback: boolean): void {
+    if (fallback && this.atLeast('bedrock_1.26.20')) outbox.queue('set_player_game_type', { gamemode: 'fallback' })
     const chunkRadius = this.viewDistance ?? (this.atLeast('bedrock_1.21.90') ? 12 : 8)
     if (this.atLeast('bedrock_1.19.80')) outbox.queue('request_chunk_radius', { chunk_radius: chunkRadius, max_radius: 28 })
     else outbox.queue('request_chunk_radius', { chunk_radius: chunkRadius })
     if (!this.atLeast('bedrock_1.20.61')) outbox.queue('tick_sync', { request_time: 0n, response_time: 0n })
+    if (fallback && !this.atLeast('bedrock_1.26.20')) outbox.queue('set_player_game_type', { gamemode: 'fallback' })
     if (this.atLeast('bedrock_1.21.20')) outbox.queue('serverbound_loading_screen', { type: 1 })
   }
 

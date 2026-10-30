@@ -11,6 +11,7 @@ import pluginLoader from './plugin_loader.ts'
 import bossBar from './plugins/boss_bar.ts'
 import chat from './plugins/chat.ts'
 import entities from './plugins/entities.ts'
+import game from './plugins/game.ts'
 import particle from './plugins/particle.ts'
 import scoreboard from './plugins/scoreboard.ts'
 import sound from './plugins/sound.ts'
@@ -24,6 +25,7 @@ import type { BedrockBot, BedrockBotOptions, Bot } from '../types/api/index.ts'
 import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock-internal.ts'
 
 const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
+  game,
   time,
   chat,
   entities,

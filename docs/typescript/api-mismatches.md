@@ -24,8 +24,6 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | Member | api.md | typings | code | Note |
 | --- | --- | --- | --- | --- |
 | `bot.chatPatterns` | ✓ | ✓ `ChatPattern[]` | ✗ | nothing assigns it: the chat plugin keeps its patterns to itself |
-| `bot.game.minY` | ✓ | ✗ | ✓ | |
-| `bot.game.height` | ✓ | ✗ | ✓ | |
 | `bot.rainState` | ✓ | ✗ | ✓ | |
 | `bot.settings.enableServerListing` | ✓ | ✗ | ✓ | |
 | `bot.settings.enableTextFiltering` | ✓ | ✗ | ✓ | |
@@ -136,3 +134,4 @@ types the thing itself; each is a candidate for a fix upstream.
 | `bot.time.bigTime`, `bot.time.bigAge` | the typings said `BigInt`, the type of a BigInt wrapper object (`Object(1n)`), which takes no arithmetic (`bot.time.bigAge + 1n` did not type check); the code sets primitive bigints | the typings: `bigint` |
 | `Player.entity` | always an `Entity` in the typings; `null` in the code once the player's entity is gone | the typings |
 | `"entityHurt" (entity, source)` | the typings required the source; the code emits none before 1.20 (entity_status), and an undefined one when the damage has no source entity | the typings |
+| `bot.game.minY`, `bot.game.height` | documented and set (the dimension's lowest block and its height), not in the typings' `GameState` | the typings |

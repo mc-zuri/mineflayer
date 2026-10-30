@@ -1,7 +1,7 @@
 # Bedrock
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
-minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
+minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the game's state, the time, the scoreboards,
 the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows and the player
 list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does, telling the server
 every tick, follows the server's corrections, chats, and ends; the rest of the API is Java's only so far.
@@ -66,6 +66,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   (see the local player below).
 - `bot.physicsEnabled`: whether the physics move the player (see physics below).
 - `bot.autoJump`: whether the player jumps by itself onto a block in its way (see physics below).
+- `bot.game`: as Java's but `maxPlayers`, which throws (see game state below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
 - `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
@@ -80,8 +81,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.chat(message)`, `bot.whisper(username, message)`, `bot.addChatPattern`, `bot.addChatPatternSet`,
   `bot.removeChatPattern`, `bot.chatAddPattern`, `bot.awaitMessage(...)`; `bot.tabComplete` rejects (see chat below).
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
-- Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `spawn` (the player
-  is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
+- Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `game` (`bot.game`
+  changed: see game state), `spawn` (the player is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities
@@ -130,7 +131,7 @@ packet arrived before:
 | network_stack_latency, when it asks for an answer | the same timestamp, asking none |
 | boss_event show_bar of an entity the bot has, which has no bar yet | boss_event register_player (see boss bars) |
 | boss_event hide_bar of a bar the bot shows | boss_event unregister_player |
-| start_game | request_chunk_radius (`viewDistance`; from 1.19.80 with the vanilla client's maximum, 28), tick_sync (up to 1.20.50), serverbound_loading_screen 1 (from 1.21.20) |
+| start_game | request_chunk_radius (`viewDistance`; from 1.19.80 with the vanilla client's maximum, 28), tick_sync (up to 1.20.50), serverbound_loading_screen 1 (from 1.21.20); when the player's game type falls back to the world's, set_player_game_type fallback after tick_sync (up to 1.26.10), from 1.26.20 first |
 
 In its ticks the bot sends its auth input (player_auth_input), then asks for the sections of the columns sent without
 them (subchunk_request, from 1.18.0), as the vanilla client does, from when the server shows the player: see the local
@@ -140,7 +141,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `game`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -371,6 +372,27 @@ Where the bot differs from the vanilla client:
   before its move_player; the bot does not;
 - up to 1.18.0 the vanilla client writes `head_yaw` (of the auth input and the landing move_player) in [0, 360); the
   bot writes the yaw.
+
+## Game state
+
+`bot.game` has Java's fields from start_game on (none before it, as Java's before its login packet): `login`, then
+`game`, are emitted once start_game filled it in.
+
+| Field | From |
+| --- | --- |
+| `dimension` | start_game's dimension (numbered up to 1.18.11, named from 1.18.30): `overworld`, `the_nether` or `the_end` |
+| `minY`, `height` | the dimension's lowest block and its height: the overworld's 0 and 256 up to 1.17.40, −64 and 384 from 1.18.0; the nether's 0 and 128; the end's 0 and 256 |
+| `gameMode` | start_game's game type of the player, then set_player_game_type and update_player_game_type (the server tells each player every player's: the bot's names start_game's unique id). Survival, creative and adventure are themselves; the survival and creative spectator game types, and from 1.18.30 spectator, are `spectator`; a game type falling back to the world's is the world's (start_game's, then set_default_game_type's); one the version does not name is `survival`, as Java takes a game mode out of range |
+| `difficulty` | start_game's, then set_difficulty's, without an event (as Java's); one the version does not name changes nothing |
+| `hardcore` | start_game's, from 1.20.80; `false` before |
+| `levelType` | start_game's generator: `flat` (the recorded worlds'), `default_1_1` for the old limited worlds, `default` for the others |
+| `serverBrand` | start_game's engine (from 1.17.0, none up to 1.16.220): the server's release, such as `'1.26.60'`. Bedrock servers name no brand (Java's is the server software's name) |
+| `maxPlayers` | no packet tells it (only the server's answer to a ping, which servers from 1.26.30 may not give): reading it throws. It is not enumerable, so that `{ ...bot.game }` and `JSON.stringify(bot.game)` leave it out |
+
+`game` is emitted again on each set_player_game_type and update_player_game_type of the player, and on
+set_default_game_type while the player's game type falls back to the world's. A player whose game type falls back to the
+world's says so as start_game is answered (see the answers above), as the vanilla client does. Dimension changes are
+not followed yet (see the world below).
 
 ## Time
 
@@ -748,7 +770,9 @@ the hotbar and sends of what is typed:
   1.20.50; the world: by how a column comes, a block changes and the dimension is named; the corrections: by the
   ring's size, the correction's shape, the movement authority, how the velocity is set and the player respawned; the
   local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
-  answered; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
+  answered; the game state: by how start_game names the engine, the dimension and whether the world is hardcore, how
+  high the overworld is, how the game type is stamped, which game types are spectator, and where the start_game answer
+  says the game type falls back to the world's; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
   sent and how a correction acts; the entities: by the layouts of the add packets, move_entity_delta, set_entity_motion,
   the attributes and an effect's removal, how the metadata's flags are written, and what minecraft-data knows of the

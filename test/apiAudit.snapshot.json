@@ -1,7 +1,5 @@
 {
   "docsNotInTypes": [
-    "game.height",
-    "game.minY",
     "rainState",
     "settings.enableServerListing",
     "settings.enableTextFiltering",
