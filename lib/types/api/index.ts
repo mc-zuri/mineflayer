@@ -973,10 +973,12 @@ export interface ParticleClass {
 /** mineflayer.Particle: the Particle class of a version */
 export declare const Particle: (registry: Registry) => ParticleClass
 
+export type JavaVersion = `${number}.${number}` | `${number}.${number}.${number}`
+
 /** the versions mineflayer is tested with, oldest first */
-export declare const testedVersions: readonly [string, ...string[]]
-export declare const latestSupportedVersion: string
-export declare const oldestSupportedVersion: string
+export declare const testedVersions: readonly [JavaVersion, ...JavaVersion[]]
+export declare const latestSupportedVersion: JavaVersion
+export declare const oldestSupportedVersion: JavaVersion
 
 export type BedrockVersion = `bedrock_${string}`
 
