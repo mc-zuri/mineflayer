@@ -569,4 +569,183 @@ describe('bedrock chat', () => {
     await assert.rejects(bot.tabComplete('/weather '), { message: 'bot.tabComplete is not supported on Bedrock: the server has no tab completion (the vanilla client completes commands from available_commands)' })
     bot.end()
   })
+
+  describe('sending', () => {
+    /** a bot named as the recordings' player, the game started */
+    async function loggedIn (version: BedrockVersion = latestSupportedBedrockVersion, options: Omit<BedrockBotOptions, 'version'> = {}): Promise<TestBot> {
+      const test = await bedrockTestBot(bedrockCodec(version), { username: 'McZuri5840', ...options })
+      test.server.send('start_game', {})
+      await test.driver.frame(0)
+      return test
+    }
+
+    /** the bytes the codec writes */
+    function written (server: FakeBedrockClient, name: 'text' | 'command_request', params: object): string {
+      return server.codec.serializer.createPacketBuffer({ name, params }).toString('hex')
+    }
+
+    /** what the bot sent: its chat messages and its commands */
+    function sent (server: FakeBedrockClient): string[] {
+      return server.batches.flat().flatMap(({ name, params }) => {
+        if (name === 'text' && 'message' in params) return [`text ${String(params.message)}`]
+        if (name === 'command_request' && 'command' in params) return [`command ${String(params.command)}`]
+        return []
+      })
+    }
+
+    const CHAT = { type: 'chat', needs_translation: false, source_name: 'McZuri5840', message: 'hello from the observer', xuid: '', platform_chat_id: '' }
+    const CHAT_LAYOUTS: Array<{ name: string, versions: BedrockVersion[], params: object }> = [
+      { name: 'the type, the name and the message (1.16.201 – 1.20.80)', versions: bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.20.80'), params: CHAT },
+      { name: 'a filtered message too (1.21.0 – 1.21.124)', versions: bedrockTestVersionsFrom('bedrock_1.21.0', 'bedrock_1.21.124'), params: { ...CHAT, filtered_message: '' } },
+      // the names checked on a 1.21.130.3 server: it disconnects a client naming them otherwise
+      { name: "the category and its types' names too (1.21.130)", versions: bedrockTestVersionsFrom('bedrock_1.21.130', 'bedrock_1.21.130'), params: { ...CHAT, category: 'authored', chat: 'chat', whisper: 'whisper', announcement: 'announcement', has_filtered_message: false } },
+      { name: 'the category too (1.26.0+)', versions: bedrockTestVersionsFrom('bedrock_1.26.0'), params: { ...CHAT, category: 'authored', has_filtered_message: false } }
+    ]
+    // protocol_chat (1.26.20, 1.26.51, 1.26.60): the vanilla client's chat, with its Xbox account's XUID
+    const VANILLA_CHAT = '090001010a4d635a757269353834301768656c6c6f2066726f6d20746865206f6273657276657210323533353435313435383739313137330000'
+    const VANILLA_XUID = '1032353335343531343538373931313733'
+
+    for (const layout of CHAT_LAYOUTS) {
+      describe(`a chat message to servers reading ${layout.name}`, () => {
+        for (const version of layout.versions) {
+          it(`bedrock ${version}: is a text packet as the vanilla client's but without an XUID (offline), in the next frame's input pass`, async () => {
+            const { bot, server, driver } = await loggedIn(version)
+            bot.chat('hello from the observer')
+            assert.deepStrictEqual(sent(server), [])
+            await driver.frame(0)
+            assert.deepStrictEqual(server.sentOf('text'), [layout.params])
+            assert.deepStrictEqual(server.batches.at(-1)?.map(({ name, phase }) => `${name} ${phase}`), ['text F3'])
+            if (atLeast(version, 'bedrock_1.26.0')) assert.strictEqual(written(server, 'text', layout.params), VANILLA_CHAT.replace(VANILLA_XUID, '00'))
+            bot.end()
+          })
+        }
+      })
+    }
+
+    const COMMAND = { command: '/testfor @s', origin: { type: 'player', uuid: '304a0034-6331-da16-ebb0-8165952b4fbf', request_id: '' }, internal: false }
+    // each server build's command version (docs/bedrock.md tells how they were found), which the server reads as a
+    // signed varint: 39 is written 78
+    const COMMAND_VERSIONS = [
+      ['bedrock_1.19.60', 'bedrock_1.19.63', 26],
+      ['bedrock_1.19.70', 'bedrock_1.19.70', 32],
+      ['bedrock_1.19.80', 'bedrock_1.19.80', 33],
+      ['bedrock_1.20.0', 'bedrock_1.20.0', 34],
+      ['bedrock_1.20.10', 'bedrock_1.20.15', 35],
+      ['bedrock_1.20.30', 'bedrock_1.20.50', 36],
+      ['bedrock_1.20.61', 'bedrock_1.20.61', 37],
+      ['bedrock_1.20.71', 'bedrock_1.20.80', 38],
+      ['bedrock_1.21.0', 'bedrock_1.21.2', 39],
+      ['bedrock_1.21.20', 'bedrock_1.21.20', 41],
+      ['bedrock_1.21.30', 'bedrock_1.21.60', 42],
+      ['bedrock_1.21.70', 'bedrock_1.21.80', 43],
+      ['bedrock_1.21.90', 'bedrock_1.21.124', 44]
+    ] as const
+    const COMMAND_LAYOUTS: Array<{ name: string, versions: BedrockVersion[], params: object }> = [
+      { name: 'no command version (1.16.201 – 1.19.50)', versions: bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.19.50'), params: COMMAND },
+      ...COMMAND_VERSIONS.map(([from, to, commandVersion]) => ({
+        name: `command version ${commandVersion} (${from === to ? from.slice('bedrock_'.length) : `${from.slice('bedrock_'.length)} – ${to.slice('bedrock_'.length)}`})`,
+        versions: bedrockTestVersionsFrom(from, to),
+        params: { ...COMMAND, version: commandVersion * 2 }
+      })),
+      {
+        name: "the origin's type a string and its entity, the version 'latest' (1.21.130+)",
+        versions: bedrockTestVersionsFrom('bedrock_1.21.130'),
+        params: { ...COMMAND, origin: { ...COMMAND.origin, player_entity_id: 0n }, version: 'latest' }
+      }
+    ]
+    // protocol_chat (1.26.60): the vanilla client's /testfor @s, its origin's UUID a random one
+    const VANILLA_COMMAND = '4d0b2f74657374666f7220407306706c61796572f745a1ededd19fb3595f42022b5da9ae00000000000000000000066c6174657374'
+
+    for (const layout of COMMAND_LAYOUTS) {
+      describe(`a command to servers reading ${layout.name}`, () => {
+        for (const version of layout.versions) {
+          it(`bedrock ${version}: is a command_request as the vanilla client's, sent whole, in the next frame's input pass`, async () => {
+            const { bot, server, driver } = await loggedIn(version, { chatLengthLimit: 5 })
+            bot.chat('/testfor @s')
+            await driver.frame(0)
+            assert.deepStrictEqual(server.sentOf('command_request'), [layout.params])
+            assert.deepStrictEqual(server.batches.at(-1)?.map(({ name, phase }) => `${name} ${phase}`), ['command_request F3'])
+            if (atLeast(version, 'bedrock_1.21.130')) assert.strictEqual(written(server, 'command_request', layout.params), VANILLA_COMMAND.replace('f745a1ededd19fb3595f42022b5da9ae', '304a00346331da16ebb08165952b4fbf'))
+            bot.end()
+          })
+        }
+      })
+    }
+
+    describe(`no version differs (on ${latestSupportedBedrockVersion})`, () => {
+      it('sends the lines of a message in parts of chatLengthLimit (512 by default), skipping empty lines, in call order', async () => {
+        const { bot, server, driver } = await loggedIn()
+        bot.chat(`${'a'.repeat(512)}b\n\nline\n`)
+        // Java's takes a number too
+        const chatNumber = bot.chat as (message: string | number) => void
+        chatNumber(1234)
+        bot.chat('hello\n/testfor @s')
+        await driver.frame(0)
+        assert.deepStrictEqual(sent(server), [`text ${'a'.repeat(512)}`, 'text b', 'text line', 'text 1234', 'text hello', 'command /testfor @s'])
+        bot.end()
+        const limited = await loggedIn(latestSupportedBedrockVersion, { chatLengthLimit: 4 })
+        limited.bot.chat('abcdefghi')
+        limited.bot.chat(`/${'command'.repeat(100)}`)
+        await limited.driver.frame(0)
+        assert.deepStrictEqual(sent(limited.server), ['text abcd', 'text efgh', 'text i', `command /${'command'.repeat(100)}`])
+        limited.bot.end()
+      })
+
+      it('whispers with /tell, each part a command, a name with other characters than letters, digits and _ quoted', async () => {
+        const { bot, server, driver } = await loggedIn(latestSupportedBedrockVersion, { chatLengthLimit: 26 })
+        bot.whisper('Steve_2', 'hello there, how are you')
+        bot.whisper('Steve Two', 'hi')
+        bot.whisper('Steve-2', 'hi\n\nagain')
+        bot.whisper('Steve', '/me')
+        await driver.frame(0)
+        assert.deepStrictEqual(sent(server), [
+          'command /tell Steve_2 hello there,',
+          'command /tell Steve_2  how are you',
+          'command /tell "Steve Two" hi',
+          'command /tell "Steve-2" hi',
+          'command /tell "Steve-2" again',
+          'command /tell Steve /me'
+        ])
+        bot.end()
+      })
+
+      it("gives each command an origin UUID of its own, a version 4 UUID in the vanilla client's byte order", async () => {
+        const { bot, server, driver } = await loggedIn()
+        bot.chat('/testfor @s')
+        bot.whisper('Steve', 'hi')
+        bot.chat('/testfor @s')
+        await driver.frame(0)
+        const uuids = server.sentOf('command_request').map(({ origin }) => origin.uuid)
+        assert.deepStrictEqual(uuids, ['304a0034-6331-da16-ebb0-8165952b4fbf', 'd64401e9-f737-d0a2-3c56-78bd1feab29d', '7b462cab-a251-86e3-3a06-133535992b94'])
+        for (const uuid of uuids) {
+          const wire = Buffer.from(uuid.replaceAll('-', ''), 'hex')
+          // its halves little-endian
+          const bytes = Buffer.concat([wire.subarray(0, 8).reverse(), wire.subarray(8).reverse()])
+          assert.strictEqual(bytes[6]! >> 4, 4, uuid)
+          assert.strictEqual(bytes[8]! >> 6, 2, uuid)
+        }
+        bot.end()
+      })
+
+      it('throws as Java before login, after a kick before login, and for a message neither a string nor a number', async () => {
+        const { bot, server, driver } = await chatBot()
+        const before = 'bot.chat() called before the client entered the play state; wait for the "login" or "spawn" event'
+        assert.throws(() => { bot.chat('hello') }, { message: before })
+        assert.throws(() => { bot.whisper('Steve', 'hello') }, { message: before })
+        assert.throws(() => { bot.chat({} as string) }, { message: 'Chat message type must be a string or number: object' })
+        server.send('disconnect', { hide_disconnect_reason: false, message: 'kicked by the test' })
+        await driver.frame(0)
+        assert.throws(() => { bot.chat('hello') }, { message: 'bot.chat() called after the client disconnected before entering the play state (kicked by the test)' })
+        assert.deepStrictEqual(sent(server), [])
+      })
+
+      it('sends nothing once the bot ended', async () => {
+        const { bot, server, driver } = await loggedIn()
+        bot.end()
+        bot.chat('hello')
+        await driver.frame(0)
+        assert.deepStrictEqual(sent(server), [])
+      })
+    })
+  })
 })

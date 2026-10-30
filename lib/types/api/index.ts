@@ -86,6 +86,8 @@ export interface BedrockBotOptions {
   autoJump?: boolean
   /** add the chat patterns that emit chat and whisper @default true */
   defaultChatPatterns?: boolean
+  /** the longest chat packet: a longer line is sent in parts @default 512 */
+  chatLengthLimit?: number
 }
 
 export interface BedrockPluginOptions {
@@ -175,6 +177,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   bossBars: BossBar[]
   end: (reason?: string) => void
   quit: (reason?: string) => void
+  /** a chat message, or a command (`/…`), sent in the next frame; throws before login */
+  chat: Bot['chat']
+  /** `/tell <username> <message>`, a name with other characters than letters, digits and `_` quoted */
+  whisper: Bot['whisper']
   /** Bedrock has no tab completion: rejects */
   tabComplete: Bot['tabComplete']
   chatAddPattern: Bot['chatAddPattern']

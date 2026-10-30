@@ -4,7 +4,7 @@ mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock v
 minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
 the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows and the player
 list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does, telling the server
-every tick, follows the server's corrections, reads the chat, and ends; the rest of the API is Java's only so far.
+every tick, follows the server's corrections, chats, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -53,6 +53,7 @@ Every Bedrock release from 1.16.201 to 1.26.60 (`mineflayer.testedBedrockVersion
 | `physicsEnabled` | `true` | whether the physics move the player (see physics below) |
 | `autoJump` | `false` | whether the player jumps by itself onto a block in its way, as the vanilla client's auto-jump (on there by default) does (see physics below) |
 | `defaultChatPatterns` | `true` | as Java's: the chat patterns that emit `chat` and `whisper` (see chat below) |
+| `chatLengthLimit` | `512` | as Java's: a longer line is sent in parts (see chat below) |
 
 The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 
@@ -76,8 +77,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
-- `bot.addChatPattern`, `bot.addChatPatternSet`, `bot.removeChatPattern`, `bot.chatAddPattern`,
-  `bot.awaitMessage(...)`; `bot.tabComplete` rejects (see chat below).
+- `bot.chat(message)`, `bot.whisper(username, message)`, `bot.addChatPattern`, `bot.addChatPatternSet`,
+  `bot.removeChatPattern`, `bot.chatAddPattern`, `bot.awaitMessage(...)`; `bot.tabComplete` rejects (see chat below).
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
 - Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `spawn` (the player
   is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
@@ -634,9 +635,10 @@ The server's spawn_particle_effect (`/particle`) acts in the packet pass, as Jav
 
 ## Chat
 
-The events `message`, `messagestr`, `chat`, `whisper`, `actionBar` and `chat:<name>`, the chat patterns
-(`addChatPattern`, `addChatPatternSet`, `removeChatPattern`, `chatAddPattern`) and `bot.awaitMessage(...)` are Java's,
-over what the vanilla client shows in its chat and above the hotbar:
+`bot.chat(message)`, `bot.whisper(username, message)`, the events `message`, `messagestr`, `chat`, `whisper`,
+`actionBar` and `chat:<name>`, the chat patterns (`addChatPattern`, `addChatPatternSet`, `removeChatPattern`,
+`chatAddPattern`) and `bot.awaitMessage(...)` are Java's, over what the vanilla client shows in its chat and above
+the hotbar and sends of what is typed:
 
 | The server sends | `message`'s position | Also |
 | --- | --- | --- |
@@ -666,6 +668,61 @@ over what the vanilla client shows in its chat and above the hotbar:
 - **Kept from Java's**, quirks included: `addChatPatternSet` returns the number of patterns and sets added so far
   (the set's index is one less), and a set waiting for its next message ends the matching of the message it matched,
   so a later pattern does not see it; the default `chat` pattern also reads a whisper and an action bar.
+- **Sending**: `bot.chat(message)` sends a line as a `text` packet of type `chat`, as the vanilla client sends what is
+  typed (without an XUID: the bot logs in offline), and a line starting with `/` as a `command_request`, as the
+  vanilla client sends a typed command (from the player, with a UUID of its own). They leave in the next frame's input
+  pass, in call order. As Java's: a message starting with `/` is sent whole, any other line by line (empty lines
+  skipped) in parts of `chatLengthLimit` characters; `bot.whisper(username, message)` sends each part as
+  `/tell <username> <part>`; a number is sent as its text; before `login` both throw Java's errors.
+
+| Versions | A chat message (`text`) | A command (`command_request`) |
+| --- | --- | --- |
+| 1.16.201 – 1.19.50 | type `chat`, the bot's name, the message, an empty XUID and platform chat id | the command, the origin (`player`, its UUID), not internal |
+| 1.19.60 – 1.20.80 | | + the command version (below) |
+| 1.21.0 – 1.21.124 | + an empty filtered message | |
+| 1.21.130 | + the `authored` category and its types' names (`chat`, `whisper`, `announcement`: a server disconnects a client naming them otherwise), no filtered message | the origin's type as a string, its player entity id 0, the version `latest` |
+| 1.26.0+ | + the `authored` category, no filtered message | as 1.21.130 |
+
+- **The command version** (1.19.60 – 1.21.124) is the version of the commands' syntax the server parses the command
+  with. The bot sends the vanilla client's, its build's `CommandVersion::CurrentVersion`:
+
+| Versions | Command version |
+| --- | --- |
+| 1.19.60 – 1.19.63 | 26 |
+| 1.19.70 | 32 |
+| 1.19.80 | 33 |
+| 1.20.0 | 34 |
+| 1.20.10 – 1.20.15 | 35 |
+| 1.20.30 – 1.20.50 | 36 |
+| 1.20.61 | 37 |
+| 1.20.71 – 1.20.80 | 38 |
+| 1.21.0 – 1.21.2 | 39 |
+| 1.21.20 | 41 |
+| 1.21.30 – 1.21.60 | 42 |
+| 1.21.70 – 1.21.80 | 43 |
+| 1.21.90 – 1.21.124 | 44 |
+
+  - Read from each version's Bedrock Dedicated Server executable: up to 1.21.2 the constant its symbols name; from
+    1.21.20 the bound its command registrations give `/damage`'s overload, which is registered up to it. 1.21.0's is
+    the vanilla client's too (39).
+  - Checked on running servers of 1.21.0, 1.21.50, 1.21.90, 1.21.93 and 1.21.100 only: `/damage @s 0` parses with
+    that version and is a syntax error with the next one. The other versions are the executables' reading. Other
+    commands take a higher version too (`/tell @s hi` runs with any from 1 to 60 on 1.21.0), and a lower one can pick
+    an older syntax (`/tell @s hi` is a syntax error with version 0), so the e2e test's `/tell` and `/list` do not
+    tell a right version from a near one.
+  - The server reads the field as a signed (zigzag) varint, which bedrock-protocol writes unsigned: the bot writes
+    twice the version (an odd number reads as a negative version, which fails the command at its `/`).
+- **Differences from Java's** in sending:
+  - `chatLengthLimit` is 512 by default (Java's 256): the bound the server's text handler checks. It is not a limit
+    servers enforce: servers of 1.17.0, 1.21.0, 1.21.130 and 1.26.20 deliver a 600-character chat whole.
+  - `whisper` quotes a name with other characters than letters, digits and `_` (`/tell "Steve Two" hi`): Bedrock's
+    names can have spaces, which its target parser splits at.
+  - A server of 1.17.0 finds no offline player by name as a `/tell` target, even the sender's own, quoted or not
+    (`No targets matched selector`; `/tell @s` is delivered). Servers from 1.21.120 refuse a member's player name (a
+    member is a server's default) with `<insufficient permissions for selector expansion>` (1.21.120, 1.21.124,
+    1.21.130, 1.26.0, 1.26.20). Either is a `system` message. Servers of 1.19.20 – 1.21.111 deliver a member's
+    `/tell <name>` (the e2e test's builds: 1.17.10 – 1.19.10 not tried), and 1.21.0 an operator's.
+  - Java's waiting for a command before a chat message on 1.19.0 is not needed.
 
 ## Tests
 
@@ -703,9 +760,9 @@ over what the vanilla client shows in its chat and above the hotbar:
   server's names 1.26.30+, and by play_sound's, a varint y 1.16.201 – 1.26.0, a signed y 1.26.10, a handle
   1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+; the particles: by
   spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+; the chat: by how the
-  text packet, a command's output and an action bar title are laid out). The physics' values are the recorded ones,
-  the same on every version unless a group says otherwise. The workspace's `pnpm test:recorded` replays the
-  recordings themselves.
+  text packet, a command's output and an action bar title are laid out, and how the bot's chat and commands are). The
+  physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's
+  `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 

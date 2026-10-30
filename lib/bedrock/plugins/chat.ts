@@ -2,13 +2,15 @@ import type { TextComponent } from 'prismarine-chat'
 import { bedrockText, rawTextComponent, textComponent, translationComponent } from '../text.ts'
 import type { BedrockLanguage } from '../text.ts'
 import { ChatPatterns } from './chat_patterns.ts'
+import { chatPacket, commandUuid } from './chat_send.ts'
 import type { BedrockBotOptions } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockClientboundPackets } from '../../types/protocol/bedrock-client.ts'
 
 // What the vanilla client shows in its chat and above the hotbar, as Java's messages: the text packets, the output of
 // the bot's commands, and the action bar's titles. Each is message, the chat patterns' events, messagestr,
-// unmatchedMessage when no pattern matched, and actionBar above the hotbar, in the packet pass.
+// unmatchedMessage when no pattern matched, and actionBar above the hotbar, in the packet pass. The bot's chat and
+// commands leave as the vanilla client's, in the next frame's input pass.
 
 type TextPacket = BedrockClientboundPackets['text']
 type TextType = Exclude<TextPacket['type'], number>
@@ -21,6 +23,8 @@ const MS_PER_TICK = 50
 /** Java's */
 const AWAIT_MESSAGE_TIMEOUT_MS = 20000
 const USERNAME_REGEX = '(?:\\(.{1,15}\\)|\\[.{1,15}\\]|.){0,5}?(\\w+)'
+/** the bound the server's text handler checks (servers deliver longer chat whole) */
+const CHAT_LENGTH_LIMIT = 512
 
 const POSITIONS: Readonly<Record<TextType, Position>> = Object.freeze({
   raw: 'system',
@@ -44,6 +48,10 @@ export default function inject (bot: BedrockBotInternal, options: BedrockBotOpti
   const patterns = new ChatPatterns()
   const stats = { invalidRawText: 0, unknownType: 0 }
   bot._chat = { stats }
+  const chatLengthLimit = options.chatLengthLimit ?? CHAT_LENGTH_LIMIT
+  let endReason: string | undefined
+  let commands = 0
+  bot.once('end', reason => { endReason = reason })
 
   /** a message the vanilla client shows; undefined: a rawtext it does not show */
   function show (component: TextComponent | undefined, position: Position): void {
@@ -117,9 +125,33 @@ export default function inject (bot: BedrockBotInternal, options: BedrockBotOpti
     return matched!
   }
 
+  /** Java's: a command is sent whole, other lines in parts of the length limit, each after the header */
+  function send (header: string, message: string | number): void {
+    const text = typeof message === 'number' ? message.toString() : message
+    if (typeof text !== 'string') throw new Error(`Chat message type must be a string or number: ${typeof text}`)
+    if (core.tick === undefined) {
+      if (endReason !== undefined) throw new Error(`bot.chat() called after the client disconnected before entering the play state (${endReason})`)
+      throw new Error('bot.chat() called before the client entered the play state; wait for the "login" or "spawn" event')
+    }
+    const parts = header === '' && text.startsWith('/') ? [text] : split(text, chatLengthLimit - header.length).map(part => header + part)
+    const packets = parts.map(part => chatPacket(bot.version, bot.username, part, () => commandUuid(bot.username, ++commands)))
+    core.command(({ outbox }) => {
+      for (const { name, params } of packets) outbox.queue(name, params)
+    })
+  }
+
+  bot.chat = message => { send('', message) }
+  // the target parser splits a name at a space
+  bot.whisper = (username, message) => { send(`/tell ${/^\w+$/.test(username) ? username : `"${username}"`} `, message) }
+
   bot.tabComplete = async () => {
     throw new Error('bot.tabComplete is not supported on Bedrock: the server has no tab completion (the vanilla client completes commands from available_commands)')
   }
+}
+
+/** the message's lines but the empty ones, each cut into parts of `length` characters */
+function split (message: string, length: number): string[] {
+  return message.split('\n').flatMap(line => Array.from({ length: Math.ceil(line.length / length) }, (_, i) => line.slice(i * length, (i + 1) * length)))
 }
 
 /** the text packet's message as the vanilla client shows it; undefined for a rawtext it does not show */
