@@ -50,6 +50,45 @@ export interface PluginOptions {
 
 export type Plugin = (bot: Bot, options: BotOptions) => void
 
+export interface BedrockBotOptions {
+  version: BedrockVersion
+  /** @default '127.0.0.1' */
+  host?: string
+  /** @default 19132 */
+  port?: number
+  /** @default 'Player' */
+  username?: string
+  logErrors?: boolean
+  hideErrors?: boolean
+  loadInternalPlugins?: boolean
+  plugins?: BedrockPluginOptions
+  /** @default 'raknet-native' (not 'raknet-node': its failed connection crashes the process) */
+  raknetBackend?: 'raknet-native' | 'jsp-raknet'
+  /** ms @default 9000 */
+  connectTimeout?: number
+}
+
+export interface BedrockPluginOptions {
+  [plugin: string]: boolean | BedrockPlugin
+}
+
+export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
+
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'kicked' | 'end'>
+
+export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
+  username: string
+  protocolVersion: number
+  majorVersion: string
+  version: BedrockVersion
+  registry: Registry
+  end: (reason?: string) => void
+  quit: (reason?: string) => void
+  loadPlugin: (plugin: BedrockPlugin) => void
+  loadPlugins: (plugins: BedrockPlugin[]) => void
+  hasPlugin: (plugin: BedrockPlugin) => boolean
+}
+
 export interface BotEvents {
   chat: (
     username: string,
