@@ -14,9 +14,10 @@ export interface EntityIndex {
   byRuntimeId: (runtimeId: number | bigint) => Entity | undefined
   /**
    * packets naming an entity the bot does not have; add_player, removals from the list and game modes of a player not
-   * listed; moves and removals of the local player, which are movement's or never happen; adds of a live runtime id
+   * listed; moves and removals of the local player, which are movement's or never happen; adds of a live runtime id;
+   * link removals of a rider not riding that vehicle
    */
-  stats: { unknownEntity: number, unlisted: number, local: number, replaced: number }
+  stats: { unknownEntity: number, unlisted: number, local: number, replaced: number, unlinked: number }
 }
 
 export interface BedrockBotInternal extends BedrockBot {

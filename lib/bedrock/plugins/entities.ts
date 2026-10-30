@@ -5,17 +5,19 @@ import type { Registry } from 'prismarine-registry'
 import { fromNotchianPitch, fromNotchianPitchByte, fromNotchianYaw, fromNotchianYawByte } from '../../conversions.ts'
 import { bedrockEntityClass } from '../entity.ts'
 import { addedEntity, addedItem, addedPainting, addedPlayer, gamemodeOf, listingsOf, runtimeKey } from '../entity_packets.ts'
-import type { Listing, Spawn } from '../entity_packets.ts'
+import type { Link, Listing, Spawn } from '../entity_packets.ts'
 import { EntityMetadata, isGliding, isSneaking } from '../metadata.ts'
 import type { Player } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 
-// The entities the server shows, by runtime id, and the player list. Their spawns, moves, attributes, effects and
-// events act in the packet pass; their metadata at the start of the next tick, and a removal at the end of the next
+// The entities the server shows, by runtime id, and the player list. Their spawns, moves, rides, attributes, effects
+// and events act in the packet pass; their metadata at the start of the next tick, and a removal at the end of the next
 // tick, as in the vanilla client. The local player's position, velocity and rotation are movement's.
 
 const OWNER = 'entities'
 const ON_GROUND = 1
+// set_entity_link's type of a removed link; 1 is a rider, 2 a passenger
+const UNLINK = 0
 
 const ENTITY_TYPES: readonly EntityType[] = Object.freeze(['player', 'mob', 'object', 'global', 'orb', 'projectile', 'hostile', 'other', 'animal', 'passive', 'ambient', 'living', 'water_creature'])
 
@@ -71,7 +73,7 @@ export default function inject (bot: BedrockBotInternal): void {
   const removing = new Map<number, Removal>()
   const ChatMessage = prismarineChat(bot.registry)
   const listed = new Map<string, Listed>()
-  const stats = { unknownEntity: 0, unlisted: 0, local: 0, replaced: 0 }
+  const stats = { unknownEntity: 0, unlisted: 0, local: 0, replaced: 0, unlinked: 0 }
   let localKey: number | undefined
   let localUnique: bigint | undefined
   let localGamemode = 0
@@ -79,6 +81,7 @@ export default function inject (bot: BedrockBotInternal): void {
 
   bot.entities = {}
   bot.players = {}
+  bot.vehicle = null
   bot._entities = {
     byUniqueId: uniqueId => {
       const key = byUnique.get(uniqueId)
@@ -169,10 +172,54 @@ export default function inject (bot: BedrockBotInternal): void {
     return entity
   }
 
+  /** its entitySpawn, then the rides it shows with */
+  function appear (entity: Entity, links: readonly Link[]): void {
+    core.emit(bot, 'entitySpawn', entity)
+    for (const link of links) relink(link)
+  }
+
   function spawn (spawned: Spawn, name: string): Entity {
     const entity = place(spawned, name)
-    core.emit(bot, 'entitySpawn', entity)
+    appear(entity, spawned.links)
     return entity
+  }
+
+  /** off its vehicle, without an event */
+  function leaveVehicle (rider: Entity): void {
+    const vehicle = rider.vehicle
+    if (vehicle !== null) vehicle.passengers = vehicle.passengers.filter(passenger => passenger !== rider)
+    rider.vehicle = null
+  }
+
+  /** a rider linked to another vehicle leaves the first without entityDetach, as Java */
+  function attach (rider: Entity, vehicle: Entity): void {
+    leaveVehicle(rider)
+    rider.vehicle = vehicle
+    vehicle.passengers.push(rider)
+    core.emit(bot, 'entityAttach', rider, vehicle)
+    if (rider !== bot.entity) return
+    bot.vehicle = vehicle
+    core.emit(bot, 'mount')
+  }
+
+  function detach (rider: Entity, vehicle: Entity): void {
+    if (rider.vehicle !== vehicle) {
+      stats.unlinked++
+      return
+    }
+    leaveVehicle(rider)
+    core.emit(bot, 'entityDetach', rider, vehicle)
+    if (rider !== bot.entity) return
+    bot.vehicle = null
+    core.emit(bot, 'dismount', vehicle)
+  }
+
+  function relink ({ ridden_entity_id: riddenId, rider_entity_id: riderId, type }: Link): void {
+    const rider = bot._entities.byUniqueId(riderId)
+    const vehicle = bot._entities.byUniqueId(riddenId)
+    if (rider === undefined || vehicle === undefined) stats.unknownEntity++
+    else if (type === UNLINK) detach(rider, vehicle)
+    else attach(rider, vehicle)
   }
 
   /** Java's order: entityUpdate, then the sleep, the elytra and the crouch the update tells; the local player's size is movement's */
@@ -206,6 +253,13 @@ export default function inject (bot: BedrockBotInternal): void {
     entity.isValid = false
     for (const { player } of listed.values()) {
       if (player.entity === entity) player.entity = null
+    }
+    // servers unlink its riders first; as Java, the rides left end without entityDetach
+    leaveVehicle(entity)
+    for (const passenger of entity.passengers) passenger.vehicle = null
+    if (bot.vehicle === entity) {
+      bot.vehicle = null
+      core.emit(bot, 'dismount', entity)
     }
     // a unique id spawned again under another runtime id is that entity's now
     if (byUnique.get(unique) === key) byUnique.delete(unique)
@@ -297,7 +351,7 @@ export default function inject (bot: BedrockBotInternal): void {
     known.player.entity = entity
     // from 1.18.30
     if (spawned.gamemode !== undefined) known.player.gamemode = gamemodeOf(spawned.gamemode, worldGamemode)
-    core.emit(bot, 'entitySpawn', entity)
+    appear(entity, spawned.links)
   })
   core.handle(OWNER, 'player_list', packet => {
     for (const listing of listingsOf(packet)) {
@@ -403,6 +457,7 @@ export default function inject (bot: BedrockBotInternal): void {
     const collector = known(packet.target)
     if (collected !== undefined && collector !== undefined) core.emit(bot, 'playerCollect', collector, collected)
   })
+  core.handle(OWNER, 'set_entity_link', packet => { relink(packet.link) })
   core.endOfTick(OWNER, () => {
     for (const [key, removal] of removing) destroy(key, removal)
   })

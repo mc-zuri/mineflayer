@@ -2,7 +2,7 @@ import assert from 'assert'
 import { latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
 import type { BedrockBot, BedrockVersion, Player } from '../../lib/types/api/index.ts'
 import { bedrockCodec, blankPacket } from './common/codec.ts'
-import { atLeast, boundingBox, entry, flags, LOCAL_UNIQUE, placed, positionOf, receive, runtimeId, spawned, started, STILL, write } from './common/entities.ts'
+import { addEntity, atLeast, boundingBox, entry, flags, LOCAL_UNIQUE, placed, positionOf, receive, runtimeId, spawned, started, STILL, write } from './common/entities.ts'
 import { bedrockTestBot, bedrockTestVersions, bedrockTestVersionsFrom } from './common/server.ts'
 import type { FakeBedrockClient } from './common/server.ts'
 import type { Point3 } from './common/world.ts'
@@ -22,6 +22,7 @@ interface AddedPlayer extends Listing {
   runtime: number
   position: Point3
   gamemode?: string
+  links?: object[]
 }
 
 const LOCAL: Listing = Object.freeze({ uuid: '723f6e75-4bb8-c0dd-31c0-21d5e913d186', unique: LOCAL_UNIQUE, username: 'McZuri5840' })
@@ -66,14 +67,14 @@ function list (server: FakeBedrockClient, type: 'add' | 'remove', ...players: Li
 }
 
 /** add_player as the version lays it out: the unique id entity_id_self up to 1.18.11, unique_entity_id up to 1.19.1, then an li64 unique_id */
-function addPlayer (version: BedrockVersion, { uuid, unique, username, runtime, position, gamemode }: AddedPlayer): object {
+function addPlayer (version: BedrockVersion, { uuid, unique, username, runtime, position, gamemode, links = [] }: AddedPlayer): object {
   const metadata = [flags(version, OBSERVER_FLAGS), entry(version, 'nametag', 'string', username), ...boundingBox(version, 0.6000000238418579, 1.7999999523162842)]
   const ids = atLeast(version, 'bedrock_1.19.10')
     ? { unique_id: unique, runtime_id: BigInt(runtime) }
     : atLeast(version, 'bedrock_1.18.30')
       ? { unique_entity_id: unique, runtime_entity_id: BigInt(runtime) }
       : { entity_id_self: unique, runtime_entity_id: runtimeId(version, runtime) }
-  return { uuid, username, ...ids, ...placed(version, position, STILL), pitch: 0, yaw: 0, head_yaw: 0, metadata, ...gamemode === undefined ? {} : { gamemode } }
+  return { uuid, username, ...ids, ...placed(version, position, STILL), pitch: 0, yaw: 0, head_yaw: 0, metadata, links, ...gamemode === undefined ? {} : { gamemode } }
 }
 
 /** the player and entity events from now, each with its player's or entity's name, and login */
@@ -296,6 +297,20 @@ describe('bedrock players', () => {
       await driver.frame(0)
       assert.deepStrictEqual(events, ['playerJoined observer_bot', 'entitySpawn observer_bot', 'entityGone observer_bot', 'entitySpawn observer_bot', 'playerLeft observer_bot', 'playerJoined observer_bot', 'playerUpdated observer_bot'])
       assert.strictEqual(listed(bot, 'observer_bot').entity, spawned(bot, 22))
+      bot.end()
+    })
+
+    it('spawns a player with the rides add_player shows, after its entitySpawn', async () => {
+      const { bot, server, driver } = await started(version, 3)
+      write(server, 'add_entity', addEntity(version, { unique: -2n, runtime: 2, type: 'minecraft:horse', position: STILL }))
+      list(server, 'add', OBSERVER)
+      await driver.frame(0)
+      const events = heard(bot)
+      bot.on('entityAttach', (rider, vehicle) => { events.push(`entityAttach ${rider.username ?? rider.id} ${vehicle.id}`) })
+      const ridden = { ridden_entity_id: -2n, rider_entity_id: OBSERVER.unique, type: 1, immediate: false, rider_initiated: true, angular_velocity: 0 }
+      write(server, 'add_player', addPlayer(version, { ...OBSERVER, runtime: 20, position: FEET, links: [ridden] }))
+      await driver.frame(0)
+      assert.deepStrictEqual([events, spawned(bot, 20).vehicle], [['entitySpawn observer_bot', 'entityAttach observer_bot 2'], spawned(bot, 2)])
       bot.end()
     })
 

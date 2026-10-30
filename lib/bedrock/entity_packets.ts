@@ -5,6 +5,9 @@ import type { MetadataEntries } from './metadata.ts'
 type Packets = BedrockClientboundPackets
 type GameMode = Packets['update_player_game_type']['gamemode']
 
+/** a rider's link to the entity it rides, both by their unique ids */
+export type Link = Packets['set_entity_link']['link']
+
 export interface Vector { x: number, y: number, z: number }
 
 /** an entity as an add packet shows it, its rotation in Bedrock's degrees */
@@ -18,6 +21,8 @@ export interface Spawn {
   headYaw: number
   metadata: MetadataEntries
   attributes: Packets['add_entity']['attributes']
+  /** the rides it shows with, as set_entity_link tells them */
+  links: Link[]
 }
 
 interface Placed {
@@ -50,18 +55,18 @@ export function addedEntity (packet: Packets['add_entity']): Spawn {
   const unique = packet.unique_id ?? packet.entity_id_self
   const runtime = packet.runtime_id ?? packet.runtime_entity_id
   assert.ok(unique !== undefined && runtime !== undefined, 'add_entity without its ids')
-  const { yaw, pitch, head_yaw: headYaw, metadata, attributes } = packet
-  return { unique, key: runtimeKey(runtime), ...placed(packet), yaw, pitch, headYaw, metadata, attributes }
+  const { yaw, pitch, head_yaw: headYaw, metadata, attributes, links } = packet
+  return { unique, key: runtimeKey(runtime), ...placed(packet), yaw, pitch, headYaw, metadata, attributes, links }
 }
 
 export function addedItem (packet: Packets['add_item_entity']): Spawn {
-  return { unique: packet.entity_id_self, key: runtimeKey(packet.runtime_entity_id), ...placed(packet), yaw: 0, pitch: 0, headYaw: 0, metadata: packet.metadata, attributes: [] }
+  return { unique: packet.entity_id_self, key: runtimeKey(packet.runtime_entity_id), ...placed(packet), yaw: 0, pitch: 0, headYaw: 0, metadata: packet.metadata, attributes: [], links: [] }
 }
 
 /** block coordinates up to 1.16.210 */
 export function addedPainting (packet: Packets['add_painting']): Spawn {
   const { x, y, z } = packet.coordinates
-  return { unique: packet.entity_id_self, key: runtimeKey(packet.runtime_entity_id), position: { x, y, z }, velocity: STILL, yaw: 0, pitch: 0, headYaw: 0, metadata: [], attributes: [] }
+  return { unique: packet.entity_id_self, key: runtimeKey(packet.runtime_entity_id), position: { x, y, z }, velocity: STILL, yaw: 0, pitch: 0, headYaw: 0, metadata: [], attributes: [], links: [] }
 }
 
 /** a player as add_player shows it, its position the feet */
@@ -77,8 +82,8 @@ export function addedPlayer (packet: Packets['add_player']): PlayerSpawn {
   const unique = packet.unique_id?.valueOf() ?? packet.unique_entity_id ?? packet.entity_id_self
   const runtime = packet.runtime_id ?? packet.runtime_entity_id
   assert.ok(unique !== undefined && runtime !== undefined, 'add_player without its ids')
-  const { uuid, username, gamemode, yaw, pitch, head_yaw: headYaw, metadata } = packet
-  return { unique, key: runtimeKey(runtime), ...placed(packet), yaw, pitch, headYaw, metadata, attributes: [], uuid, username, gamemode }
+  const { uuid, username, gamemode, yaw, pitch, head_yaw: headYaw, metadata, links } = packet
+  return { unique, key: runtimeKey(runtime), ...placed(packet), yaw, pitch, headYaw, metadata, attributes: [], links, uuid, username, gamemode }
 }
 
 export type Listing = { type: 'add', uuid: string, unique: bigint, username: string } | { type: 'remove', uuid: string }

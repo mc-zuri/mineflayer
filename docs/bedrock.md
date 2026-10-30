@@ -65,7 +65,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.autoJump`: whether the player jumps by itself onto a block in its way (see physics below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
-- `bot.entities`, `bot.nearestEntity(match)`: the entities the server shows (see below).
+- `bot.entities`, `bot.nearestEntity(match)`, `bot.vehicle`: the entities the server shows, and the one the player
+  rides (see below).
 - `bot.scoreboards`, `bot.scoreboard`, `bot.teams`, `bot.teamMap`, `bot.tablist`: as Java's, as Bedrock has them (see
   scoreboards below).
 - `bot.bossBars`: as Java's, the bars of the boss entities the bot has (see boss bars below).
@@ -78,15 +79,16 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
-  `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events (see entities below), `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`,
-  `scoreUpdated`, `scoreRemoved`, `scoreboardPosition` (see scoreboards below), `title (text, type)`,
+  `blockUpdate:(x, y, z) (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities
+  below), `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`, `scoreUpdated`, `scoreRemoved`,
+  `scoreboardPosition` (see scoreboards below), `title (text, type)`,
   `title_times (fadeIn, stay, fadeOut)`, `title_clear` (see titles below), `bossBarCreated (bossBar)`,
   `bossBarUpdated (bossBar)`, `bossBarDeleted (bossBar)` (see boss bars below),
   `soundEffectHeard (soundName, position, volume, pitch)`,
   `hardcodedSoundEffectHeard (soundId, soundCategory, position, volume, pitch)` (see sounds below),
   `particle (particle)` (see particles below),
-  `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`,
-  `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
+  `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`,
+  `teamUpdated`, `teamMemberAdded`, `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
     as Java's.
   - `kicked`'s reason is the disconnect packet's message as it is (Java's is a JSON text), or its reason code's name
@@ -130,9 +132,9 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
-| `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
+| `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
 ## The local player
 
@@ -445,7 +447,8 @@ feet that `match` takes, never `bot.entity`. The server's packets act at their p
 | entity_event | in the packet pass `entityHurt`, `entityDead`, `entitySwingArm`, `entityTaming`, `entityTamed`, `entityShakingOffWater`, `entityEatingGrass`, `entityEat` |
 | animate | in the packet pass `entitySwingArm`, `entityWake`, `entityCriticalEffect`, `entityMagicCriticalEffect` |
 | take_item_entity | `playerCollect (collector, collected)` in the packet pass |
-| remove_entity | removes it at the end of the next tick, before `physicsTick`: `entityGone`, then `isValid` is false; it stays in `bot.entities` until then |
+| set_entity_link, and the links of add_entity and add_player | in the packet pass, a rider's `vehicle` and its vehicle's `passengers`: `entityAttach (rider, vehicle)` (a rider linked to another vehicle leaves the first without `entityDetach`, as Java), or for a removed link `entityDetach (rider, vehicle)`; the local player's ride sets `bot.vehicle` too, with `mount` / `dismount (vehicle)` |
+| remove_entity | removes it at the end of the next tick, before `physicsTick`: `entityGone`, then `isValid` is false and its rides end without `entityDetach` (`dismount` if the player rode it), as Java; it stays in `bot.entities` until then |
 | change_dimension | removes every entity but `bot.entity` as remove_entity does: the vanilla client drops the old dimension's entities, which servers do not remove |
 
 `entitySpawn (bot.entity)` comes right after `spawn`, as Java's. The local player's position, velocity, rotation,
@@ -474,6 +477,8 @@ Where a Bedrock entity differs from Java's, and why:
 | `getCustomName()` | metadata 2, a JSON text | the name tag as a message, its § codes styling it as the vanilla client draws it; null without one or when empty |
 | `getDroppedItem()` | the item stack | throws: the bot reads no Bedrock items yet |
 | `entityHandSwap` | entity_status 55 | none: Bedrock tells no hand swap |
+| `entityAttach`, `entityDetach` | a leash from 1.9 (attach_entity) | a ride (set_entity_link): Bedrock's leashes are metadata (`lead_holder_eid`), without an event |
+| `bot.vehicle` | set by the code, not in `Bot`'s typings | in `BedrockBot`'s; `mount()`, `dismount()` and `moveVehicle()` are not there yet, and the physics still walk a riding player |
 | `entityEquip`, `usedFirework`, `equipment`, `heldItem` | | not yet: the bot reads no Bedrock items |
 | a player's `position` in move_entity and move_entity_delta | the feet | taken as its eye, as move_player tells it (Bedrock's player position is its eye), and moved to the feet under it; servers were not recorded sending these of a player |
 
@@ -483,6 +488,8 @@ The vanilla client answers none of these packets. How they differ by version:
   field optional from 1.26.40, and its ticks from 1.26.51.
 - **mob_effect**'s removal carries an amplifier and a duration of 0 up to 1.20.61, the effect's from 1.20.71: the bot
   ends the effect it kept, as Java.
+- **set_entity_link** names the rider and the vehicle by their unique ids, and carries the vehicle's angular velocity
+  from 1.21.20.
 - **The ids**: the runtime id is a varint on 1.16.201 (a varint64 after) in the add packets, move_entity,
   set_entity_motion, set_entity_data, entity_event and mob_effect; add_entity names its ids unique_id and runtime_id
   from 1.19.10. Up to 1.16.210 the add packets give x, y, z and the speeds, and add_painting block coordinates.
@@ -640,8 +647,8 @@ The server's spawn_particle_effect (`/particle`) acts in the packet pass, as Jav
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
   sent and how a correction acts; the entities: by the layouts of the add packets, move_entity_delta, set_entity_motion,
   the attributes and an effect's removal, how the metadata's flags are written, and what minecraft-data knows of the
-  entities; the players: by the layouts of player_list, add_player, move_player and update_player_game_type; the
-  scoreboards: by set_score's layout, one action for the packet's entries
+  entities; the links: by how set_entity_link is laid out; the players: by the layouts of player_list, add_player,
+  move_player and update_player_game_type; the scoreboards: by set_score's layout, one action for the packet's entries
   1.16.220 – 1.26.30, each entry its own type 1.26.40+; the titles: by set_title's layout, the type by its number
   1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 – 1.21.2, with a filtered message 1.21.20+; the boss
   bars: by boss_event's layout, no style with the bar 1.16.201 – 1.16.210, a numbered style 1.16.220 – 1.21.50, a
@@ -651,7 +658,8 @@ The server's spawn_particle_effect (`/particle`) acts in the packet pass, as Jav
   server's names 1.26.30+, and by play_sound's, a varint y 1.16.201 – 1.26.0, a signed y 1.26.10, a handle
   1.26.20 – 1.26.30, the loops 1.26.40 – 1.26.45, the range check and playback position 1.26.51+; the particles: by
   spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+). The
-  physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's `pnpm test:recorded` replays the recordings themselves.
+  physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's
+  `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 

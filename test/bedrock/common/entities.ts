@@ -54,6 +54,28 @@ export function placed (version: BedrockVersion, position: Point3, velocity: Poi
   return { x: position.x, y: position.y, z: position.z, speed_x: velocity.x, speed_y: velocity.y, speed_z: velocity.z }
 }
 
+/** an entity add_entity spawns; its links as set_entity_link's */
+export interface Added {
+  unique: bigint
+  runtime: number
+  type: string
+  position: Point3
+  velocity?: Point3
+  yaw?: number
+  headYaw?: number
+  attributes?: object[]
+  metadata?: object[]
+  links?: object[]
+}
+
+/** add_entity as the version lays it out: unique_id and runtime_id from 1.19.10 */
+export function addEntity (version: BedrockVersion, { unique, runtime, type, position, velocity = STILL, yaw = 0, headYaw = yaw, attributes = [], metadata = [], links = [] }: Added): object {
+  const ids = atLeast(version, 'bedrock_1.19.10')
+    ? { unique_id: unique, runtime_id: BigInt(runtime), body_yaw: yaw }
+    : { entity_id_self: unique, runtime_entity_id: runtimeId(version, runtime) }
+  return { ...ids, entity_type: type, ...placed(version, position, velocity), pitch: 0, yaw, head_yaw: headYaw, attributes, metadata, links }
+}
+
 /** a bot the server started the game for, the local player's runtime id `runtime` */
 export async function started (version: BedrockVersion, runtime = 1): Promise<TestBot> {
   const testBot = await bedrockTestBot(bedrockCodec(version))

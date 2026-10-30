@@ -5,7 +5,8 @@ import { metadataKeyNumbers } from '../../lib/bedrock/metadata.ts'
 import { latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
 import type { BedrockBot, BedrockVersion } from '../../lib/types/api/index.ts'
 import { bedrockCodec } from './common/codec.ts'
-import { atLeast, boundingBox, entry, flags, LOCAL_UNIQUE, placed, positionOf, receive, runtimeId, spawned, started, STILL, write } from './common/entities.ts'
+import { addEntity, atLeast, boundingBox, entry, flags, LOCAL_UNIQUE, placed, positionOf, receive, runtimeId, spawned, started, STILL, write } from './common/entities.ts'
+import type { Added } from './common/entities.ts'
 import { bedrockTestBot, bedrockTestVersions, bedrockTestVersionsFrom } from './common/server.ts'
 import { ServerWorld } from './common/world.ts'
 import type { Point3 } from './common/world.ts'
@@ -18,18 +19,6 @@ type EntityEventName = 'entitySpawn' | 'entityGone' | 'entityMoved' | 'entityUpd
   'entityTaming' | 'entityTamed' | 'entityShakingOffWater' | 'entityEatingGrass' | 'entityWake' | 'entityEat' | 'entityCriticalEffect' |
   'entityMagicCriticalEffect' | 'entityCrouch' | 'entityUncrouch' | 'entitySleep' | 'entityElytraFlew' | 'entityAttributes' | 'itemDrop'
 
-interface Added {
-  unique: bigint
-  runtime: number
-  type: string
-  position: Point3
-  velocity?: Point3
-  yaw?: number
-  headYaw?: number
-  attributes?: object[]
-  metadata?: object[]
-}
-
 const SNEAKING = 1n << 1n
 const GLIDING = 1n << 32n
 const SLEEPING_EXTENDED = 1n << 11n
@@ -41,14 +30,6 @@ const EVENTS: readonly EntityEventName[] = Object.freeze(['entitySpawn', 'entity
 
 function extendedFlags (version: BedrockVersion, bits: bigint): object {
   return entry(version, 'flags_extended', 'long', version === 'bedrock_1.16.201' ? bits : { _value: bits })
-}
-
-/** add_entity as the version lays it out: unique_id and runtime_id from 1.19.10 */
-function addEntity (version: BedrockVersion, { unique, runtime, type, position, velocity = STILL, yaw = 0, headYaw = yaw, attributes = [], metadata = [] }: Added): object {
-  const ids = atLeast(version, 'bedrock_1.19.10')
-    ? { unique_id: unique, runtime_id: BigInt(runtime), body_yaw: yaw }
-    : { entity_id_self: unique, runtime_entity_id: runtimeId(version, runtime) }
-  return { ...ids, entity_type: type, ...placed(version, position, velocity), pitch: 0, yaw, head_yaw: headYaw, attributes, metadata }
 }
 
 const DELTA_FLAGS = Object.freeze(['has_x', 'has_y', 'has_z', 'has_rot_x', 'has_rot_y', 'has_rot_z', 'on_ground', 'teleport', 'force_move'])
@@ -498,7 +479,7 @@ describe('bedrock entities', () => {
         assert.deepStrictEqual([events, bot.entities[4], villagerEntity.isValid], [[], villagerEntity, true])
         await driver.tick()
         assert.deepStrictEqual([events, bot.entities[4], villagerEntity.isValid, internal._entities.byUniqueId(-8589934590n)], [['entityGone 4', 'physicsTick'], undefined, false, undefined])
-        assert.deepStrictEqual([bot.entities[1], internal._entities.stats], [bot.entity, { unknownEntity: 1, unlisted: 0, local: 1, replaced: 0 }])
+        assert.deepStrictEqual([bot.entities[1], internal._entities.stats], [bot.entity, { unknownEntity: 1, unlisted: 0, local: 1, replaced: 0, unlinked: 0 }])
         write(server, 'add_entity', addEntity(version, { unique: -5n, runtime: 4, type: 'minecraft:pig', position: STILL }))
         await driver.frame(0)
         assert.deepStrictEqual([internal._entities.byUniqueId(-8589934590n), internal._entities.byUniqueId(-5n)], [undefined, spawned(bot, 4)])

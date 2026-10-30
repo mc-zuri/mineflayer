@@ -100,7 +100,7 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'entitySpawn' | 'entityGone' | 'entityMoved' | 'entityUpdate' | 'entitySwingArm' | 'entityHurt' | 'entityDead' | 'entityTaming' | 'entityTamed'
   | 'entityShakingOffWater' | 'entityEatingGrass' | 'entityWake' | 'entityEat' | 'entityCriticalEffect' | 'entityMagicCriticalEffect' | 'entityCrouch'
   | 'entityUncrouch' | 'entitySleep' | 'entityElytraFlew' | 'entityEffect' | 'entityEffectEnd' | 'entityAttributes' | 'itemDrop' | 'playerCollect'
-  | 'playerJoined' | 'playerUpdated' | 'playerLeft'> & BlockUpdateAtEvents
+  | 'playerJoined' | 'playerUpdated' | 'playerLeft' | 'entityAttach' | 'entityDetach' | 'mount' | 'dismount'> & BlockUpdateAtEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -124,6 +124,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   /** the entities the server shows, by runtime id, the local player's too */
   entities: { [id: string]: Entity }
   nearestEntity: (match?: (entity: Entity) => boolean) => Entity | null
+  /** the entity the local player rides, null on foot */
+  vehicle: Entity | null
   /** the player list, by username */
   players: { [username: string]: Player }
   /** the local player's entry of the player list, from start_game */
