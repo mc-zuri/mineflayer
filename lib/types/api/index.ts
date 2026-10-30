@@ -169,6 +169,9 @@ export interface BotEvents {
   respawn: () => Promise<void> | void
   game: () => Promise<void> | void
   title: (text: string, type: 'subtitle' | 'title') => Promise<void> | void
+  /** in ticks */
+  title_times: (fadeIn: number, stay: number, fadeOut: number) => Promise<void> | void
+  title_clear: () => Promise<void> | void
   rain: () => Promise<void> | void
   time: () => Promise<void> | void
   kicked: (reason: string, loggedIn: boolean) => Promise<void> | void
@@ -250,9 +253,10 @@ export interface BotEvents {
   scoreboardCreated: (scoreboard: ScoreBoard) => Promise<void> | void
   scoreboardDeleted: (scoreboard: ScoreBoard) => Promise<void> | void
   scoreboardTitleChanged: (scoreboard: ScoreBoard) => Promise<void> | void
-  scoreUpdated: (scoreboard: ScoreBoard, item: number) => Promise<void> | void
-  scoreRemoved: (scoreboard: ScoreBoard, item: number) => Promise<void> | void
-  scoreboardPosition: (position: DisplaySlot, scoreboard: ScoreBoard) => Promise<void> | void
+  scoreUpdated: (scoreboard: ScoreBoard, item: ScoreBoardItem) => Promise<void> | void
+  scoreRemoved: (scoreboard: ScoreBoard, item: ScoreBoardItem) => Promise<void> | void
+  /** position: the display slot's number (0 list, 1 sidebar, 2 below the name, from 3 a team color's sidebar); previous: the scoreboard it showed before */
+  scoreboardPosition: (position: number, scoreboard: ScoreBoard, previous: ScoreBoard | undefined) => Promise<void> | void
   teamCreated: (team: Team) => Promise<void> | void
   teamRemoved: (team: Team) => Promise<void> | void
   teamUpdated: (team: Team) => Promise<void> | void

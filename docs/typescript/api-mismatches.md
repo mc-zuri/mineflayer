@@ -52,7 +52,6 @@ In the tables: ✓ has it, ✗ does not; for parameters, what each side lists.
 | --- | --- | --- | --- | --- |
 | `"blockPlaced"` | ✓ | ✗ | emitted | |
 | `"chat:name"` | ✓ | ✗ | emitted | a chat pattern's `chat:<name>` |
-| `"title_times"`, `"title_clear"` | ✓ | ✗ | emitted | |
 | `"weatherUpdate"` | ✓ | ✗ | emitted | |
 | `"blockUpdate:(x, y, z)"` | ✓ | ✓ | emitted as `blockUpdate:(1, 64, 2)` | the typings name it with its placeholders, so no real block's event type checks |
 | `"physicTick"` | ✗ | ✓ | emitted | the deprecated name of `"physicsTick"` |
@@ -117,6 +116,7 @@ types the thing itself; each is a candidate for a fix upstream.
 
 | Member | Was | Fixed in |
 | --- | --- | --- |
+| `"title_times"`, `"title_clear"`, `"scoreUpdated"`, `"scoreRemoved"`, `"scoreboardPosition"` | `title_times` and `title_clear` documented and emitted, not in the typings; the typings gave `scoreUpdated` and `scoreRemoved` a number where the code passes the `ScoreBoardItem`, and `scoreboardPosition` a slot name and two parameters where the code passes the slot's number, the scoreboard and the one shown there before | the typings; api.md lacked `scoreboardPosition`'s `previous` |
 | `Particle.name` | documented and set from the registry's particle (the constructor copies it), not in the typings | the typings |
 | `BossBar.color`, `BossBar.dividers` | always one of the colors / divisions in the typings; `undefined` in the code for an index it does not know | the typings |
 | `Team.membersMap`, `Team.add()`, `Team.remove()`, `new Team()` | the typings named the members map `memberMap` (the code's is `membersMap`), gave `add` a second parameter and `add` / `remove` no result (they return the member's value), and the constructor a boolean `friendlyFire` (the property's number: the packet's bits) | the typings |

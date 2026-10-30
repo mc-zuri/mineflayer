@@ -248,7 +248,7 @@
       - ["scoreboardTitleChanged" (scoreboard)](#scoreboardtitlechanged-scoreboard)
       - ["scoreUpdated" (scoreboard, item)](#scoreupdated-scoreboard-item)
       - ["scoreRemoved" (scoreboard, item)](#scoreremoved-scoreboard-item)
-      - ["scoreboardPosition" (position, scoreboard)](#scoreboardposition-position-scoreboard)
+      - ["scoreboardPosition" (position, scoreboard, previous)](#scoreboardposition-position-scoreboard-previous)
       - ["teamCreated" (team)](#teamcreated-team)
       - ["teamRemoved" (team)](#teamremoved-team)
       - ["teamUpdated" (team)](#teamupdated-team)
@@ -1580,9 +1580,12 @@ Fires when the score of a item in a scoreboard is updated.
 
 Fires when the score of a item in a scoreboard is removed.
 
-#### "scoreboardPosition" (position, scoreboard)
+#### "scoreboardPosition" (position, scoreboard, previous)
 
 Fires when the position of a scoreboard is updated.
+
+ * `position` - the display slot's number: 0 the list, 1 the sidebar, 2 below the name, from 3 a team color's sidebar
+ * `previous` - the scoreboard the slot showed before, or `undefined`
 
 #### "teamCreated" (team)
 

@@ -55,8 +55,6 @@
   "eventsDocsNotInTypes": [
     "blockPlaced",
     "chat:name",
-    "title_clear",
-    "title_times",
     "weatherUpdate"
   ],
   "eventsTypesNotInDocs": [
