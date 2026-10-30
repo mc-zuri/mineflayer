@@ -1,9 +1,10 @@
 # Bedrock
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
-minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards
-and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does,
-telling the server every tick, follows the server's corrections, and ends; the rest of the API is Java's only so far.
+minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards,
+the titles and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla
+client does, telling the server every tick, follows the server's corrections, and ends; the rest of the API is Java's
+only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -75,7 +76,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
   `blockUpdate:(x, y, z) (oldBlock, newBlock)`, `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`,
-  `scoreUpdated`, `scoreRemoved`, `scoreboardPosition` (see scoreboards below), `kicked (reason, loggedIn)`,
+  `scoreUpdated`, `scoreRemoved`, `scoreboardPosition` (see scoreboards below), `title (text, type)`,
+  `title_times (fadeIn, stay, fadeOut)`, `title_clear` (see titles below), `kicked (reason, loggedIn)`,
   `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`,
   `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
@@ -119,7 +121,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard events, `kicked`, `end`, `error` | the packet pass |
+| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard and title events, `kicked`, `end`, `error` | the packet pass |
 | `chunkColumnLoad` | the start of a tick |
 | `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -442,6 +444,21 @@ The server's scoreboard packets act in the packet pass, as Java's; the bot answe
   them): `bot.teams` and `bot.teamMap` stay empty, the team events never come, and `bot.tablist`'s header and footer
   stay empty. The tab list's players are the player list's.
 
+## Titles
+
+The server's set_title acts in the packet pass, as Java's title packets; the bot answers none, as the vanilla client.
+
+- **A title or subtitle** emits `title (text, 'title' | 'subtitle')`, its text as a string without its § codes, as
+  Java gives a JSON text's.
+- **A JSON title or subtitle** is Bedrock's rawtext (`{"rawtext":[{"text":…},{"translate":…,"with":…}]}`), not Java's
+  JSON text: its `title` is the rawtext as the vanilla client shows it, translated with the version's language
+  (`item.apple.name` is `'Apple'`). JSON that is not rawtext emits nothing: the vanilla client shows nothing of it
+  (Java's shows the text as it is).
+- **The times** (set_durations) emit `title_times (fadeIn, stay, fadeOut)`, in ticks; **clear** and **reset** emit
+  `title_clear` (Java's clear and reset both do).
+- **The action bar** (set_title's action bar types) is chat's (`actionBar`), as on Java, where it comes as a chat
+  message: the title plugin emits nothing for it.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -466,8 +483,9 @@ The server's scoreboard packets act in the packet pass, as Java's; the bot answe
   answered; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
   sent and how a correction acts; the scoreboards: by set_score's layout, one action for the packet's entries
-  1.16.220 – 1.26.30, each entry its own type 1.26.40+). The physics' values are the recorded ones, the same on every version unless a
-  group says otherwise. The workspace's `pnpm test:recorded` replays the recordings themselves.
+  1.16.220 – 1.26.30, each entry its own type 1.26.40+; the titles: by set_title's layout, the type by its number
+  1.16.201, by its name 1.16.210 – 1.17.0, with an xuid 1.17.10 – 1.21.2, with a filtered message 1.21.20+). The
+  physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 
