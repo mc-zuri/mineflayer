@@ -312,10 +312,14 @@ describe('bedrock physics', () => {
     return flagsOf(input).filter(flag => /jump|want_up/.test(flag))
   }
 
+  /** a top slab of smooth stone at (x, y, z) */
+  function topSlabAt (version: BedrockVersion, x: number, y: number, z: number): BlockAt {
+    return [x, y, z, slabOf(version), isBedrockVersionAtLeast(version, 'bedrock_1.20.30') ? { 'minecraft:vertical_half': 'top' } : { top_slot_bit: 1 }]
+  }
+
   /** the recorded walk against a top slab: bottom slabs in the cells at z 136 and top slabs in those at z 138, x -6 to 1 */
   function slabAndTopSlab (version: BedrockVersion): BlockAt[] {
-    const top = isBedrockVersionAtLeast(version, 'bedrock_1.20.30') ? { 'minecraft:vertical_half': 'top' } : { top_slot_bit: 1 }
-    return [-6, -5, -4, -3, -2, -1, 0, 1].flatMap((x): BlockAt[] => [[x, 12, 136, slabOf(version)], [x, 12, 138, slabOf(version), top]])
+    return [-6, -5, -4, -3, -2, -1, 0, 1].flatMap((x): BlockAt[] => [[x, 12, 136, slabOf(version)], topSlabAt(version, x, 12, 138)])
   }
 
   /** the recorded stairs: stone stairs up east at z 165, from (-10, 12) a block higher each block to (-6, 16) */
@@ -378,6 +382,18 @@ describe('bedrock physics', () => {
   function jumpedAgainstTopSlab (y: readonly number[], flags: string[], besides: Besides): AutoJumped {
     return { jumps: [[19, flags]], eyes: offSlab(y), dy: [STANDING_DY, ...JUMP_DY], besides }
   }
+
+  /** forward as against the top slab, bot.autoJump unset after the 19th tick: the 20th and 21st's jump flags and dy, and the feet */
+  async function unsetAgainstTopSlab (version: BedrockVersion): Promise<[string[][], number[], Vec3]> {
+    const testBot = await joined(version, { blocks: slabAndTopSlab(version), feet: { x: -2.5, y: 12, z: 134.5 }, options: { autoJump: true } })
+    for (let i = 0; i < 19; i++) await holding(testBot, ['forward'])
+    testBot.bot.autoJump = false
+    const inputs = [await holding(testBot, ['forward']), await holding(testBot, ['forward'])]
+    return [inputs.map(jumpFlags), inputs.map(input => input.delta.y), testBot.bot.entity.position]
+  }
+
+  /** standing against the top slab, jumping by itself no more */
+  const UNSET_AGAINST_TOP_SLAB = [[[], []], [STANDING_DY, STANDING_DY], new Vec3(-2.5, 12, 137.6999969482422)]
 
   /** the landing move_player of the vanilla client up to 1.20.40, against the top slab */
   function landedOffSlab (y: number): [string, object] {
@@ -474,6 +490,14 @@ describe('bedrock physics', () => {
     }
   })
 
+  describe('servers whose client jumps by itself on its move into the block (1.16.201 – 1.20.80)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.20.80')) {
+      it(`bedrock ${version}: walks on against the top slab without jumping once bot.autoJump is unset before its move into it`, async () => {
+        assert.deepStrictEqual(await unsetAgainstTopSlab(version), UNSET_AGAINST_TOP_SLAB)
+      })
+    }
+  })
+
   describe('servers whose client looks ahead for the auto-jump after its move, jumping on the next tick (1.21.0+)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.21.0')) {
       it(`bedrock ${version}: jumps by itself against the top slab the tick after it landed there, reporting jumping and start_jumping but no jump key, as recorded`, async () => {
@@ -500,6 +524,18 @@ describe('bedrock physics', () => {
         testBot.bot.physicsEnabled = true
         const inputs = [await holding(testBot, ['forward']), await holding(testBot, ['forward'])]
         assert.deepStrictEqual(inputs.map(input => [input.position.y, jumpFlags(input)]), [[STANDING_Y, []], [JUMP_Y[0], ['jumping', 'start_jumping']]])
+      })
+
+      it(`bedrock ${version}: drops the jump asked for by the tick it landed against the top slab once bot.autoJump is unset before the next, walking on against it`, async () => {
+        assert.deepStrictEqual(await unsetAgainstTopSlab(version), UNSET_AGAINST_TOP_SLAB)
+      })
+
+      it(`bedrock ${version}: holds the jump asked for by the tick it landed against the top slab in the answer to a teleport off the ground, reporting jumping but no start_jumping (not recorded)`, async () => {
+        const testBot = await joined(version, { blocks: slabAndTopSlab(version), feet: { x: -2.5, y: 12, z: 134.5 }, options: { autoJump: true } })
+        for (let i = 0; i < 19; i++) await holding(testBot, ['forward'])
+        teleportTo(testBot, eyeOf({ x: -2.5, y: 14, z: 137.6999969482422 }), false)
+        const answer = await holding(testBot, ['forward'])
+        assert.deepStrictEqual([jumpFlags(answer), flagsOf(answer).includes('handled_teleport')], [['jumping'], true])
       })
     }
   })
@@ -659,6 +695,18 @@ describe('bedrock physics', () => {
     return [{ told: inputs.map(startsAndStops), moved: inputs.map(motionOf) }, unechoed.map(motionOf)]
   }
 
+  /**
+   * with the option autoJump on, forward two ticks against stone at (0, 12, 31) with a top slab a block over it (room to
+   * jump onto it sneaking only), then forward and sneak a tick, `echo` sent, and forward two ticks: their auth inputs
+   */
+  async function sneakTappedUnderSlab (version: BedrockVersion, echo: (testBot: TestBot) => void): Promise<[TestBot, AuthInput[]]> {
+    const testBot = await joined(version, { blocks: [[0, 12, 31, 'stone'], topSlabAt(version, 0, 14, 31)], options: { autoJump: true } })
+    const inputs = [await holding(testBot, ['forward']), await holding(testBot, ['forward']), await holding(testBot, ['forward', 'sneak'])]
+    echo(testBot)
+    inputs.push(await holding(testBot, ['forward']), await holding(testBot, ['forward']))
+    return [testBot, inputs]
+  }
+
   /** the player teleported to feet y 32: the auth input answering it, then three falling with `keys` held */
   async function falling (testBot: TestBot, keys: readonly ControlState[]): Promise<AuthInput[]> {
     teleportTo(testBot, eyeOf({ x: 0.5, y: 32, z: 30.5 }), false)
@@ -718,6 +766,19 @@ describe('bedrock physics', () => {
         echo(testBot, { sprinting: false })
         inputs.push(await holding(testBot, ['forward']), await holding(testBot, []))
         assert.deepStrictEqual(inputs.map(startsAndStops), [['start_sprinting'], [], [], []])
+      })
+
+      it(`bedrock ${version}: jumps by itself as its own move does after an echo saying it does not sneak: releasing a sneak against a block it has room to jump onto sneaking only, tells no jump (not recorded)`, async () => {
+        const [, inputs] = await sneakTappedUnderSlab(version, testBot => { echo(testBot, { sneaking: false }) })
+        assert.deepStrictEqual(inputs.map(input => [jumpFlags(input), startsAndStops(input)]), [[[], []], [[], []], [[], ['start_sneaking']], [[], []], [[], []]])
+      })
+
+      it(`bedrock ${version}: jumps by itself against stone on the tick acting on an echo saying it sneaks, telling stop_sneaking again (not recorded)`, async () => {
+        const testBot = await joined(version, { blocks: [[0, 12, 31, 'stone']], feet: { x: 0.5, y: 12, z: 30.625 }, options: { autoJump: true } })
+        const inputs = [await holding(testBot, ['forward'])]
+        echo(testBot, { sneaking: true })
+        inputs.push(await holding(testBot, ['forward']))
+        assert.deepStrictEqual(inputs.map(input => [jumpFlags(input), startsAndStops(input)]), [[[], []], [['jumping', 'start_jumping'], ['stop_sneaking']]])
       })
 
       it(`bedrock ${version}: acts on no echo of another entity, nor on one without the flags`, async () => {
@@ -781,21 +842,29 @@ describe('bedrock physics', () => {
   })
 
   describe('servers echoing the player\'s flags named index, told of a sprint and a sneak by player_action (1.16.201)', () => {
+    /** the echo of the player's flags, as recorded: the sprint is bit 3, the sneak bit 1 */
+    function echoIndex ({ server }: TestBot, flags: bigint): void {
+      server.send('set_entity_data', { runtime_entity_id: 1, metadata: [{ key: 'index', type: 'long', value: flags }], tick: 0n })
+    }
+
     for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.16.201')) {
       it(`bedrock ${version}: sends stop_sprint and stop_sneak again after an echo saying it sprints or sneaks`, async () => {
         const testBot = await joined(version)
-        // as recorded: the sprint is bit 3, the sneak bit 1
-        const echoIndex = (flags: bigint): void => { testBot.server.send('set_entity_data', { runtime_entity_id: 1, metadata: [{ key: 'index', type: 'long', value: flags }], tick: 0n }) }
         const inputs = [await holding(testBot, ['forward', 'sprint']), await holding(testBot, [])]
-        echoIndex(422246825345032n)
+        echoIndex(testBot, 422246825345032n)
         inputs.push(await holding(testBot, []), await holding(testBot, ['sneak']), await holding(testBot, []))
-        echoIndex(422246825345026n)
+        echoIndex(testBot, 422246825345026n)
         inputs.push(await holding(testBot, []))
-        echoIndex(422246825345024n)
+        echoIndex(testBot, 422246825345024n)
         inputs.push(await holding(testBot, []))
         assert.deepStrictEqual(inputs.map(input => besides(testBot, Number(input.tick))), [
           [actionOf('start_sprint')], [actionOf('stop_sprint')], [actionOf('stop_sprint')], [actionOf('start_sneak')], [actionOf('stop_sneak')], [actionOf('stop_sneak')], []
         ])
+      })
+
+      it(`bedrock ${version}: sends no player_action jump after an echo saying it does not sneak, releasing a sneak against a block it has room to jump onto sneaking only (not recorded)`, async () => {
+        const [testBot, inputs] = await sneakTappedUnderSlab(version, testBot => { echoIndex(testBot, 422246825345024n) })
+        assert.deepStrictEqual(inputs.map(input => besides(testBot, Number(input.tick))), [[], [], [actionOf('start_sneak')], [], []])
       })
     }
   })
@@ -966,22 +1035,24 @@ describe('bedrock physics', () => {
       assert.deepStrictEqual(await againstTopSlab(version, {}), { jumps: [], eyes: offSlab(Array(13).fill(STANDING_Y)), dy: Array(13).fill(STANDING_DY), besides: [] })
     })
 
-    it('jumps by itself from the frame after bot.autoJump is set, and not from the frame after it is unset', async () => {
+    it('jumps by itself from the frame after bot.autoJump is set, and stops from the frame after it is unset', async () => {
       const testBot = await joined(version, { blocks: slabAndTopSlab(version), feet: { x: -2.5, y: 12, z: 134.5 } })
       const { bot, server, driver } = testBot
       for (let i = 0; i < 20; i++) await holding(testBot, ['forward'])
-      let read: boolean | undefined
-      // set in the first tick of a frame of two: the second does not look ahead yet
-      bot.once('physicsTick', () => {
-        bot.autoJump = true
-        read = bot.autoJump
-      })
-      await driver.frame(100)
-      const inputs = [server.authInput(tickOf(testBot) - 1), server.authInput(tickOf(testBot))]
-      inputs.push(await holding(testBot, ['forward']), await holding(testBot, ['forward']))
-      bot.autoJump = false
-      for (let i = 0; i < 16; i++) inputs.push(await holding(testBot, ['forward']))
-      assert.deepStrictEqual([read, bot.autoJump, inputs.flatMap((input, tick) => jumpFlags(input).length > 0 ? [tick] : [])], [true, false, [3]])
+      const read: boolean[] = []
+      /** a frame of two ticks, forward held, bot.autoJump set to `autoJump` in its first: their auth inputs */
+      const frame = async (autoJump: boolean): Promise<AuthInput[]> => {
+        bot.once('physicsTick', () => {
+          bot.autoJump = autoJump
+          read.push(bot.autoJump)
+        })
+        await driver.frame(100)
+        return [server.authInput(tickOf(testBot) - 1), server.authInput(tickOf(testBot))]
+      }
+      // set, the frame's second tick does not look ahead yet; unset in the next frame's first, which looks ahead, its second still jumps
+      const inputs = [...await frame(true), ...await frame(false)]
+      for (let i = 0; i < 12; i++) inputs.push(await holding(testBot, ['forward']))
+      assert.deepStrictEqual([read, bot.autoJump, inputs.flatMap((input, tick) => jumpFlags(input).length > 0 ? [tick] : [])], [[true, false], false, [3]])
     })
 
     it('holds the player from the start with the option physicsEnabled false', async () => {

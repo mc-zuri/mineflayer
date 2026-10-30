@@ -306,16 +306,18 @@ gives `start_sprinting` again; a sprint a wall stopped, echoed as sprinting, is 
 It moves as its own last tick left it, though: in its pose (an echo resizes nothing) and as fast as its sprint was. The
 bot does so with the last echo before a tick that differs from the player's flags (that tick starts the ring again, see
 corrections): the tick's starts and stops, and whether it sprints after it, follow the echoed flags; its move follows
-the player's own. So, though not recorded, a sprint the sprint key no longer holds ends on an echo saying it does not
-sprint. An echo without the flags changes nothing (minecraft-data names them `index` on 1.16.201). From 1.21.70 the
-server stamps the echo with a tick; recorded, it always agrees with the player's flags when it arrives, and the bot
-ignores it.
+the player's own, and so does a jump the auto-jump starts in it (see below). So, though not recorded, a sprint the
+sprint key no longer holds ends on an echo saying it does not sprint; and released from a sneak against a block it has
+room to jump onto sneaking only, the player does not jump by itself, whatever the echo says of its sneak. An echo
+without the flags changes nothing (minecraft-data names them `index` on 1.16.201). From 1.21.70 the server stamps the
+echo with a tick; recorded, it always agrees with the player's flags when it arrives, and the bot ignores it.
 
 **The auto-jump.** `bot.autoJump = true` (or the option `autoJump: true`) makes the player jump by itself onto a block
 in its way, as the vanilla client's auto-jump does: walking on the ground, not sneaking, into a block too high to step
 onto and low enough to jump onto (prismarine-physics' README tells the rule). It is off unless set, though the vanilla
 client's is on by default: a Java bot does not jump by itself, and a bot following a path must not be surprised by a
-jump it did not ask for. Set, it acts from the next frame; a tick played again jumps as it did.
+jump it did not ask for. Set or unset, it acts from the next frame: unset, it drops a jump the look ahead (from 1.21.0)
+asked for in the tick before, as a held tick does. A tick played again jumps as it did.
 
 | Versions | The auto-jump jumps |
 | --- | --- |
@@ -429,10 +431,10 @@ Dimension changes are not followed yet: the world stays in start_game's dimensio
   1.20.50; the world: by how a column comes, a block changes and the dimension is named; the corrections: by the
   ring's size, the correction's shape, the movement authority, how the velocity is set and the player respawned; the
   local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
-  answered; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when a
-  sprint speeds the player, which collisions are reported, how a column comes, and how a correction acts). The
-  physics' values are the recorded ones, the same on every version unless a group says otherwise. The workspace's
-  `pnpm test:recorded` replays the recordings themselves.
+  answered; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
+  auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
+  sent and how a correction acts). The physics' values are the recorded ones, the same on every version unless a
+  group says otherwise. The workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
 

@@ -368,15 +368,17 @@ export class LocalPlayer {
   }
 
   /**
-   * the physics' tick; after an echo the vanilla client starts and stops the sprint and the sneak from the echoed flags,
-   * and sprints as they lead to, but moves as its last tick left it: in its pose, as fast as its sprint was
+   * the physics' tick, which with the auto-jump off drops a jump the last tick's look ahead asked for; after an echo the
+   * vanilla client starts and stops the sprint and the sneak from the echoed flags, and sprints as they lead to, but
+   * moves as its last tick left it: in its pose, as fast as its sprint was, jumping by itself as that move does
    */
   private physics (before: MovementState, input: TickInput, echoed: Echoed | undefined): TickResult {
-    const world = this.bot._world.physicsWorld(before.position.y)
-    const moved = simulateTick(before, input, world, this.rules)
+    const start = input.autoJump ? before : { ...before, autoJumpNext: false }
+    const world = this.bot._world.physicsWorld(start.position.y)
+    const moved = simulateTick(start, input, world, this.rules)
     if (echoed === undefined) return moved
-    const told = simulateTick({ ...before, ...echoed }, input, world, this.rules)
-    return { state: { ...moved.state, sprinting: told.state.sprinting }, actions: told.actions }
+    const told = simulateTick({ ...start, ...echoed }, input, world, this.rules)
+    return { state: { ...moved.state, sprinting: told.state.sprinting }, actions: { ...told.actions, startJumping: moved.actions.startJumping } }
   }
 
   private recordedInput (tick: number): MovementInput {
