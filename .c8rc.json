@@ -1,5 +1,5 @@
 {
-  "include": ["lib/bedrock/core/**/*.ts"],
+  "include": ["lib/bedrock/**/*.ts"],
   "exclude": ["lib/bedrock/core/types.ts"],
   "all": true,
   "reporter": ["text"],

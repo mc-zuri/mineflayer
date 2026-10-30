@@ -78,6 +78,8 @@ export interface BedrockBotOptions {
   raknetBackend?: 'raknet-native' | 'jsp-raknet'
   /** ms @default 9000 */
   connectTimeout?: number
+  /** the chunk radius asked of the server @default 8, from 1.21.90 12 (the vanilla client's) */
+  viewDistance?: number
 }
 
 export interface BedrockPluginOptions {
@@ -86,7 +88,7 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end'>
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick'>
 
 export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   username: string

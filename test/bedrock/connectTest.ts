@@ -9,7 +9,9 @@ import { bedrockProtocolVersionOf } from '../../lib/bedrock/version.ts'
 import { once } from '../../lib/promise_utils.ts'
 import { bedrockCodec } from './common/codec.ts'
 import type { BedrockCodec } from './common/codec.ts'
-import { bedrockTestBot, bedrockTestVersions, bedrockTestVersionsFrom } from './common/server.ts'
+import { bedrockTestBot, bedrockTestVersions, bedrockTestVersionsFrom, FakeBedrockClient } from './common/server.ts'
+import { createBedrockBot } from '../../lib/bedrock/loader.ts'
+import type { BedrockCore } from '../../lib/bedrock/core/core.ts'
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
 type Expect<Check extends true> = Check
@@ -89,6 +91,67 @@ describe('bedrock connection', () => {
     })
   })
 
+  it('injects its plugins as they load, and emits inject_allowed in its first frame', () => {
+    const events: string[] = []
+    const server = new FakeBedrockClient(bedrockCodec(mineflayer.latestSupportedBedrockVersion))
+    let core: BedrockCore | undefined
+    const bot = createBedrockBot({ version: mineflayer.latestSupportedBedrockVersion, plugins: { mine: () => { events.push('plugin') } } }, {
+      connect: inbox => server.connect(inbox),
+      drive: bedrockCore => { core = bedrockCore }
+    })
+    bot.on('inject_allowed', () => { events.push('inject_allowed') })
+    const later = (): void => { events.push('later plugin') }
+    bot.loadPlugin(later)
+    bot.loadPlugin(later)
+    assert.ok(bot.hasPlugin(later))
+    assert.deepStrictEqual(events, ['plugin', 'later plugin'])
+    core?.stepFrame(0)
+    core?.stepFrame(0)
+    assert.deepStrictEqual(events, ['plugin', 'later plugin', 'inject_allowed'])
+  })
+
+  it('loads its time plugin unless told not to, or given another', async () => {
+    const codec = bedrockCodec(mineflayer.latestSupportedBedrockVersion)
+    const withTime = await bedrockTestBot(codec)
+    const withoutTime = await bedrockTestBot(codec, { plugins: { time: false } })
+    const withoutInternal = await bedrockTestBot(codec, { loadInternalPlugins: false })
+    let replaced = false
+    const withOtherTime = await bedrockTestBot(codec, { plugins: { time: () => { replaced = true } } })
+    assert.deepStrictEqual([withTime, withoutTime, withoutInternal, withOtherTime].map(({ bot }) => bot.time !== undefined), [true, false, false, false])
+    assert.strictEqual(replaced, true)
+  })
+
+  it('ends each tick with physicsTick (and its old name physicTick), from start_game on', async () => {
+    const { bot, server, driver } = await bedrockTestBot(bedrockCodec(mineflayer.latestSupportedBedrockVersion))
+    const ticks: string[] = []
+    bot.on('physicsTick', () => { ticks.push('physicsTick') })
+    bot.on('physicTick', () => { ticks.push('physicTick') })
+    await driver.tick()
+    assert.deepStrictEqual(ticks, [])
+    server.send('start_game', { runtime_entity_id: 1n })
+    await driver.frame(0)
+    await driver.ticks(2)
+    assert.deepStrictEqual(ticks, ['physicsTick', 'physicTick', 'physicsTick', 'physicTick'])
+    bot.end()
+  })
+
+  it('logs its errors, unless they are hidden', async () => {
+    const logged: string[] = []
+    const log = console.log
+    console.log = (error: Error) => { logged.push(error.message) }
+    try {
+      for (const hideErrors of [false, true]) {
+        const { internal, driver } = await bedrockTestBot(bedrockCodec(mineflayer.latestSupportedBedrockVersion), { hideErrors })
+        internal._core.inbox.notice({ kind: 'error', error: new Error(`hidden: ${hideErrors}`) }, driver.now)
+        await driver.frame(0)
+        internal.end()
+      }
+    } finally {
+      console.log = log
+    }
+    assert.deepStrictEqual(logged, ['hidden: false'])
+  })
+
   for (const version of bedrockTestVersions()) {
     describe(`bedrock ${version}`, () => {
       let codec: BedrockCodec
@@ -105,66 +168,82 @@ describe('bedrock connection', () => {
         bot.end()
       })
 
-      it('logs in on start_game and spawns on play_status player_spawn', async () => {
-        const { bot, server } = await bedrockTestBot(codec)
+      it('logs in on start_game and spawns on play_status player_spawn, in the packet pass', async () => {
+        const { bot, server, driver } = await bedrockTestBot(codec)
         const events: string[] = []
         bot.on('login', () => { events.push('login') })
         bot.on('spawn', () => { events.push('spawn') })
         server.send('start_game', { runtime_entity_id: 7n })
         server.send('play_status', { status: 'player_spawn' })
+        assert.deepStrictEqual(events, [])
+        await driver.frame(0)
         assert.deepStrictEqual(events, ['login', 'spawn'])
-        // written by bedrock-protocol, not by the bot
-        assert.deepStrictEqual(server.sent, [{ name: 'set_local_player_as_initialized', params: { runtime_entity_id: 7n } }])
+        assert.deepStrictEqual(server.sent.filter(packet => packet.name === 'set_local_player_as_initialized'), [
+          { name: 'set_local_player_as_initialized', params: { runtime_entity_id: 7n } }
+        ])
         bot.end()
       })
 
       it('is kicked by a disconnect packet, then ends with its message', async () => {
-        const { bot, server } = await bedrockTestBot(codec)
+        const { bot, server, driver } = await bedrockTestBot(codec)
         server.send('start_game', { runtime_entity_id: 1n })
         const kicked = once(bot, 'kicked')
         const ended = once(bot, 'end')
         server.send('disconnect', { hide_disconnect_reason: false, message: 'kicked by the test' })
+        await driver.frame(0)
         assert.deepStrictEqual(await kicked, ['kicked by the test', true])
         assert.deepStrictEqual(await ended, ['kicked by the test'])
       })
 
       it('is kicked before logging in', async () => {
-        const { bot, server } = await bedrockTestBot(codec)
+        const { bot, server, driver } = await bedrockTestBot(codec)
         const kicked = once(bot, 'kicked')
         server.send('disconnect', { hide_disconnect_reason: false, message: 'outdated' })
+        await driver.frame(0)
         assert.deepStrictEqual(await kicked, ['outdated', false])
       })
 
-      it('ends when bot.end() closes the connection', async () => {
-        const { bot, server } = await bedrockTestBot(codec)
+      it('ends when bot.end() closed the connection', async () => {
+        const { bot, server, driver } = await bedrockTestBot(codec)
         const ended = once(bot, 'end')
         bot.end('done')
-        assert.deepStrictEqual(await ended, ['done'])
         assert.strictEqual(server.closed, true)
-        assert.doesNotThrow(() => bot.end())
+        await driver.frame(0)
+        assert.deepStrictEqual(await ended, ['done'])
+        assert.doesNotThrow(() => { bot.end() })
       })
 
       it('ends after the connection closed, and after the event being handled', async () => {
-        const { bot, server } = await bedrockTestBot(codec)
+        const { bot, server, driver } = await bedrockTestBot(codec)
         const events: string[] = []
         bot.once('login', () => {
           events.push('quit on login')
           bot.quit()
         })
         bot.once('login', () => { events.push('login') })
-        const ended = once(bot, 'end')
         bot.on('end', () => { events.push('end') })
         server.send('start_game', { current_tick: 1n })
+        await driver.frame(0)
         assert.strictEqual(server.closed, true)
         assert.deepStrictEqual(events, ['quit on login', 'login'])
-        await ended
+        await driver.frame(0)
         assert.deepStrictEqual(events, ['quit on login', 'login', 'end'])
       })
 
+      it('ends with the first reason it was given', async () => {
+        const { bot, driver } = await bedrockTestBot(codec)
+        const ended = once(bot, 'end')
+        bot.end('first')
+        bot.end('second')
+        await driver.frame(0)
+        assert.deepStrictEqual(await ended, ['first'])
+      })
+
       it('quits', async () => {
-        const { bot } = await bedrockTestBot(codec)
+        const { bot, driver } = await bedrockTestBot(codec)
         const ended = once(bot, 'end')
         bot.quit()
+        await driver.frame(0)
         assert.deepStrictEqual(await ended, ['disconnect.quitting'])
       })
     })
@@ -173,9 +252,10 @@ describe('bedrock connection', () => {
   describe('servers that can hide the message of a kick (1.21.20+)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.21.20')) {
       it(`bedrock ${version}: is kicked with the kick's reason`, async () => {
-        const { bot, server } = await bedrockTestBot(bedrockCodec(version))
+        const { bot, server, driver } = await bedrockTestBot(bedrockCodec(version))
         const kicked = once(bot, 'kicked')
         server.send('disconnect', { hide_disconnect_reason: true, reason: 'version_mismatch', message: undefined, filtered_message: undefined })
+        await driver.frame(0)
         assert.deepStrictEqual(await kicked, ['version_mismatch', false])
       })
     }

@@ -1,6 +1,6 @@
 import type { BedrockVersion } from '../types/api/index.ts'
 
-const testedBedrockVersions: readonly [BedrockVersion, ...BedrockVersion[]] = [
+const testedBedrockVersions: readonly [BedrockVersion, ...BedrockVersion[]] = Object.freeze([
   'bedrock_1.16.201', 'bedrock_1.16.210', 'bedrock_1.16.220', 'bedrock_1.17.0', 'bedrock_1.17.10', 'bedrock_1.17.30',
   'bedrock_1.17.40', 'bedrock_1.18.0', 'bedrock_1.18.11', 'bedrock_1.18.30', 'bedrock_1.19.1', 'bedrock_1.19.10',
   'bedrock_1.19.20', 'bedrock_1.19.21', 'bedrock_1.19.30', 'bedrock_1.19.40', 'bedrock_1.19.50', 'bedrock_1.19.60',
@@ -11,7 +11,7 @@ const testedBedrockVersions: readonly [BedrockVersion, ...BedrockVersion[]] = [
   'bedrock_1.21.100', 'bedrock_1.21.111', 'bedrock_1.21.120', 'bedrock_1.21.124', 'bedrock_1.21.130', 'bedrock_1.26.0',
   'bedrock_1.26.10', 'bedrock_1.26.20', 'bedrock_1.26.30', 'bedrock_1.26.40', 'bedrock_1.26.45', 'bedrock_1.26.51',
   'bedrock_1.26.60'
-]
+])
 const oldestSupportedBedrockVersion = testedBedrockVersions[0]
 const latestSupportedBedrockVersion = testedBedrockVersions[testedBedrockVersions.length - 1]!
 
@@ -23,8 +23,15 @@ function isSupportedBedrockVersion (version: BedrockVersion): boolean {
   return testedBedrockVersions.includes(version)
 }
 
+/** whether `version` is `since` or later; `since` must be a supported version */
+function isBedrockVersionAtLeast (version: BedrockVersion, since: BedrockVersion): boolean {
+  const index = testedBedrockVersions.indexOf(since)
+  if (index < 0) throw new Error(`${since} is not a supported Bedrock version`)
+  return testedBedrockVersions.indexOf(version) >= index
+}
+
 function bedrockProtocolVersionOf (version: BedrockVersion): string {
   return version.slice('bedrock_'.length)
 }
 
-export { testedBedrockVersions, oldestSupportedBedrockVersion, latestSupportedBedrockVersion, isBedrockVersion, isSupportedBedrockVersion, bedrockProtocolVersionOf }
+export { testedBedrockVersions, oldestSupportedBedrockVersion, latestSupportedBedrockVersion, isBedrockVersion, isSupportedBedrockVersion, isBedrockVersionAtLeast, bedrockProtocolVersionOf }

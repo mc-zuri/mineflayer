@@ -1,6 +1,6 @@
 import assert from 'assert'
 import minecraftData from 'minecraft-data'
-import { testedBedrockVersions, oldestSupportedBedrockVersion, latestSupportedBedrockVersion, isBedrockVersion, isSupportedBedrockVersion, bedrockProtocolVersionOf } from '../../lib/bedrock/version.ts'
+import { testedBedrockVersions, oldestSupportedBedrockVersion, latestSupportedBedrockVersion, isBedrockVersion, isSupportedBedrockVersion, isBedrockVersionAtLeast, bedrockProtocolVersionOf } from '../../lib/bedrock/version.ts'
 import type { BedrockVersion } from '../../lib/types/api/index.ts'
 
 describe('bedrock version', () => {
@@ -36,5 +36,12 @@ describe('bedrock version', () => {
 
   it('names a version as bedrock-protocol does, without the prefix', () => {
     assert.strictEqual(bedrockProtocolVersionOf('bedrock_1.21.130'), '1.21.130')
+  })
+
+  it('orders versions as releases, not as text', () => {
+    assert.strictEqual(isBedrockVersionAtLeast('bedrock_1.21.100', 'bedrock_1.21.93'), true)
+    assert.strictEqual(isBedrockVersionAtLeast('bedrock_1.21.93', 'bedrock_1.21.100'), false)
+    assert.strictEqual(isBedrockVersionAtLeast('bedrock_1.21.20', 'bedrock_1.21.20'), true)
+    assert.throws(() => isBedrockVersionAtLeast('bedrock_1.21.20', 'bedrock_1.21.21'), { message: 'bedrock_1.21.21 is not a supported Bedrock version' })
   })
 })

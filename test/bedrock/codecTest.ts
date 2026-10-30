@@ -54,36 +54,25 @@ describe('bedrock codec', () => {
       roundTrip(codec, 'respawn', { ...respawn, position: { x: 0.5, y: 64, z: -0.25 } })
     })
 
-    it("the fake client's player_spawn, as bedrock-protocol's Client: the first only", () => {
-      const client = new FakeBedrockClient(codec)
-      let spawns = 0
-      client.on('spawn', () => { spawns++ })
-      client.send('start_game', { runtime_entity_id: 7n })
-      client.send('play_status', { status: 'player_spawn' })
-      client.send('play_status', { status: 'player_spawn' })
-      assert.strictEqual(spawns, 1)
-      assert.deepStrictEqual(client.sent, [{ name: 'set_local_player_as_initialized', params: { runtime_entity_id: 7n } }])
-    })
-
-    it("the fake client's player_spawn before start_game, as bedrock-protocol's Client: initialized on start_game", () => {
-      const client = new FakeBedrockClient(codec)
-      let spawns = 0
-      client.on('spawn', () => { spawns++ })
-      client.send('play_status', { status: 'player_spawn' })
-      assert.strictEqual(spawns, 1)
-      assert.deepStrictEqual(client.sent, [])
-      client.send('start_game', { runtime_entity_id: 7n })
-      assert.deepStrictEqual(client.sent, [{ name: 'set_local_player_as_initialized', params: { runtime_entity_id: 7n } }])
-    })
-
-    it('what the fake client writes and sends', () => {
-      const client = new FakeBedrockClient(codec)
+    it('what the bot flushes and the fake server sends', () => {
+      const server = new FakeBedrockClient(codec)
+      const packet = { order: 1, name: 'set_local_player_as_initialized' as const, phase: 'F2' as const, tick: undefined, owner: 'test' }
       // varint64 writes a number, but reads back a bigint
-      assert.throws(() => client.write('set_local_player_as_initialized', { runtime_entity_id: 5 }), READ_BACK)
+      assert.throws(() => { server.flush([{ ...packet, params: { runtime_entity_id: 5 } }]) }, READ_BACK)
+      server.connect({ packet: () => {}, notice: () => {} })
       // @ts-expect-error a mapper name the version does not have: the types already say so
-      assert.throws(() => client.send('play_status', { status: 'spawned' }), READ_BACK)
-      client.write('set_local_player_as_initialized', { runtime_entity_id: 1n })
-      assert.deepStrictEqual(client.sent, [{ name: 'set_local_player_as_initialized', params: { runtime_entity_id: 1n } }])
+      assert.throws(() => { server.send('play_status', { status: 'spawned' }) }, READ_BACK)
+      server.flush([{ ...packet, params: { runtime_entity_id: 1n } }])
+      assert.deepStrictEqual(server.sent, [{ name: 'set_local_player_as_initialized', params: { runtime_entity_id: 1n } }])
+    })
+
+    it('what the fake server sends to no bot, or to a closed connection', () => {
+      const server = new FakeBedrockClient(codec)
+      assert.throws(() => { server.send('set_time', { time: 1 }) }, { message: 'no bot is connected' })
+      server.connect({ packet: () => {}, notice: () => {} })
+      server.close()
+      server.close()
+      assert.throws(() => { server.send('set_time', { time: 1 }) }, { message: 'bedrock_1.21.130: set_time sent to a closed connection' })
     })
   })
 

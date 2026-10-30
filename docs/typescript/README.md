@@ -63,8 +63,9 @@ the status:
 - `lib/types/bedrock-internal.ts`: `BedrockBotInternal`, the Bedrock plugins' view of the bot.
 - `lib/types/protocol/Bedrock.d.ts`: the packets of every Bedrock version mineflayer connects to, merged as the Java
   ones (`pnpm gen:bedrock-types` in the workspace).
-- `lib/types/protocol/bedrock-client.ts`: `BedrockClient`, bedrock-protocol's client typed by those packets, with no
-  catch-all overload.
+- `lib/types/protocol/bedrock-client.ts`: those packets by name, as read and as written, with no catch-all name (the
+  core's handlers and outbox take them).
+- `lib/types/vendor/bedrock-protocol-client.d.ts`: what bedrock-protocol's `Client` has beyond its typings.
 
 ## Known limitations
 

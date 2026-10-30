@@ -101,8 +101,10 @@ types the thing itself; each is a candidate for a fix upstream.
 | minecraft-protocol | no `connect_allowed` event, no `wait_connect` | autoVersion sets `wait_connect` and emits `connect_allowed` once it knows the server's version | `TypedClient` |
 | minecraft-protocol | `createClient(options)` takes a string `version` | it sets `version: false` itself when none is given (ask the server for its version), and takes it | `lib/types/vendor/minecraft-protocol.d.ts` |
 | minecraft-protocol | `on(event: string, ...)` takes any event name | only the packets of the client's version, and its own events | `TypedClient` (no catch-all) |
-| bedrock-protocol | `Client` has no event typings (EventEmitter's), `write` / `queue` take `(name: string, params: object)` | a packet event per packet of the client's version (its listener gets the params), `write` / `queue` a packet of it | `BedrockClient` (no catch-all) |
-| bedrock-protocol | `Client.close(reason?: string)` | `close()` takes no reason | `BedrockClient` |
+| bedrock-protocol | `Client` has no event typings (EventEmitter's) | `packet` (every packet, parsed), `status`, `connect_allowed`, `close`, `error`, and an event per packet of the client's version | `lib/types/vendor/bedrock-protocol-client.d.ts` (the events the bot listens to) |
+| bedrock-protocol | `Client` has no `init`, `connect`, `onTick` or `serializer` | `new Client({ delayedInit: true })`, then `init()` (emits `connect_allowed`) and `connect()`; `onTick()` sends what `sendBuffer` queued as one batch; `serializer.createPacketBuffer` writes a packet | `lib/types/vendor/bedrock-protocol-client.d.ts` |
+| bedrock-protocol | `new Client(options: Options)`: no `username`, `connectTimeout`, `conLog`, `delayedInit`, `autoInitPlayer` | it takes them (`ClientOptions` has the first three, for `createClient`) | `lib/types/vendor/bedrock-protocol-client.d.ts` |
+| bedrock-protocol | `Client.close(reason?: string)` | `close()` takes no reason | |
 | bedrock-protocol | no typings for `src/transforms/serializer.js` | `createSerializer` / `createDeserializer` of a version | `lib/types/vendor/bedrock-protocol-serializer.d.ts` |
 | bedrock-protocol | `ServerAdvertisement.protocol: number` (what `ping` resolves with) | a string | |
 | bedrock-protocol | `ClientStatus` is `Disconnected, Authenticating, Initializing, Initialized` | it has `Connecting` after `Disconnected`, so the typings' numbers are off by one from `Authenticating` on | |

@@ -3,6 +3,7 @@ import { latestSupportedBedrockVersion, testedBedrockVersions } from '../../lib/
 import type { BedrockBot, BedrockVersion, Time, TimeNotSynced } from '../../lib/types/api/index.ts'
 import { bedrockCodec } from './common/codec.ts'
 import type { BedrockCodec } from './common/codec.ts'
+import type { ManualDriver } from './common/driver.ts'
 import { bedrockTestBot, bedrockTestVersionsFrom } from './common/server.ts'
 import type { FakeBedrockClient } from './common/server.ts'
 
@@ -23,15 +24,20 @@ function noon (age: bigint, doDaylightCycle: boolean): Time {
   return { doDaylightCycle, bigTime: 6000n, time: 6000, timeOfDay: 6000, day: 0, isDay: true, moonPhase: 0, bigAge: age, age: Number(age) }
 }
 
-/** the states bot.time goes through while the packets are handled: [time, doDaylightCycle] */
-function timeStates (bot: BedrockBot, handle: () => void): Array<[number | null, boolean | null]> {
+/** the states bot.time goes through while the packets are handled in a frame: [time, doDaylightCycle] */
+async function timeStates (bot: BedrockBot, driver: ManualDriver, send: () => void): Promise<Array<[number | null, boolean | null]>> {
   const states: Array<[number | null, boolean | null]> = []
   bot.on('time', () => {
     const last = states[states.length - 1]
     if (last?.[0] !== bot.time.time || last[1] !== bot.time.doDaylightCycle) states.push([bot.time.time, bot.time.doDaylightCycle])
   })
-  handle()
+  send()
+  await driver.frame(0)
   return states
+}
+
+function sentByTime (server: FakeBedrockClient): string[] {
+  return server.batches.flat().filter(packet => packet.owner === 'time').map(packet => packet.name)
 }
 
 function receive (server: FakeBedrockClient, ...hex: string[]): void {
@@ -77,25 +83,28 @@ describe('bedrock time', () => {
         before(() => { codec = bedrockCodec(version) })
 
         it('has the time once the login brought both it and the age', async () => {
-          const { bot, server } = await bedrockTestBot(codec)
+          const { bot, server, driver } = await bedrockTestBot(codec)
           let times = 0
           bot.on('time', () => { times++ })
           const time = (): Time | TimeNotSynced => bot.time
           receive(server, SET_TIME.noon)
+          await driver.frame(0)
           assert.strictEqual(time().time, null)
           server.send('start_game', { current_tick: 4304n, gamerules: [daylightCycle(version, false)] })
+          await driver.frame(0)
           assert.deepStrictEqual(time(), noon(4304n, false))
           receive(server, SET_TIME.noon)
           server.send('game_rules_changed', { rules: [daylightCycle(version, false)] })
+          await driver.frame(0)
           assert.deepStrictEqual(time(), noon(4304n, false))
           assert.strictEqual(times, 3)
-          assert.deepStrictEqual(server.sent, [])
+          assert.deepStrictEqual(sentByTime(server), [])
           bot.end()
         })
 
         it('follows time set and gamerule dodaylightcycle', async () => {
-          const { bot, server } = await bedrockTestBot(codec)
-          const states = timeStates(bot, () => {
+          const { bot, server, driver } = await bedrockTestBot(codec)
+          const states = await timeStates(bot, driver, () => {
             receive(server, SET_TIME.noon)
             server.send('start_game', { current_tick: 11055n, gamerules: [daylightCycle(version, false)] })
             receive(server, SET_TIME[1000], SET_TIME[1500], SET_TIME.noon)
@@ -112,15 +121,17 @@ describe('bedrock time', () => {
     }
   })
 
-  describe('servers answering tick_sync, which bedrock-protocol sends up to 1.20.80', () => {
-    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.20.80')) {
+  describe('servers answering the tick_sync the bot sends on start_game, up to 1.20.50', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.20.50')) {
       it(`bedrock ${version}: takes the age of the answer, without a time event`, async () => {
-        const { bot, server } = await bedrockTestBot(bedrockCodec(version))
+        const { bot, server, driver } = await bedrockTestBot(bedrockCodec(version))
         server.send('start_game', { current_tick: 4304n })
         receive(server, SET_TIME.noon)
+        await driver.frame(0)
         let times = 0
         bot.on('time', () => { times++ })
         receive(server, '170000000000000000da10000000000000')
+        await driver.frame(0)
         assert.strictEqual(bot.time.age, 4314)
         assert.strictEqual(times, 0)
         bot.end()
@@ -135,23 +146,26 @@ describe('bedrock time', () => {
         before(() => { codec = bedrockCodec(version) })
 
         it("has the overworld clock's time once the login brought both it and the age, before the clocks are named", async () => {
-          const { bot, server } = await bedrockTestBot(codec)
+          const { bot, server, driver } = await bedrockTestBot(codec)
           const time = (): Time | TimeNotSynced => bot.time
           receive(server, CLOCK_STATE.noon)
+          await driver.frame(0)
           assert.strictEqual(time().time, null)
           server.send('start_game', { current_tick: 18781n, gamerules: [daylightCycle(version, false)] })
+          await driver.frame(0)
           assert.deepStrictEqual(time(), noon(18781n, false))
           server.send('sync_world_clocks', { payload_type: 'initialize_registry', sync_states: undefined, clocks: [OVERWORLD_CLOCK] })
           server.send('game_rules_changed', { rules: [daylightCycle(version, false)] })
           receive(server, CLOCK_STATE.noon)
+          await driver.frame(0)
           assert.deepStrictEqual(time(), noon(18781n, false))
-          assert.deepStrictEqual(server.sent, [])
+          assert.deepStrictEqual(sentByTime(server), [])
           bot.end()
         })
 
         it('follows time set and gamerule dodaylightcycle: the clock is not paused when the game rule stops the day', async () => {
-          const { bot, server } = await bedrockTestBot(codec)
-          const states = timeStates(bot, () => {
+          const { bot, server, driver } = await bedrockTestBot(codec)
+          const states = await timeStates(bot, driver, () => {
             receive(server, CLOCK_STATE.noon)
             server.send('start_game', { current_tick: 5711n, gamerules: [daylightCycle(version, false)] })
             server.send('sync_world_clocks', { payload_type: 'initialize_registry', sync_states: undefined, clocks: [OVERWORLD_CLOCK] })
@@ -166,23 +180,26 @@ describe('bedrock time', () => {
         })
 
         it('stops the day while the clock is paused', async () => {
-          const { bot, server } = await bedrockTestBot(codec)
+          const { bot, server, driver } = await bedrockTestBot(codec)
           server.send('start_game', { current_tick: 1n, gamerules: [daylightCycle(version, true)] })
           server.send('sync_world_clocks', { payload_type: 'initialize_registry', sync_states: undefined, clocks: [OVERWORLD_CLOCK] })
+          await driver.frame(0)
           assert.strictEqual(bot.time.doDaylightCycle, true)
           server.send('sync_world_clocks', { payload_type: 'sync_state', sync_states: [{ clock_id: OVERWORLD_CLOCK_ID, time: 6000, paused: true }] })
+          await driver.frame(0)
           assert.strictEqual(bot.time.doDaylightCycle, false)
           bot.end()
         })
 
         it('takes the overworld clock among the named ones', async () => {
-          const { bot, server } = await bedrockTestBot(codec)
+          const { bot, server, driver } = await bedrockTestBot(codec)
           server.send('start_game', { current_tick: 1n })
           server.send('sync_world_clocks', {
             payload_type: 'initialize_registry',
             sync_states: undefined,
             clocks: [{ id: 3n, name: 'minecraft:the_end', time: 0, paused: true, time_markers: [] }, { ...OVERWORLD_CLOCK, time: 30000 }]
           })
+          await driver.frame(0)
           assert.strictEqual(bot.time.time, 30000)
           bot.end()
         })
@@ -203,21 +220,72 @@ describe('bedrock time', () => {
     })
 
     it('reads an age whose low word is 2^31 or more (negative as [high, low] has it)', async () => {
-      const { bot, server } = await bedrockTestBot(codec)
+      const { bot, server, driver } = await bedrockTestBot(codec)
       server.send('start_game', { current_tick: 0x1_8000_0001n })
       receive(server, SET_TIME.noon)
+      await driver.frame(0)
       assert.strictEqual(bot.time.bigAge, 0x1_8000_0001n)
       bot.end()
     })
 
     it('knows night and the moon phase', async () => {
-      const { bot, server } = await bedrockTestBot(codec)
+      const { bot, server, driver } = await bedrockTestBot(codec)
       server.send('start_game', { current_tick: 1n })
       server.send('sync_world_clocks', { payload_type: 'initialize_registry', sync_states: undefined, clocks: [{ ...OVERWORLD_CLOCK, time: 13000 + 3 * 24000 }] })
+      await driver.frame(0)
       assert.strictEqual(bot.time.timeOfDay, 13000)
       assert.strictEqual(bot.time.day, 3)
       assert.strictEqual(bot.time.isDay, false)
       assert.strictEqual(bot.time.moonPhase, 3)
+      bot.end()
+    })
+
+    it('advances the age every tick, and the time while the day goes on, without a time event', async () => {
+      const { bot, server, driver } = await bedrockTestBot(codec)
+      server.send('start_game', { current_tick: 100n, gamerules: [daylightCycle(latestSupportedBedrockVersion, true)] })
+      server.send('sync_world_clocks', { payload_type: 'initialize_registry', sync_states: undefined, clocks: [OVERWORLD_CLOCK] })
+      await driver.frame(0)
+      let times = 0
+      bot.on('time', () => { times++ })
+      await driver.ticks(3)
+      assert.deepStrictEqual([bot.time.age, bot.time.time], [103, 6003])
+      server.send('game_rules_changed', { rules: [daylightCycle(latestSupportedBedrockVersion, false)] })
+      await driver.frame(0)
+      await driver.ticks(2)
+      assert.deepStrictEqual([bot.time.age, bot.time.time, times], [105, 6003, 1])
+      bot.end()
+    })
+
+    it("takes no time from a clock it cannot tell is the overworld's", async () => {
+      const { bot, server, driver } = await bedrockTestBot(codec)
+      server.send('start_game', { current_tick: 1n })
+      server.send('sync_world_clocks', { payload_type: 'sync_state', sync_states: [{ clock_id: 3n, time: 1, paused: false }, { clock_id: 4n, time: 2, paused: false }] })
+      await driver.frame(0)
+      assert.strictEqual(bot.time.time, null)
+      bot.end()
+    })
+
+    it("ignores what does not change the time: other game rules, clock markers, a tick_sync without the server's tick", async () => {
+      const { bot, server, driver } = await bedrockTestBot(codec)
+      server.send('start_game', { current_tick: 7n, gamerules: [daylightCycle(latestSupportedBedrockVersion, false)] })
+      server.send('sync_world_clocks', { payload_type: 'initialize_registry', sync_states: undefined, clocks: [OVERWORLD_CLOCK] })
+      await driver.frame(0)
+      let times = 0
+      bot.on('time', () => { times++ })
+      server.send('game_rules_changed', { rules: [{ name: 'doWeatherCycle', type: 'bool', value: true, editable: true }] })
+      server.send('sync_world_clocks', { payload_type: 'add_time_marker', sync_states: undefined, add_clock_id: OVERWORLD_CLOCK_ID, add_time_markers: [] })
+      server.send('tick_sync', { request_time: 0n, response_time: 0n })
+      await driver.frame(0)
+      assert.deepStrictEqual(bot.time, noon(7n, false))
+      assert.strictEqual(times, 0)
+      bot.end()
+    })
+
+    it('advances nothing before the server sent the age', async () => {
+      const { bot, internal, driver } = await bedrockTestBot(codec)
+      internal._core.startTicks()
+      await driver.ticks(2)
+      assert.strictEqual(bot.time.age, null)
       bot.end()
     })
   })

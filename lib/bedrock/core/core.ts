@@ -43,6 +43,7 @@ export class BedrockCore {
   private readonly outbox: Outbox
   private readonly writers = new Map<string, OutboxWriter>()
   private readonly handlers = new Map<string, Handler>()
+  private readonly observers = new Map<string, Handler[]>()
   private readonly noticeHooks: Array<{ owner: string, run: (notice: LinkNotice, ctx: FrameContext) => void }> = []
   private readonly inputHooks: Array<{ owner: string, run: (ctx: FrameContext) => void }> = []
   private readonly lookHooks: Array<{ owner: string, run: (ctx: FrameContext) => void }> = []
@@ -72,6 +73,15 @@ export class BedrockCore {
     if (other !== undefined) throw new Error(`${other.owner} and ${owner} both handle ${name}`)
     // the packet was decoded as `name`
     this.handlers.set(name, { owner, critical: options.critical ?? false, handle: (params, ctx) => { handle(params as BedrockClientboundPackets[Name], ctx) } })
+  }
+
+  /** run in the packet pass after the packet's handler, for a module that only reads the packet */
+  observe<Name extends ClientboundName> (owner: string, name: Name, observe: (params: BedrockClientboundPackets[Name], ctx: HandlerContext) => void): void {
+    this.registering(`an observer of ${name}`)
+    const observers = this.observers.get(name) ?? []
+    // the packet was decoded as `name`
+    observers.push({ owner, critical: false, handle: (params, ctx) => { observe(params as BedrockClientboundPackets[Name], ctx) } })
+    this.observers.set(name, observers)
   }
 
   /** run in the packet pass, in the order the link notices arrived among the packets */
@@ -205,17 +215,19 @@ export class BedrockCore {
       }
       const stats = this.packetStats(entry.name)
       const handler = this.handlers.get(entry.name)
-      if (handler === undefined) {
+      const observers = this.observers.get(entry.name) ?? []
+      if (handler === undefined && observers.length === 0) {
         stats.unhandled++
         continue
       }
-      const ctx: HandlerContext = { ...this.frameContext(handler.owner), arrivalTime: entry.arrivalTime, sequence: entry.sequence }
-      if (this.guard(handler.owner, () => { handler.handle(entry.params, ctx) })) {
-        stats.handled++
-      } else {
+      const contextOf = (owner: string): HandlerContext => ({ ...this.frameContext(owner), arrivalTime: entry.arrivalTime, sequence: entry.sequence })
+      if (handler !== undefined && !this.guard(handler.owner, () => { handler.handle(entry.params, contextOf(handler.owner)) })) {
         stats.threw++
         if (handler.critical) this.fault(`the ${entry.name} handler threw`)
+        continue
       }
+      stats.handled++
+      for (const observer of observers) this.guard(observer.owner, () => { observer.handle(entry.params, contextOf(observer.owner)) })
     }
     this.phase = undefined
   }

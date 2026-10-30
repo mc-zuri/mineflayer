@@ -4,15 +4,9 @@ import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock
 
 export default inject
 
+// A plugin is injected when it is loaded: the internal ones, before the bot's first frame, register what they handle.
 function inject (bot: BedrockBotInternal, options: BedrockBotOptions): void {
-  let loaded = false
   const pluginList: Array<BedrockPlugin | BedrockInternalPlugin> = []
-  bot.once('inject_allowed', onInjectAllowed)
-
-  function onInjectAllowed (): void {
-    loaded = true
-    injectPlugins()
-  }
 
   function loadPlugin (plugin: BedrockPlugin | BedrockInternalPlugin): void {
     assert.ok(typeof plugin === 'function', 'plugin needs to be a function')
@@ -22,10 +16,7 @@ function inject (bot: BedrockBotInternal, options: BedrockBotOptions): void {
     }
 
     pluginList.push(plugin)
-
-    if (loaded) {
-      plugin(bot, options)
-    }
+    plugin(bot, options)
   }
 
   function loadPlugins (plugins: Array<BedrockPlugin | BedrockInternalPlugin>): void {
@@ -33,12 +24,6 @@ function inject (bot: BedrockBotInternal, options: BedrockBotOptions): void {
 
     plugins.forEach((plugin) => {
       loadPlugin(plugin)
-    })
-  }
-
-  function injectPlugins (): void {
-    pluginList.forEach((plugin) => {
-      plugin(bot, options)
     })
   }
 

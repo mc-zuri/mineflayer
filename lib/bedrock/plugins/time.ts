@@ -2,7 +2,8 @@ import type { Time, TimeNotSynced } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 
 // Bedrock sends the time (set_time up to 1.26.20, world clocks from 1.26.30) and the world's age (start_game) apart,
-// in either order: bot.time stays NOT_SYNCED until both are known.
+// in either order: bot.time stays NOT_SYNCED until both are known. Between the server's packets, both advance by one
+// every client tick, the time only while the day goes on.
 
 interface GameRule {
   name: string
@@ -15,10 +16,11 @@ interface WorldClock {
   paused: boolean
 }
 
+const OWNER = 'time'
 const TICKS_PER_DAY = 24000n
 const OVERWORLD_CLOCK = 'minecraft:overworld'
 
-const NOT_SYNCED: TimeNotSynced = {
+const NOT_SYNCED: TimeNotSynced = Object.freeze({
   doDaylightCycle: null,
   bigTime: null,
   time: null,
@@ -28,7 +30,7 @@ const NOT_SYNCED: TimeNotSynced = {
   moonPhase: null,
   bigAge: null,
   age: null
-}
+})
 
 function timeOf (time: bigint, age: bigint, doDaylightCycle: boolean): Time {
   const timeOfDay = ((time % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY
@@ -79,33 +81,33 @@ export default function inject (bot: BedrockBotInternal): void {
     update(true)
   }
 
-  bot._client.on('start_game', (packet) => {
+  bot._core.observe(OWNER, 'start_game', (packet) => {
     age = packet.current_tick.valueOf()
     daylightCycleRuleOn = daylightCycleRule(packet.gamerules) ?? daylightCycleRuleOn
     update(true)
   })
 
-  bot._client.on('set_time', (packet) => {
+  bot._core.handle(OWNER, 'set_time', (packet) => {
     time = BigInt(packet.time)
     update(true)
   })
 
-  bot._client.on('game_rules_changed', (packet) => {
+  bot._core.handle(OWNER, 'game_rules_changed', (packet) => {
     const rule = daylightCycleRule(packet.rules)
     if (rule === undefined) return
     daylightCycleRuleOn = rule
     update(true)
   })
 
-  // the server's answer carries its current tick (bedrock-protocol sends tick_sync only up to 1.20.80)
-  bot._client.on('tick_sync', (packet) => {
+  // the server's answer to the bot's tick_sync (up to 1.20.50) carries its current tick
+  bot._core.handle(OWNER, 'tick_sync', (packet) => {
     const serverTick = packet.response_time.valueOf()
     if (serverTick === 0n) return
     age = serverTick
     update(false)
   })
 
-  bot._client.on('sync_world_clocks', (packet) => {
+  bot._core.handle(OWNER, 'sync_world_clocks', (packet) => {
     if (packet.payload_type !== 'initialize_registry' && packet.payload_type !== 'sync_state') return
     for (const clock of packet.clocks ?? []) {
       clocks.set(clock.id, { name: clock.name, time: clock.time, paused: clock.paused })
@@ -114,5 +116,11 @@ export default function inject (bot: BedrockBotInternal): void {
       clocks.set(state.clock_id, { ...clocks.get(state.clock_id), time: state.time, paused: state.paused })
     }
     takeTimeFromOverworldClock()
+  })
+
+  bot._core.endOfTick(OWNER, () => {
+    if (age !== undefined) age++
+    if (time !== undefined && daylightCycleRuleOn && !clockPaused) time++
+    update(false)
   })
 }

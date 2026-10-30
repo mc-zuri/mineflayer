@@ -1,31 +1,46 @@
 import { EventEmitter } from 'events'
-import { createClient } from 'bedrock-protocol'
 import prismarineRegistry from 'prismarine-registry'
+import { BedrockCore } from './core/core.ts'
+import type { InboxWriter, Ns, Transport } from './core/types.ts'
+import { monotonicClock, startRealtimeDriver } from './drivers/realtime.ts'
+import { Session } from './modules/session.ts'
 import pluginLoader from './plugin_loader.ts'
 import time from './plugins/time.ts'
+import { connectBedrockProtocol } from './transport/adapter.ts'
 import { bedrockProtocolVersionOf, isBedrockVersion, isSupportedBedrockVersion, latestSupportedBedrockVersion, oldestSupportedBedrockVersion } from './version.ts'
 import type { BedrockBot, BedrockBotOptions, Bot } from '../types/api/index.ts'
 import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock-internal.ts'
-import type { BedrockClient, BedrockClientboundPackets } from '../types/protocol/bedrock-client.ts'
 
-const plugins: { [name: string]: BedrockInternalPlugin } = {
+const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   time
-}
+})
 
-// bedrock-protocol closes the RakNet connection, which tells the server the player left, 40 ms after it emits close:
-// a process exiting on end must not exit before that
-const END_DELAY_MS = 50
+/** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */
+export interface BedrockBotSeams {
+  connect: (inbox: InboxWriter) => Transport
+  drive: (core: BedrockCore) => void
+}
 
 function isBedrockBot (bot: Bot | BedrockBot): bot is BedrockBot {
   return isBedrockVersion(bot.version)
 }
 
-function kickReason (packet: BedrockClientboundPackets['disconnect']): string {
-  // 1.21.20+ servers can hide the message
-  return packet.message ?? String(packet.reason ?? '')
+function realSeams (options: BedrockBotOptions & { host: string, port: number, username: string }): BedrockBotSeams {
+  const now: () => Ns = monotonicClock()
+  return {
+    connect: inbox => connectBedrockProtocol({
+      host: options.host,
+      port: options.port,
+      username: options.username,
+      version: bedrockProtocolVersionOf(options.version),
+      raknetBackend: options.raknetBackend,
+      connectTimeout: options.connectTimeout
+    }, inbox, now),
+    drive: core => { startRealtimeDriver(core, now) }
+  }
 }
 
-function createBedrockBot (botOptions: BedrockBotOptions, testClient?: BedrockClient): BedrockBot {
+function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeams): BedrockBotInternal {
   const { version } = botOptions
   if (!isSupportedBedrockVersion(version)) {
     throw new Error(`Bedrock version '${version}' is not supported: mineflayer supports ${oldestSupportedBedrockVersion} to ${latestSupportedBedrockVersion}`)
@@ -45,17 +60,10 @@ function createBedrockBot (botOptions: BedrockBotOptions, testClient?: BedrockCl
   const bot: BedrockBotInternal = new EventEmitter() as EventEmitter & BedrockBotInternal
   bot.username = options.username
   bot.registry = prismarineRegistry(version)
-  const { version: protocolVersion, majorVersion } = bot.registry.version
-  if (protocolVersion === undefined || majorVersion === undefined) {
-    throw new Error(`minecraft-data has no version numbers for Bedrock version '${version}'`)
-  }
+  // minecraft-data has both for every supported version (versionTest)
   bot.version = version
-  bot.majorVersion = majorVersion
-  bot.protocolVersion = protocolVersion
-  bot._warn = function (...message) {
-    if (options.hideErrors) return
-    console.warn('[mineflayer]', ...message)
-  }
+  bot.majorVersion = bot.registry.version.majorVersion!
+  bot.protocolVersion = bot.registry.version.version!
   if (options.logErrors) {
     bot.on('error', err => {
       if (!options.hideErrors) {
@@ -63,6 +71,18 @@ function createBedrockBot (botOptions: BedrockBotOptions, testClient?: BedrockCl
       }
     })
   }
+
+  const core = new BedrockCore({
+    error: error => { bot.emit('error', error) },
+    firstFrame: () => { bot.emit('inject_allowed') },
+    tickEnded: () => {
+      bot.emit('physicsTick')
+      bot.emit('physicTick')
+    }
+  })
+  bot._core = core
+  const session = new Session(bot, options.viewDistance)
+  session.install(core)
 
   pluginLoader(bot, options)
   const internalPlugins = Object.entries(plugins)
@@ -74,50 +94,19 @@ function createBedrockBot (botOptions: BedrockBotOptions, testClient?: BedrockCl
   const externalPlugins = Object.values(options.plugins)
     .filter(plugin => typeof plugin === 'function')
   bot.loadPlugins([...internalPlugins, ...externalPlugins])
+  core.seal()
 
-  const client: BedrockClient = testClient ?? createClient({
-    host: options.host,
-    port: options.port,
-    username: options.username,
-    version: bedrockProtocolVersionOf(version),
-    offline: true,
-    transport: 'raknet',
-    // BDS 1.26.30+ answers no ping, and on a failed ping bedrock-protocol takes its latest version
-    skipPing: true,
-    conLog: null,
-    ...(options.raknetBackend === undefined ? {} : { raknetBackend: options.raknetBackend }),
-    ...(options.connectTimeout === undefined ? {} : { connectTimeout: options.connectTimeout })
-  })
-  bot._client = client
-
-  let loggedIn = false
-  let endReason: string | undefined
-  client.on('error', (err) => {
-    bot.emit('error', err)
-  })
-  client.on('close', () => {
-    setTimeout(() => bot.emit('end', endReason ?? 'socketClosed'), END_DELAY_MS)
-  })
-  client.on('start_game', () => {
-    loggedIn = true
-    bot.emit('login')
-  })
-  client.on('play_status', (packet) => {
-    if (packet.status === 'player_spawn') bot.emit('spawn')
-  })
-  client.on('disconnect', (packet) => {
-    endReason = kickReason(packet)
-    bot.emit('kicked', endReason, loggedIn)
-  })
+  const { connect, drive } = seams ?? realSeams(options)
+  const transport = connect(core.inbox)
+  core.attach(transport)
   bot.end = (reason) => {
-    endReason ??= reason
-    client.close()
+    session.endReason ??= reason
+    transport.close()
   }
   bot.quit = (reason) => {
     bot.end(reason ?? 'disconnect.quitting')
   }
-
-  setTimeout(() => bot.emit('inject_allowed'), 0)
+  drive(core)
   return bot
 }
 

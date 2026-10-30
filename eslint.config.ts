@@ -16,8 +16,9 @@ export default [
   },
   {
     // the Bedrock bot runs one frame at a time, at the time its driver gives: no clock, timer, randomness or state
-    // outside a bot
-    files: ['lib/bedrock/core/**/*.ts'],
+    // outside a bot; only the driver on the wall clock and the link to bedrock-protocol use a clock and timers
+    files: ['lib/bedrock/**/*.ts'],
+    ignores: ['lib/bedrock/drivers/realtime.ts', 'lib/bedrock/transport/adapter.ts'],
     rules: {
       'no-restricted-globals': ['error', 'setTimeout', 'setInterval', 'setImmediate', 'queueMicrotask', 'clearTimeout', 'clearInterval', 'clearImmediate', 'Date', 'performance'],
       'no-restricted-properties': ['error', { object: 'Math', property: 'random' }, { object: 'process', property: 'hrtime' }],

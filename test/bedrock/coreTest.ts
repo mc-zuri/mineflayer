@@ -87,6 +87,24 @@ describe('bedrock core', () => {
       assert.deepStrictEqual(core.stats.packets.get('set_time'), { handled: 2, threw: 0, unhandled: 0 })
     })
 
+    it('lets modules observe a packet after its handler, unless the handler threw', async () => {
+      const { core, driver, log } = harness((core, log) => {
+        core.observe('time', 'start_game', () => { log.push('time') })
+        core.handle('session', 'start_game', () => { log.push('session') })
+        core.observe('world', 'start_game', () => { log.push('world') })
+        core.observe('time', 'set_time', () => { log.push('time saw set_time') })
+        core.handle('session', 'text', () => { throw new Error('bad text') })
+        core.observe('chat', 'text', () => { log.push('chat') })
+      })
+      core.inbox.packet('start_game', {}, 1, 0)
+      core.inbox.packet('set_time', { time: 1 }, 1, 0)
+      core.inbox.packet('text', {}, 1, 0)
+      await driver.frame(0)
+      assert.deepStrictEqual(log, ['first frame', 'session', 'time', 'world', 'time saw set_time'])
+      assert.deepStrictEqual(core.stats.packets.get('set_time'), { handled: 1, threw: 0, unhandled: 0 })
+      assert.deepStrictEqual(core.stats.packets.get('text'), { handled: 0, threw: 1, unhandled: 0 })
+    })
+
     it('counts a packet no one handles', async () => {
       const { core, driver } = harness()
       core.inbox.packet('text', {}, 1, 0)
@@ -237,6 +255,7 @@ describe('bedrock core', () => {
     it('are registered before the core is sealed, and a packet has one handler', () => {
       const core = new BedrockCore({ error: () => {}, firstFrame: () => {}, tickEnded: () => {} })
       core.handle('a', 'set_time', () => {})
+      core.observe('b', 'set_time', () => {})
       assert.throws(() => { core.handle('b', 'set_time', () => {}) }, { message: 'a and b both handle set_time' })
       assert.throws(() => { core.replay(1) }, { message: 'the core was not sealed' })
       core.seal()
@@ -247,6 +266,7 @@ describe('bedrock core', () => {
       assert.throws(() => { core.endOfTick('a', () => {}) }, { message: 'an end of tick hook registered after the core was sealed' })
       assert.throws(() => { core.afterTick('a', () => {}) }, { message: 'an after tick hook registered after the core was sealed' })
       assert.throws(() => { core.handle('a', 'start_game', () => {}) }, { message: 'a handler of start_game registered after the core was sealed' })
+      assert.throws(() => { core.observe('a', 'start_game', () => {}) }, { message: 'an observer of start_game registered after the core was sealed' })
     })
   })
 
