@@ -15,6 +15,20 @@ export default [
     }
   },
   {
+    // the Bedrock bot runs one frame at a time, at the time its driver gives: no clock, timer, randomness or state
+    // outside a bot
+    files: ['lib/bedrock/core/**/*.ts'],
+    rules: {
+      'no-restricted-globals': ['error', 'setTimeout', 'setInterval', 'setImmediate', 'queueMicrotask', 'clearTimeout', 'clearInterval', 'clearImmediate', 'Date', 'performance'],
+      'no-restricted-properties': ['error', { object: 'Math', property: 'random' }, { object: 'process', property: 'hrtime' }],
+      'no-restricted-imports': ['error', { paths: ['timers', 'node:timers', 'timers/promises', 'node:timers/promises', 'perf_hooks', 'node:perf_hooks'], patterns: ['bedrock-protocol', 'bedrock-protocol/*'] }],
+      'no-restricted-syntax': ['error',
+        { selector: ':matches(Program, ExportNamedDeclaration) > VariableDeclaration[kind!="const"]', message: 'no module-level mutable state' },
+        { selector: 'Program > :matches(VariableDeclaration, ExportNamedDeclaration > VariableDeclaration) > VariableDeclarator > :matches(ObjectExpression, ArrayExpression, NewExpression)', message: 'no module-level mutable state (Object.freeze it)' }
+      ]
+    }
+  },
+  {
     files: ['test/**'],
     languageOptions: {
       // mocha's BDD interface

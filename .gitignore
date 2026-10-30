@@ -10,5 +10,6 @@ server_jars/
 test/server_*
 .vscode
 .DS_Store
+coverage
 launcher_accounts.json
 data

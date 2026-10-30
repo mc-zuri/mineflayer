@@ -1,0 +1,11 @@
+{
+  "include": ["lib/bedrock/core/**/*.ts"],
+  "exclude": ["lib/bedrock/core/types.ts"],
+  "all": true,
+  "reporter": ["text"],
+  "check-coverage": true,
+  "lines": 100,
+  "branches": 100,
+  "functions": 100,
+  "statements": 100
+}
