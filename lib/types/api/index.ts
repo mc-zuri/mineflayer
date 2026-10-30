@@ -92,7 +92,9 @@ export interface BedrockPluginOptions {
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
 
-export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'> & BlockUpdateAtEvents
+export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'spawn' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
+  | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
+  | 'teamCreated' | 'teamRemoved' | 'teamUpdated' | 'teamMemberAdded' | 'teamMemberRemoved'> & BlockUpdateAtEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -134,6 +136,16 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   blockAt: (point: Vec3) => Block | null
   /** resolves once the columns around the player's are loaded; rejects after 200 ticks */
   waitForChunksToLoad: () => Promise<void>
+  /** the objectives the server displayed, by name: Bedrock announces an objective only when it displays it */
+  scoreboards: { [name: string]: ScoreBoard }
+  /** the objective each display slot shows: 0 list, 1 sidebar, 2 belowName (Bedrock has no team sidebars) */
+  scoreboard: ScoreBoardPositions
+  /** always empty: Bedrock has no teams */
+  teams: { [name: string]: Team }
+  /** always empty: Bedrock has no teams */
+  teamMap: { [name: string]: Team }
+  /** header and footer always empty: Bedrock has neither */
+  tablist: Tablist
   end: (reason?: string) => void
   quit: (reason?: string) => void
   loadPlugin: (plugin: BedrockPlugin) => void

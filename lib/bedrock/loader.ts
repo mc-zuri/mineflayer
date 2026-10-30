@@ -8,6 +8,9 @@ import { LocalPlayer } from './modules/movement.ts'
 import { Session } from './modules/session.ts'
 import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
+import scoreboard from './plugins/scoreboard.ts'
+import tablist from './plugins/tablist.ts'
+import team from './plugins/team.ts'
 import time from './plugins/time.ts'
 import { connectBedrockProtocol } from './transport/adapter.ts'
 import { bedrockProtocolVersionOf, isBedrockVersion, isSupportedBedrockVersion, latestSupportedBedrockVersion, oldestSupportedBedrockVersion } from './version.ts'
@@ -15,7 +18,10 @@ import type { BedrockBot, BedrockBotOptions, Bot } from '../types/api/index.ts'
 import type { BedrockBotInternal, BedrockInternalPlugin } from '../types/bedrock-internal.ts'
 
 const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
-  time
+  time,
+  scoreboard,
+  team,
+  tablist
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

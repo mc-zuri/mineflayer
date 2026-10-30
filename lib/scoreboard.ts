@@ -27,7 +27,7 @@ export interface ScoreBoardPositions<Board> {
 
 // The named slots are getters of the prototype: they alias the numeric slots and are not enumerable, so
 // Object.keys/values(bot.scoreboard) only ever yield displayed objectives.
-class Positions<Board> implements ScoreBoardPositions<Board> {
+export class Positions<Board> implements ScoreBoardPositions<Board> {
   [slot: number]: Board | undefined
 
   get list (): Board | undefined { return this[0] }

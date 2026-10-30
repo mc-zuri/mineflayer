@@ -1,9 +1,9 @@
 # Bedrock
 
 mineflayer connects to Bedrock Edition servers too: give `createBot` a Bedrock version, `bedrock_<version>` as
-minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time and the world's
-blocks, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does, telling the server
-every tick, follows the server's corrections, and ends; the rest of the API is Java's only so far.
+minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, spawns, knows the time, the scoreboards
+and the world's blocks, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does,
+telling the server every tick, follows the server's corrections, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -64,6 +64,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.autoJump`: whether the player jumps by itself onto a block in its way (see physics below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
+- `bot.scoreboards`, `bot.scoreboard`, `bot.teams`, `bot.teamMap`, `bot.tablist`: as Java's, as Bedrock has them (see
+  scoreboards below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -72,7 +74,10 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   is initialized: see the local player), `time`, `physicsTick` (`physicTick`: every tick, from start_game),
   `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the server moved
   the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`,
-  `blockUpdate:(x, y, z) (oldBlock, newBlock)`, `kicked (reason, loggedIn)`, `end (reason)`, `error`.
+  `blockUpdate:(x, y, z) (oldBlock, newBlock)`, `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`,
+  `scoreUpdated`, `scoreRemoved`, `scoreboardPosition` (see scoreboards below), `kicked (reason, loggedIn)`,
+  `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`, `teamMemberAdded`,
+  `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
     as Java's.
   - `kicked`'s reason is the disconnect packet's message as it is (Java's is a JSON text), or its reason code's name
@@ -114,7 +119,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `time`, `forcedMove`, `blockUpdate`, `kicked`, `end`, `error` | the packet pass |
+| `login`, `time`, `forcedMove`, `blockUpdate`, the scoreboard events, `kicked`, `end`, `error` | the packet pass |
 | `chunkColumnLoad` | the start of a tick |
 | `spawn`, `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -410,6 +415,33 @@ sent without its sections before 1.18.0 (a negative count) cannot be asked for, 
 
 Dimension changes are not followed yet: the world stays in start_game's dimension.
 
+## Scoreboards, teams and the tab list
+
+The server's scoreboard packets act in the packet pass, as Java's; the bot answers none, as the vanilla client.
+
+- **Objectives**: Bedrock announces an objective only when it displays it (set_display_objective; a server sends the
+  scores of displayed objectives only): its first display creates it in `bot.scoreboards` (`scoreboardCreated`), and
+  each display emits `scoreboardPosition (position, scoreboard, previous)` with the slot's number (0 list, 1 sidebar,
+  2 belowName: Bedrock has no team sidebars) and the objective shown there before. A display naming no objective
+  clears the slot, without an event (Java has none either). A display with another display name changes the title
+  (`scoreboardTitleChanged`: no vanilla command renames an objective). remove_objective deletes the objective
+  (`scoreboardDeleted`, before it is deleted) from `bot.scoreboards` and from every slot showing it (Java's clears
+  the first only).
+- **Titles and names** are Bedrock text (its § codes), not Java's JSON.
+- **Scores** (set_score): each entry set emits `scoreUpdated (scoreboard, item)` and each removed one
+  `scoreRemoved (scoreboard, item)`, in the packet's order; an entry of an objective not displayed is ignored. An
+  item is named as Java names it: a player by its username, which the player list gave its unique id when the score
+  is set (while the bot does not know the player, by the unique id in decimal: `'-8589934562'`; an entry named
+  otherwise than before is removed and set again), a fake player by its name, an entity by its unique id in decimal
+  (Java's by its UUID). From 1.26.40 a removal naming no objective removes the entry from every objective.
+- **`items`** are sorted as the objective's last display sorts them: descending (Java's) unless the server displays
+  it ascending; equal values by name ignoring case.
+- **Up to 1.16.210** minecraft-data reads set_score wrongly (see the notes): the bot emits an `error` for each and
+  follows no score there; the objectives work.
+- **Teams and the tab list**: Bedrock has neither teams nor a tab list header and footer (no version has a packet for
+  them): `bot.teams` and `bot.teamMap` stay empty, the team events never come, and `bot.tablist`'s header and footer
+  stay empty. The tab list's players are the player list's.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -433,7 +465,8 @@ Dimension changes are not followed yet: the world stays in start_game's dimensio
   local player: by when it is held and initialized, the auth input's layout, its flags, and how a teleport is
   answered; the physics: by how a jump, a sprint, a sneak, a landing, a step up and an auto-jump are told, when an
   auto-jump jumps and a sprint speeds the player, which collisions are reported, how a column comes, how the echo is
-  sent and how a correction acts). The physics' values are the recorded ones, the same on every version unless a
+  sent and how a correction acts; the scoreboards: by set_score's layout, one action for the packet's entries
+  1.16.220 – 1.26.30, each entry its own type 1.26.40+). The physics' values are the recorded ones, the same on every version unless a
   group says otherwise. The workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
@@ -464,5 +497,8 @@ What was found getting here, beyond mineflayer:
     setting a block of air instead.
 - **Bedrock Dedicated Server 1.26.30+** with `enable-lan-visibility=false` answers no unconnected ping, so a version
   cannot be asked for there; older builds answer.
+- **minecraft-data** reads set_score's entries of 1.16.201 and 1.16.210 the wrong way round: its layout carries an
+  entry's identity on a removal, where the wire carries it on a change, so a change reads short and a removal reads
+  bytes the packet does not have.
 - **minecraft-data** compares its legacy Bedrock versions (0.14, 0.15) wrongly: `bedrock_0.14`'s version `>=`
   1.16.201 is true. mineflayer's Bedrock versions are a list, not comparisons.
