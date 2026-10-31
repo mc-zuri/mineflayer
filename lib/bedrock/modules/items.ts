@@ -104,7 +104,11 @@ export function itemOf (ItemClass: typeof Item, stack: Stack | undefined): Item 
 
 /** the vanilla client tells what it holds without a stack id */
 export function heldItemOf (version: BedrockVersion, stack: Stack | undefined): WriteItem {
-  const v4 = isBedrockVersionAtLeast(version, 'bedrock_1.26.20')
+  return heldItem(isBedrockVersionAtLeast(version, 'bedrock_1.26.20'), stack)
+}
+
+/** a held item as an ItemV4 or an Item, whichever the packet has */
+export function heldItem (v4: boolean, stack: Stack | undefined): WriteItem {
   if (stack === undefined) return v4 ? EMPTY_ITEM_V4 : { network_id: 0 }
   const { networkId, count, metadata, wire } = stack
   if (!('block_runtime_id' in wire) || wire.block_runtime_id === undefined) return wire

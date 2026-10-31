@@ -530,7 +530,7 @@ function lastBatch (server: FakeBedrockClient): string[] {
 /** a request of the bot's, made in the next input pass */
 function request (internal: BedrockBotInternal, moves: readonly Move[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    internal._core.command(() => { internal._inventory.request(internal._core, moves).then(resolve, reject) })
+    internal._core.command(ctx => { internal._inventory.request(internal._core, ctx, moves).then(resolve, reject) })
   })
 }
 
@@ -748,7 +748,7 @@ describe('bedrock inventory', () => {
         bot.end()
       })
 
-      it(`bedrock ${version}: the grid's items with no room dropped, a request a slot, as recorded`, async () => {
+      it(`bedrock ${version}: the grid's items with no room dropped, a request a slot, each after the arm's swing`, async () => {
         // recorded on 1.26.51.1: 17 planks left in each of a crafting table's first three slots, the inventory full of cobblestone
         const { bot, internal, server, driver, errors } = await joined(version)
         const inventory = new ServerInventory(server)
@@ -761,7 +761,9 @@ describe('bedrock inventory', () => {
         const sent = sentSince(server)
         const closing = bot.closeWindow(bot.currentWindow ?? bot.inventory)
         await driver.tick()
-        assert.deepStrictEqual(sent(), ['9301039109010303110d0020720000000000ffffffff9509010303110d0021730000000000ffffffff9909010303110d0022740000000000ffffffff'])
+        // from 1.26.60 the swing names the hand
+        const swing = atLeast(version, 'bedrock_1.26.60') ? '2c010100000000010864726f706974656d00' : '2c010100000000010864726f706974656d'
+        assert.deepStrictEqual(sent(), [swing, swing, swing, '9301039109010303110d0020720000000000ffffffff9509010303110d0021730000000000ffffffff9909010303110d0022740000000000ffffffff'])
         receive(server, '94010300910901010d00012020000000000000950901010d00012121000000000000990901010d000122220000000000')
         const after: string[] = []
         const frames = await framesUntilClose(driver, version, sent, packets => { after.push(...packets) })
@@ -1247,8 +1249,12 @@ describe('bedrock inventory', () => {
       const { bot, internal, inventory, server, driver } = await withPlanks()
       inventory.slot('ui', 0, { id: bot.registry.itemsByName['stick']?.id ?? 0, count: 1, stackId: 20 })
       await driver.frame(10)
-      await assert.rejects(internal._inventory.request(internal._core, [{ type: 'take', count: 5, from: HOTBAR_0, to: GRID_28 }]), { message: 'hotbar 0 has not 5 items' })
-      await assert.rejects(internal._inventory.request(internal._core, [{ type: 'take', count: 1, from: HOTBAR_0, to: CURSOR }]), { message: 'cursor 0 holds another item' })
+      const refused = Promise.all([
+        assert.rejects(request(internal, [{ type: 'take', count: 5, from: HOTBAR_0, to: GRID_28 }]), { message: 'hotbar 0 has not 5 items' }),
+        assert.rejects(request(internal, [{ type: 'take', count: 1, from: HOTBAR_0, to: CURSOR }]), { message: 'cursor 0 holds another item' })
+      ])
+      await driver.frame(10)
+      await refused
       // left unanswered: the bot's end rejects it
       request(internal, [{ type: 'place', count: 1, from: HOTBAR_0, to: GRID_28 }]).catch(() => {})
       await driver.tick()
@@ -1475,6 +1481,7 @@ describe('bedrock inventory', () => {
         await driver.tick()
         const moves = server.sentOf('item_stack_request').at(-1)?.requests.map(({ request_id: id, actions }) => [id, ...actions.map(({ type_id: type, count, source, destination }) => [type, count, source?.slot, destination?.slot])])
         assert.deepStrictEqual(moves, [[-3, ['place', 4, 28, 0]], [-5, ['drop', 6, 28, undefined]]])
+        assert.deepStrictEqual(server.sentOf('animate').map(({ action_id: action }) => action), ['swing_arm'])
         bot.end()
       })
 

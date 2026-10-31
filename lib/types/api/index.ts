@@ -222,6 +222,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
    * server took the request, at once where the click sends none
    */
   clickWindow: (slot: number, mouseButton: number, mode: number) => Promise<void>
+  /** Java's: clicks where the eye's ray meets the block, else looks at `cursorPos` on `direction`'s face first; resolves once the use ended */
+  activateBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<void>
+  /** activateBlock, resolving with the screen the server opened (the crafting table's), once the use ended too */
+  openBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<Window>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */

@@ -86,7 +86,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.bossBars`: as Java's, the bars of the boss entities the bot has (see boss bars below).
 - `bot.players`, `bot.player`: the player list (see below).
 - `bot.inventory`, `bot.currentWindow`, `bot.heldItem`, `bot.quickBarSlot`, `bot.openInventory()` (Bedrock's),
-  `bot.closeWindow(window)`, `bot.clickWindow(slot, mouseButton, mode)`: the player's items and screens (see the
+  `bot.closeWindow(window)`, `bot.clickWindow(slot, mouseButton, mode)`, `bot.activateBlock(block, direction,
+  cursorPos)`, `bot.openBlock(block, direction, cursorPos)`: the player's items and screens, and using a block (see the
   inventory below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
@@ -957,7 +958,8 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **`bot.closeWindow(window)`** gives back what the screen holds, one request for each slot an item goes to, in one
   packet: on the inventory screen the grid's items then the cursor's, on a crafting table the cursor's then the grid's;
   each to the stacks of its item with room (64 for an item that names no stack size, as the game has it), then to empty
-  slots, from hotbar slot 0 on. What has no room is dropped, a request for each slot, as recorded on 1.26.51 (a crafting table's grid with the inventory full). Then container_close (from 1.21.0 naming the screen's type
+  slots, from hotbar slot 0 on. What has no room is dropped, a request for each slot, after the arm's swing (as any
+  drop: below), as recorded on 1.26.51 (a crafting table's grid with the inventory full). Then container_close (from 1.21.0 naming the screen's type
   `none`): up to 1.21.111 in the same input pass, with the hand-back; from 1.21.120 the hand-back leaves in the next
   tick, and the close in the frame after the screen's animation ended, 240 ms after the frame it was asked in for the
   inventory, 390 ms for a crafting table. Recorded at 32 frames a second (up to 1.26.51) the client closes in the 9th
@@ -994,7 +996,9 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   shell and a filled map; for another the click sends nothing (recorded: a shield on every build, arrows taken and eggs
   refused on 1.26.51). A mouse click, shift click or hotbar
   key on a crafting output (slot 0) sends nothing: it is crafting's, and until a recipe is matched there the output holds
-  nothing to take; the drop key never takes from it, but drops one of the cursor's stack as anywhere. Containers are named as the client names them: `hotbar` 0 – 8, `inventory` 9 – 35, `armor`,
+  nothing to take; the drop key never takes from it, but drops one of the cursor's stack as anywhere. A drop swings the arm
+  first, in the click's input pass, as recorded with the request on every build: `animate swing_arm`, for a dropped
+  item (`dropitem`) from 1.21.130. Containers are named as the client names them: `hotbar` 0 – 8, `inventory` 9 – 35, `armor`,
   `offhand` 1, `crafting_input`, `cursor`. A click names its slots in the input pass it is made in, and its request
   leaves in the next tick, with the requests made since (the clicks of a frame, a hand-back) in one packet; a response
   is taken in after the input pass of the frame it came in. So neither a response that arrives between the click and
@@ -1004,6 +1008,29 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   with serverbound_cursor_item_drag: its start in the click's input pass (before the request), its stop in the input
   pass of the frame after the request left (a second click before then shares the bracket); a take, a swap (not
   recorded), a key, a click outside and a hand-back have none.
+- **`bot.activateBlock(block, direction, cursorPos)`** and **`bot.openBlock(block, direction, cursorPos)`** use a
+  block as the vanilla client does when the use key is pressed with the crosshair on it. In one input pass:
+  `player_action start_item_use_on` (from 1.19.1: the block, the face, and where the held item would go: beside the
+  face for a block's item or an empty hand, else the block itself, nether wart's too, which is planted, not placed),
+  `animate swing_arm` (with `data` 0 from 1.21.120, the swing's source `interact` from 1.21.130, the main hand from
+  1.26.60), `inventory_transaction item_use click_block`, then up to 1.18.30 `player_action interact_block` (the block
+  and the face; `ineract_block` on 1.16.201), recorded for every block the client used but the crafting table. The
+  click changes no slot: the block, the face, the hotbar slot, the held item without its stack id (an ItemV4 from
+  1.26.30, a version after mob_equipment's), the eye as the auth inputs report it, the point clicked from the block's
+  corner and the block's runtime id; from 1.21.20 triggered by the player's input and predicted to succeed, from 1.26.10
+  with no cooldown, from 1.26.51 by the main hand. The face and the point are where the eye's ray, along the auth input's
+  rotation, first meets a block, if that is this one (on `direction`'s face, if given), the point found as a float and
+  less the block's corner as the client finds it (`cursorPos` instead, if given); else the bot first looks at `cursorPos`
+  (the face's centre) on `direction`'s face (the top), as Java's, and clicks there once an auth input carried the look.
+  The use ends with `player_action stop_item_use_on` (from 1.19.1, naming where the item would have gone) in the second
+  tick after the click's, before its auth input: the vanilla client ends a use at the first tick after the key's release,
+  and its recordings held the key through two or three ticks (logged on 1.26.60; a replay sets the hold of each use).
+  The auth inputs carry nothing of a use, and a use waits for the one before to end. `activateBlock` resolves once the
+  use ended, `openBlock` once the server opened the screen too, with its window. They reject before the player is
+  shown, over a screen, and toward no face; `openBlock` also when the server opens a screen the bot does not show, or
+  none in 100 ticks. As recorded opening a crafting table on every build: the client's clicks are the bot's, byte for
+  byte, when the bot looks as the client's camera did (up to 1.26.10 its auth inputs mostly report a rotation a little
+  off its camera's).
 - **set_player_inventory_options** (1.20.50 – 1.21.101): the client tells the server once a process, 120 ms after a
   screen's first opening, the screens it opened so far (the inventory's `layout`, the crafting table's
   `crafting_layout`: `recipe_book` once opened). A bot is a process of its own; a test that continues a recording's
@@ -1011,8 +1038,9 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (container_open of the inventory or a crafting table), `windowClose` (the screen
   closed), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: drags and double clicks (`clickWindow` modes 5 and 6), using a block to open its screen, crafting, screens
-other than the inventory and the crafting table (counted, not shown), and the hotbar selection by the bot.
+Not yet: drags and double clicks (`clickWindow` modes 5 and 6), using a block with an item the use places or uses up
+(the client then names the slot it changes), crafting, screens other than the inventory and the crafting table
+(counted, not shown), and the hotbar selection by the bot.
 
 ## Tests
 
@@ -1062,7 +1090,9 @@ other than the inventory and the crafting table (counted, not shown), and the ho
   particles: by spawn_particle_effect's layout, without molang variables 1.16.201 – 1.18.11, with them 1.18.30+; the
   chat: by how the text packet, a command's output and an action bar title are laid out, and how the bot's chat and
   commands are; the inventory: by how items, requests, responses, held items and closes are written, and when the held
-  item is told, each group playing a recorded spawn, give, move and close with the bot, byte for byte). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
+  item is told, each group playing a recorded spawn, give, move and close with the bot, byte for byte; using a block: by
+  how its packets are written and the block numbered, each group playing a recorded opening of a crafting table with the
+  bot, byte for byte, and a recorded use of a barrel). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
   workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.

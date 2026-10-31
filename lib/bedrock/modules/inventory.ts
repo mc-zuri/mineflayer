@@ -5,6 +5,7 @@ import type { Window } from 'prismarine-windows'
 import type { BedrockCore } from '../core/core.ts'
 import type { FrameContext, Ns, OutboxWriter } from '../core/types.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
+import { swingArm } from './block_use.ts'
 import type { BedrockVersion, StorageEvents } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockClientboundPackets, BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
@@ -266,14 +267,21 @@ export class Inventory {
     core.system(OWNER, { name: 'inventory.request', place: { after: 'inventory.equip' }, gate: 'always', replay: false, run: ({ outbox, now }) => { this.sendRequests(outbox, now) } })
   }
 
+  /** the stack in the selected hotbar slot */
+  mainHand (): Stack | undefined {
+    return this.slots.get(`inventory:${this.quickBarSlot}`)
+  }
+
   /** the open screen that can still be clicked: none once its close handed the items back */
   get screenType (): ScreenType | undefined {
     return this.closing?.end === undefined ? this.screen?.type : undefined
   }
 
-  /** made in an input pass, it names its slots and predicts its moves at once, as the vanilla client does */
-  async request (core: BedrockCore, moves: readonly Move[]): Promise<void> {
+  /** made in an input pass, it names its slots and predicts its moves at once, as the vanilla client does; the arm swings for each drop, in the pass */
+  async request (core: BedrockCore, { outbox }: FrameContext, moves: readonly Move[]): Promise<void> {
     this.check(moves)
+    const { runtimeId } = this
+    if (runtimeId !== undefined) for (const move of moves) if (move.type === 'drop') outbox.queue('animate', swingArm(this.bot.version, runtimeId, 'dropitem'))
     const request: PendingRequest = { id: core.requestIds.nextStackRequest(), before: new Map(), response: undefined }
     this.pending.push(request)
     const actions = moves.map(move => {
@@ -310,7 +318,7 @@ export class Inventory {
     if (moves.length === 0) return
     const dragged = click.mode === 0 && this.atLeast('bedrock_1.26.60') && moves.some(move => move.type === 'place' && move.from.container === 'cursor')
     if (dragged) this.startCursorDrag(ctx)
-    await this.request(core, moves)
+    await this.request(core, ctx, moves)
   }
 
   /** a crafting output's mouse click, shift click or hotbar key is crafting's; with no recipe matched, the output holds nothing to take */
@@ -360,21 +368,21 @@ export class Inventory {
       // a close the server never answers does not hold back the next
       done: closed.finally(() => { if (this.closing === closing) this.closing = undefined }).then(async () => { await handedBack })
     }
-    core.command(({ now }) => {
+    core.command(ctx => {
       // the server closed it first, and gives the items back itself
       if (this.screen !== screen) return
-      handedBack = Promise.all(this.handBack(core, screen))
+      handedBack = Promise.all(this.handBack(core, ctx, screen))
       // awaited once the screen closed: a refusal before then is not unhandled
       handedBack.catch(() => {})
       const animated = this.atLeast('bedrock_1.21.120') && this.settings.screenAnimations
-      closing.end = animated ? now + ANIMATIONS[screen.type] : now
+      closing.end = animated ? ctx.now + ANIMATIONS[screen.type] : ctx.now
       closing.ended = !animated
     })
     return closing
   }
 
   /** the inventory screen's grid goes back before the cursor, another screen's after it, as the vanilla client does; what has no room is dropped, a request a slot */
-  private handBack (core: BedrockCore, screen: Screen): Array<Promise<void>> {
+  private handBack (core: BedrockCore, ctx: FrameContext, screen: Screen): Array<Promise<void>> {
     const sources = screen.type === 'inventory' ? [...INVENTORY_GRID, CURSOR] : [CURSOR, ...TABLE_GRID]
     const requests: Array<Promise<void>> = []
     for (const from of sources) {
@@ -382,10 +390,10 @@ export class Inventory {
       if (stack === undefined) continue
       let left = stack.count
       for (const { to, count } of placesFor(stack, HOTBAR_AND_INVENTORY, this.clickedSlots)) {
-        requests.push(this.request(core, [{ type: 'place', count, from, to }]))
+        requests.push(this.request(core, ctx, [{ type: 'place', count, from, to }]))
         left -= count
       }
-      if (left > 0) requests.push(this.request(core, [{ type: 'drop', count: left, from }]))
+      if (left > 0) requests.push(this.request(core, ctx, [{ type: 'drop', count: left, from }]))
     }
     return requests
   }
@@ -449,7 +457,7 @@ export class Inventory {
     const { runtimeId, equipped } = this
     if (!this.equipmentChanged || runtimeId === undefined) return
     this.equipmentChanged = false
-    const main = this.slots.get(`inventory:${this.quickBarSlot}`)
+    const main = this.mainHand()
     const offhand = this.slots.get(OFFHAND)
     const mainChange = equipped === undefined ? 'item' : changeOf(equipped.main, main)
     const offhandChange = changeOf(equipped?.offhand, offhand)

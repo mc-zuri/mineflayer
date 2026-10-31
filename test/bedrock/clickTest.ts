@@ -403,6 +403,8 @@ describe('bedrock window clicks', () => {
           const drop = bot.clickWindow(-999, 0, 0)
           await driver.tick()
           assert.deepStrictEqual([requests(), bot.inventory.selectedItem], [[recorded.drop], null])
+          // the arm swings for the drop, recorded with the request on every build: for a dropped item from 1.21.130
+          assert.deepStrictEqual(server.sentOf('animate').map(({ action_id: action, swing_source: source }) => [action, source]), [['swing_arm', atLeast(version, 'bedrock_1.21.130') ? 'dropitem' : undefined]])
           receive(server, recorded.dropped)
           await driver.tick()
           await drop

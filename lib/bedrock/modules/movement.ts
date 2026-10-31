@@ -136,6 +136,11 @@ export class LocalPlayer {
     return new Vec3(x, y, z)
   }
 
+  /** the eye, as the auth inputs report it */
+  get eye (): Vec3f {
+    return reportedEyePosition(this.state)
+  }
+
   install (core: BedrockCore): void {
     this.bot.look = async (yaw, pitch) => { await this.look(core, yaw, pitch) }
     this.bot.lookAt = async point => {
