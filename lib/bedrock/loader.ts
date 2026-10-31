@@ -25,6 +25,7 @@ import experience from './plugins/experience.ts'
 import furnace from './plugins/furnace.ts'
 import game from './plugins/game.ts'
 import lectern from './plugins/lectern.ts'
+import grindstone from './plugins/grindstone.ts'
 import particle from './plugins/particle.ts'
 import rain from './plugins/rain.ts'
 import scoreboard from './plugins/scoreboard.ts'
@@ -69,7 +70,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   beacon,
   lectern,
   furnace,
-  enchantment_table: enchantmentTable
+  enchantment_table: enchantmentTable,
+  grindstone
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

@@ -313,6 +313,14 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   loadPlugin: (plugin: BedrockPlugin) => void
   loadPlugins: (plugins: BedrockPlugin[]) => void
   hasPlugin: (plugin: BedrockPlugin) => boolean
+  /** Bedrock's members, which Java's bot has not */
+  bedrock: BedrockExtensions
+}
+
+/** the members of `bot.bedrock` */
+export interface BedrockExtensions {
+  /** openBlock on a grindstone, resolving with its window, whose grind makes the vanilla client's clicks */
+  openGrindstone: (grindstone: Block) => Promise<BedrockGrindstone>
 }
 
 export interface BotEvents {
@@ -1128,6 +1136,12 @@ export interface BedrockEnchantmentTable extends Window<ConditionalStorageEvents
   takeTargetItem (): Promise<Item>
   putTargetItem (item: Item): Promise<void>
   putLapis (item: Item): Promise<void>
+}
+
+/** Bedrock's grindstone, which Java's bot has not: grind puts the items in, takes the result and puts it away, resolving with it */
+export interface BedrockGrindstone extends Window<StorageEvents> {
+  close (): Promise<void>
+  grind (itemOne: Item, itemTwo?: Item | null): Promise<Item>
 }
 
 export interface Villager extends Window<ConditionalStorageEvents> {

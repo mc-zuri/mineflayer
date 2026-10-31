@@ -99,6 +99,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   below).
 - `bot.openEnchantmentTable(block)`: Java's, its window's options from player_enchant_options and its enchant (see the
   enchanting table below).
+- `bot.bedrock.openGrindstone(block)` (Bedrock's): the grindstone, and its window's grind (see the grindstone below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1529,6 +1530,42 @@ renumbered at 1.19.50, the times and full container names from 1.21.20, the resu
 at 1.26.60) and the sword's network id; and on 1.26.60 the lapis lazuli given back on close. Not recorded, so as the
 bot does it: the button with too little lapis lazuli or too low a level, an enchant in creative, an option of no
 enchantment, the cursor's place in the hand-back, a book.
+
+## Grindstone
+
+Java's bot has no grindstone: Bedrock's is under `bot.bedrock`, with the members Java's bot has not. The grindstone's
+screen (container_open's `grindstone`) is a `minecraft:grindstone` window of Java's 39 slots: 0 the first item (`ui`
+16, `grindstone_input` in requests), 1 the second (`ui` 17, `grindstone_additional`), 2 the result (`ui` 50, the
+created output, its crafting result slot), 3 – 38 the player's. Its close gives back the cursor, the second item, then
+the first (the second before the first as recorded on 1.26.20, 1.26.51 and 1.26.60; where the cursor goes is not
+recorded), and from 1.21.120 waits for the crafting table's animation (390 ms), as recorded.
+
+- **`bot.bedrock.openGrindstone(block)`** opens it with `bot.openBlock(block)` and rejects a window that is no
+  grindstone's. Every grindstone's window has `grind` before `windowOpen`, whoever opened it.
+- **`grindstone.grind(itemOne, itemTwo)`** does what the vanilla client does: `itemOne` moved into slot 0 by
+  `bot.moveSlotItem`, the same for `itemTwo`, if given, into slot 1, a click on the result, then the cursor put in the
+  first empty slot of the window's inventory (`bot.putSelectedItemRange`). Each item moves from the window's slot
+  holding its stack, else, as Java's `bot.transfer`, the first of its type, metadata and NBT in the window's inventory,
+  so an item of `bot.inventory` works (its `slot` is the inventory's, not the window's). It resolves with the result
+  once the server took the craft. It rejects before sending where the vanilla client shows no result: one item without
+  enchantments, two items of different kinds; and, not recorded, an item that is not damageable (an enchanted book) or
+  has a curse. It rejects when the grindstone is not the screen open, and an item in no slot of the window.
+- **A click on the result** (`bot.clickWindow(2, button, 0)`) makes the vanilla client's request, which leaves in the
+  next tick: the grindstone's action (`non_implemented` up to 1.17.30, whose protocol has none;
+  `craft_grindstone_request` with a cost of 0 after, the times from 1.21.20), `results_deprecated` with the result, a
+  `consume` of each item, the first's first, and a `take` of the result to the cursor. The result is the first item
+  without its enchantments and, from 1.17.10, with `RepairCost` 0; of two items, its `Damage` leaves what both had left
+  and 5 % of the durability (`Damage` 138 of two iron swords of `Damage` 200). The action names no recipe but the grindstone's
+  slots as the last request putting an item in or taking one out left them: up to 1.19.80 that request's id, from
+  1.20.0 the first item's name right after it (its stack id, or the request's while that was not answered), as
+  recorded on every build. A click of another mode on the result rejects (not recorded).
+
+Recorded and replayed by the tests on every build: two iron swords of `Damage` 200 combined, and one of Sharpness I
+disenchanted, each group playing the client's requests with the bot, byte for byte. The groups are the enchanting
+table's, with 1.17.10 apart (`RepairCost`); on 1.26.60 the items given back on close. Not recorded, so as the bot does
+it: the second slot alone, the name of a first slot a request emptied (the request's), curses, books and the other
+items the vanilla client takes, the cursor's place in the hand-back. The experience a grindstone gives comes as orbs
+the server spawns.
 
 ## Tests
 
