@@ -6,7 +6,7 @@ const QUICK_BAR_COUNT = 9
 const OUTSIDE = -999
 const WORN: Readonly<Record<string, number>> = Object.freeze({ head: 5, torso: 6, legs: 7, feet: 8, 'off-hand': 45 })
 
-/** Java's simple_inventory: the hotbar selection, equip and unequip */
+/** Java's simple_inventory: the hotbar selection, equip, unequip, toss and tossStack */
 export default function simpleInventory (bot: BedrockBotInternal): void {
   // Java's: the hotbar slot an equip fills next when none is empty
   let nextQuickBarSlot = 0
@@ -81,6 +81,18 @@ export default function simpleInventory (bot: BedrockBotInternal): void {
     const free = bot.inventory.firstEmptyInventorySlot()
     // with no room the stack is dropped, as Java's tossStack drops it
     await bot.moveSlotItem(shown('unequip', QUICK_BAR_START + bot.quickBarSlot), free === null ? OUTSIDE : shown('unequip', free))
+  }
+
+  bot.tossStack = async item => {
+    assert.ok(item)
+    // Java reads the slot as the open window's: an item of bot.inventory is clicked where that window shows it
+    const slot = bot.inventory.slots[item.slot] === item ? shown('tossStack', item.slot) : item.slot
+    await bot.moveSlotItem(slot, OUTSIDE)
+  }
+
+  bot.toss = async (itemType, metadata, count) => {
+    const window = bot.currentWindow ?? bot.inventory
+    await bot.transfer({ window, itemType, metadata, count, sourceStart: window.inventoryStart, sourceEnd: window.inventoryEnd, destStart: OUTSIDE })
   }
 
   // Java's, defined once the local player is

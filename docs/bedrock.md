@@ -106,6 +106,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.setQuickBarSlot(slot)`, `bot.QUICK_BAR_START`: selecting a hotbar slot (see items below).
 - `bot.equip(item, destination)`, `bot.unequip(destination)`, `bot.getEquipmentDestSlot(destination)`,
   `bot.entity.equipment`: as Java's, by clicks (see items below).
+- `bot.toss(itemType, metadata, count)`, `bot.tossStack(item)`: as Java's, by clicks (see items below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1933,6 +1934,18 @@ the cursor's place in the hand-back.
 - **`bot.getEquipmentDestSlot(destination)`** is Java's: the hand's hotbar slot, `head` 5, `torso` 6, `legs` 7, `feet`
   8 and `off-hand` 45 (every Bedrock version has an offhand); an `AssertionError` for another. **`bot.entity.equipment`**
   is Java's: the held item, the offhand's, then the feet's, the legs', the torso's and the head's.
+- **`bot.tossStack(item)`** is Java's two clicks (`moveSlotItem(slot, -999)`): the item's stack taken to the cursor,
+  then dropped outside the window, the arm swinging with the drop, each click once the server took the one before, as
+  recorded on every build dropping a stack from the cursor. It clicks the screen open (an `Item` of `bot.inventory`
+  where the screen shows it, as `equip` does; another item, the window's own, at its slot, as Java reads it), else the
+  inventory screen, opened and closed again. It closes only a screen it opened: Java closes the window open too, the
+  caller's. No item throws Java's `AssertionError`.
+- **`bot.toss(itemType, metadata, count)`** is Java's: `transfer` of `count` (1 for null) items of `itemType` (any
+  metadata for null) from the player's slots of the screen open (`inventoryStart` to `inventoryEnd`; else
+  `bot.inventory`'s, on its screen opened and closed again) to outside the window: the first stack taken, dropped
+  whole where that is not more than wanted, else one item a right click, the rest put back. Too few items reject with
+  Java's `Can't find …` after dropping those found, an unknown item with `Invalid itemType`. The drop key outside any
+  screen, the vanilla client's other way to drop the held item (a legacy inventory transaction), is not used.
 
 Recorded and replayed by the tests: the selection of an empty slot, then of one of dirt, on every build, in groups by
 how the items and the interact are written and where the tick tells them (up to 1.19.0 after its auth input, from
@@ -1940,6 +1953,10 @@ how the items and the interact are written and where the tick tells them (up to 
 
 Recorded and replayed by the tests too: an iron helmet put on the head from hotbar slot 0 on the inventory screen, played
 by `equip` on every build, byte for byte, in groups by how requests are written.
+
+Recorded and replayed by the tests too: 10 sticks in hotbar slot 0 taken to the cursor on the inventory screen, then
+dropped by a click outside it, played by `tossStack` on every build, byte for byte, with the arm's swing (for a dropped
+item from 1.21.130), in groups by how requests are written.
 
 ## Tests
 

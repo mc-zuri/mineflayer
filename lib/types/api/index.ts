@@ -260,6 +260,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   equip: (item: Item | number, destination: EquipmentDestination | null) => Promise<void>
   /** Java's: the hand by selecting an empty hotbar slot, else moving its stack to the inventory (dropping it with no room); the armor or the offhand by putAway */
   unequip: (destination: EquipmentDestination | null) => Promise<void>
+  /** Java's: the stack taken to the cursor and dropped, by clicks (moveSlotItem) on the screen open, where it shows an item of bot.inventory, or the inventory's; closes only a screen it opened */
+  tossStack: (item: Item) => Promise<void>
+  /** Java's: transfer of `count` (1 for null) of the item from the player's slots of the screen open (else bot.inventory's) to outside it */
+  toss: (itemType: number, metadata: number | null, count: number | null) => Promise<void>
   /** opens the inventory screen (its 2 × 2 crafting grid), as the vanilla client does: resolves once the server opened it */
   openInventory: () => Promise<Window<StorageEvents>>
   /** gives back what the screen's definition says (the cursor, a grid, a station's inputs; dropping what has no room), closes the screen, and resolves once the server closed it */

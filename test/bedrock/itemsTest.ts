@@ -189,6 +189,120 @@ const ARMOR: readonly RecordedArmor[] = [
   }
 ]
 
+/** recorded in the reduced_stations scenario: 10 sticks given in hotbar slot 0 taken to the cursor on the inventory screen, then dropped by a click outside it */
+interface RecordedToss {
+  from: BedrockVersion
+  to: BedrockVersion
+  firstRequest: number
+  stackId: number
+  take: string
+  taken: string
+  drop: string
+  dropped: string
+}
+
+const TOSSES: readonly RecordedToss[] = [
+  {
+    // recorded on 1.16.201.2
+    from: 'bedrock_1.16.201',
+    to: 'bedrock_1.16.201',
+    firstRequest: -4177,
+    stackId: 3085,
+    take: '930101a14101000a1b009a303a000000',
+    taken: '94010100a141021b0100000000003a0100000a9a3000',
+    drop: '930101a54101030a3a009a300000',
+    dropped: '94010100a541013a010000000000'
+  },
+  {
+    // recorded on 1.16.220.2
+    from: 'bedrock_1.16.210',
+    to: 'bedrock_1.19.21',
+    firstRequest: -1851,
+    stackId: 1029,
+    take: '930101f51c01000a1b008a103a000000',
+    taken: '94010100f51c021b010000000000003a0100000a8a100000',
+    drop: '930101f91c01030a3a008a100000',
+    dropped: '94010100f91c013a01000000000000'
+  },
+  {
+    // recorded on 1.19.30.4
+    from: 'bedrock_1.19.30',
+    to: 'bedrock_1.19.40',
+    firstRequest: -4239,
+    stackId: 2978,
+    take: '9301019d4201000a1b00c42e3a000000ffffffff',
+    taken: '940101009d42021b010000000000003a0100000ac42e0000',
+    drop: '930101a14201030a3a00c42e0000ffffffff',
+    dropped: '94010100a142013a01000000000000'
+  },
+  {
+    // recorded on 1.19.50.2
+    from: 'bedrock_1.19.50',
+    to: 'bedrock_1.21.2',
+    firstRequest: -4663,
+    stackId: 3260,
+    take: '930101ed4801000a1c00f8323b000000ffffffff',
+    taken: '94010100ed48021c010000000000003b0100000af8320000',
+    drop: '930101f14801030a3b00f8320000ffffffff',
+    dropped: '94010100f148013b01000000000000'
+  },
+  {
+    // recorded on 1.21.20.3
+    from: 'bedrock_1.21.20',
+    to: 'bedrock_1.21.20',
+    firstRequest: -3467,
+    stackId: 2669,
+    take: '930101953601000a1c0000000000da293b00000000000000ffffffff',
+    taken: '940101009536021c00000000010000000000003b000000000100000ada290000',
+    drop: '930101993601030a3b0000000000da290000ffffffff',
+    dropped: '940101009936013b0000000001000000000000'
+  },
+  {
+    // recorded on 1.21.30.3
+    from: 'bedrock_1.21.30',
+    to: 'bedrock_1.21.42',
+    firstRequest: -3467,
+    stackId: 2669,
+    take: '930101953601000a1c0000da293b00000000ffffffff',
+    taken: '940101009536021c00010000000000003b000100000ada290000',
+    drop: '930101993601030a3b0000da290000ffffffff',
+    dropped: '940101009936013b0001000000000000'
+  },
+  {
+    // recorded on 1.21.50.7
+    from: 'bedrock_1.21.50',
+    to: 'bedrock_1.26.30',
+    firstRequest: -3511,
+    stackId: 2722,
+    take: '930101ed3601000a1c0000c42a3b00000000ffffffff',
+    taken: '94010100ed36021c0001000000000000003b000100000ac42a000000',
+    drop: '930101f13601030a3b0000c42a0000ffffffff',
+    dropped: '94010100f136013b000100000000000000'
+  },
+  {
+    // recorded on 1.26.40.5
+    from: 'bedrock_1.26.40',
+    to: 'bedrock_1.26.45',
+    firstRequest: -3583,
+    stackId: 2809,
+    take: '930101fd370100000a1c0000f90a00003b00000000000000ffffffff',
+    taken: '94010100fd370101021c000100000001000000003b000100000a0101f22b000000',
+    drop: '93010181380103030a3b0000f90a00000000ffffffff',
+    dropped: '9401010081380101013b00010000000100000000'
+  },
+  {
+    // recorded on 1.26.51.1
+    from: 'bedrock_1.26.51',
+    to: latestSupportedBedrockVersion,
+    firstRequest: -345,
+    stackId: 123,
+    take: '930101b1050100000a1c00007b0000003b00000000000000ffffffff',
+    taken: '94010100b10501021c0001000000000000003b000100000a01f601000000',
+    drop: '930101b5050103030a3b00007b0000000000ffffffff',
+    dropped: '94010100b50501013b000100000000000000'
+  }
+]
+
 type SentRequest = BedrockServerboundPackets['item_stack_request']['requests'][number]
 type SentSlot = NonNullable<SentRequest['actions'][number]['source']>
 
@@ -369,6 +483,37 @@ describe('bedrock items', () => {
           await driver.tick()
           await equip
           assert.deepStrictEqual([namesOf(bot, [5, 36]), bot.inventory.slots[5]?.stackId, bot.currentWindow, errors], [['iron_helmet', null], recorded.stackId, bot.inventory, []])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  for (const recorded of TOSSES) {
+    describe(`tossing a stack as the vanilla client drops it from the cursor (${recorded.from.slice(8)} – ${recorded.to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(recorded.from, recorded.to)) {
+        it(`bedrock ${version}: takes the stack to the cursor, then drops it with the arm's swing, each click once the server took the one before, leaving the screen open`, async () => {
+          const { bot, internal, server, driver, inventory } = await holding(version, null)
+          const errors: string[] = []
+          bot.on('error', error => { errors.push(error.message) })
+          inventory.slot('inventory', 0, { id: bot.registry.itemsByName['stick']?.id ?? 0, count: 10, stackId: recorded.stackId })
+          openScreen(server, 'inventory')
+          await driver.tick()
+          internal._core.requestIds.continueProcess(recorded.firstRequest)
+          const requests = writtenSince(server)
+
+          const toss = bot.tossStack(itemAt(bot, 36))
+          await driver.tick()
+          assert.deepStrictEqual([requests(), server.sentOf('animate').length], [[recorded.take], 0])
+          server.receive(Buffer.from(recorded.taken, 'hex'))
+          await driver.ticks(2)
+          assert.deepStrictEqual(requests(), [recorded.drop])
+          // the arm swings for the drop, recorded with the request on every build: for a dropped item from 1.21.130
+          assert.deepStrictEqual(server.sentOf('animate').map(({ action_id: action, swing_source: source }) => [action, source]), [['swing_arm', atLeast(version, 'bedrock_1.21.130') ? 'dropitem' : undefined]])
+          server.receive(Buffer.from(recorded.dropped, 'hex'))
+          await driver.tick()
+          await toss
+          assert.deepStrictEqual([bot.inventory.slots[36], bot.inventory.selectedItem, bot.currentWindow, server.sentOf('container_close').length, errors], [null, null, bot.inventory, 0, []])
           bot.end()
         })
       }
@@ -625,6 +770,69 @@ describe('bedrock items', () => {
       await driver.tick()
       const takes = internal._inventory
       assert.deepStrictEqual([takes.takes(36, 5), takes.takes(36, 6), takes.takes(36, 9), takes.takes(36, 99), takes.takes(99, 6), takes.takes(37, 6)], [true, false, true, true, true, true])
+      bot.end()
+    })
+  })
+  describe(`toss and tossStack, alike on every version: (on ${latestSupportedBedrockVersion})`, () => {
+    it('tosses a stack on the inventory screen it opens and closes, or on the screen open, where it shows an item of bot.inventory, or the window\'s own item', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot()
+      inventory.slot('inventory', 0, { id: idOf('dirt'), count: 5, stackId: 7 })
+      inventory.slot('inventory', 9, { id: idOf('stone'), count: 3, stackId: 8 })
+      inventory.slot('inventory', 1, { id: idOf('egg'), count: 2, stackId: 9 })
+      await driver.tick()
+      const requests = requestsSince(server)
+      await served(bot.tossStack(itemAt(bot, 36)))
+      assert.deepStrictEqual([requests(), server.sentOf('animate').length, server.sentOf('container_close').length, bot.currentWindow, bot.inventory.slots[36]], [
+        ['take 5 hotbar:0 → cursor:0', 'drop 5 cursor:0'], 1, 1, null, null
+      ])
+      openScreen(server, 'workbench')
+      await driver.tick()
+      await served(bot.tossStack(itemAt(bot, 9)))
+      const window = bot.currentWindow
+      assert.ok(window !== null)
+      await served(bot.tossStack(window.slots[38] ?? itemAt(bot, 0)))
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, bot.currentWindow, namesOf(bot, [9, 37])], [
+        ['take 3 inventory:9 → cursor:0', 'drop 3 cursor:0', 'take 2 hotbar:1 → cursor:0', 'drop 2 cursor:0'], 1, window, [null, null]
+      ])
+      await assert.rejects(bot.tossStack(null as never), { name: 'AssertionError' })
+      assert.deepStrictEqual(requests(), [])
+      bot.end()
+    })
+
+    it('tosses as Java\'s transfer to outside the window: the stack taken, a drop an item and the rest put back, else the whole stack dropped', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot()
+      inventory.slot('inventory', 9, { id: idOf('oak_planks'), count: 10, stackId: 7 })
+      inventory.slot('inventory', 0, { id: idOf('dirt'), count: 4, stackId: 8 })
+      await driver.tick()
+      const requests = requestsSince(server)
+      await served(bot.toss(idOf('oak_planks'), null, 3))
+      assert.deepStrictEqual([requests(), server.sentOf('animate').length, server.sentOf('container_close').length, bot.currentWindow, bot.inventory.slots[9]?.count], [[
+        'take 10 inventory:9 → cursor:0', 'drop 1 cursor:0', 'drop 1 cursor:0', 'drop 1 cursor:0', 'place 7 cursor:0 → inventory:9'
+      ], 3, 1, null, 7])
+      await served(bot.toss(idOf('oak_planks'), 0, null))
+      await served(bot.toss(idOf('dirt'), null, 4))
+      assert.deepStrictEqual([requests(), namesOf(bot, [9, 36]), bot.inventory.slots[9]?.count], [[
+        'take 7 inventory:9 → cursor:0', 'drop 1 cursor:0', 'place 6 cursor:0 → inventory:9', 'take 4 hotbar:0 → cursor:0', 'drop 4 cursor:0'
+      ], ['oak_planks', null], 6])
+      bot.end()
+    })
+
+    it('tosses from the player\'s slots of the screen open, and rejects as Java too few items, after tossing those it found, and an item that is none', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot()
+      const [stone, planks] = [idOf('stone'), idOf('oak_planks')]
+      inventory.slot('inventory', 1, { id: stone, count: 2, stackId: 7 })
+      inventory.slot('inventory', 9, { id: planks, count: 5, stackId: 8, metadata: 1 })
+      await driver.tick()
+      const requests = requestsSince(server)
+      await assert.rejects(served(bot.toss(stone, null, 3)), { message: `Can't find stone in slots [9 - 45], (item id: ${stone})` })
+      await assert.rejects(served(bot.toss(planks, 0, 1)), { message: `Can't find oak_planks in slots [9 - 45], (item id: ${planks})` })
+      await assert.rejects(served(bot.toss(99999, null, 1)), { name: 'AssertionError', message: 'Invalid itemType' })
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, bot.currentWindow], [['take 2 hotbar:1 → cursor:0', 'drop 2 cursor:0'], 3, null])
+      openScreen(server, 'workbench')
+      await driver.tick()
+      await served(bot.toss(planks, 1, 5))
+      await assert.rejects(served(bot.toss(stone, null, 1)), { message: `Can't find stone in slots [10 - 46], (item id: ${stone})` })
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, bot.currentWindow?.type], [['take 5 inventory:9 → cursor:0', 'drop 5 cursor:0'], 3, 'minecraft:crafting_table'])
       bot.end()
     })
   })
