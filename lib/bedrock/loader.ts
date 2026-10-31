@@ -18,6 +18,7 @@ import anvil from './plugins/anvil.ts'
 import bossBar from './plugins/boss_bar.ts'
 import brewingStand from './plugins/brewing_stand.ts'
 import breath from './plugins/breath.ts'
+import cartography from './plugins/cartography.ts'
 import chat from './plugins/chat.ts'
 import chest from './plugins/chest.ts'
 import craft from './plugins/craft.ts'
@@ -81,7 +82,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   chest,
   drags,
   stonecutter,
-  loom
+  loom,
+  cartography
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

@@ -1833,6 +1833,29 @@ colors, a banner with patterns already (no limit to their number is checked: the
 craft, a hotbar key or a shift click on the output, the patterns of a banner pattern item, and the cursor's place in
 the hand-back.
 
+### The cartography table
+
+Its window is `minecraft:cartography`, of Java's 39 slots: 0 the input (`ui` 12, `cartography_input` in requests), 1
+the addition (`ui` 13, `cartography_additional`), 2 the result (`ui` 50, `creative_output`). Its close gives back the
+cursor's item (its place is not recorded: as the crafting table's), then the input's and the addition's, as recorded
+on 1.26.51, and from 1.21.120 waits for the crafting table's animation (390 ms), as recorded on every build. Its
+recipes are crafting_data's of block `cartography_table`, on every version two: paper makes an empty map, paper and a
+compass a locator map. Java's bot has no cartography helper, and the slots decide what the output makes, so it has no
+member of its own: `bot.openBlock`, `bot.clickWindow` and `bot.closeWindow` drive it.
+
+- **The output** (`bot.clickWindow(2, …)`) makes the recipe whose ingredients the slots hold in its order, as
+  recorded: the input its first, the addition its second or nothing. Else it sends nothing: extending, cloning,
+  locking and renaming a map are not crafting_data's recipes and not supported. A request is `optional` (the recipe,
+  the text 0), a `consume` of the input, then of the addition, and the result moved: with a mouse button taken to the
+  cursor, as recorded, with a hotbar key to the key's slot, unless that slot holds another item or has no room for it,
+  with a shift click to the inventory as a shift click moves a stack (neither recorded). Its custom names are `[""]`,
+  the map's name unchanged, and from 1.19.30 its cause `cartography_text`; from 1.26.40 each action's legacy type.
+
+Recorded and replayed by the tests: an empty map and a locator map to the cursor on every build, of the request's
+layout by version (byte for byte on 1.16.201, 1.16.210, 1.19.30, 1.21.20, 1.21.30, 1.26.40 and 1.26.60). Not
+recorded, so as the bot does it: a hotbar key or a shift click on the output, the slots' items in the other order, and
+the cursor's place in the hand-back.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
