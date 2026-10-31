@@ -141,6 +141,15 @@ export class BedrockCore {
     this.commands.push(run)
   }
 
+  /** an API call made in the next input pass, settling as `run` does: the bot's end rejects it, as it does a wait */
+  call<Result> (run: (ctx: FrameContext) => Promise<Result>): Promise<Result> {
+    return new Promise((resolve, reject) => {
+      let settled = false
+      this.waits.until(() => settled, Number.POSITIVE_INFINITY, 'never').catch(reject)
+      this.command(ctx => { run(ctx).finally(() => { settled = true }).then(resolve, reject) })
+    })
+  }
+
   /** a change that takes effect at the start of the next tick that runs */
   stage (commit: () => void): void {
     this.staged.push(commit)

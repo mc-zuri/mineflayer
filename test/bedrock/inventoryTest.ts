@@ -476,9 +476,7 @@ const RECORDED: readonly Recorded[] = [
     heldFourAgain: '1f0b050004000000b6b5ac94070a00000000000000000000000000'
   },
   {
-    // recorded on 1.26.60.5, whose client also brackets each click placing from the cursor with
-    // serverbound_cursor_item_drag: start (e60200) before the request, stop (e60201) in the next tick. A click sends
-    // them, not a request, so they are left out here
+    // recorded on 1.26.60.5, less the cursor drags its clicks bracket the places with, which a request does not send (clickTest.ts)
     name: 'clicks dragging the cursor',
     from: 'bedrock_1.26.60',
     to: 'bedrock_1.26.60',
@@ -747,6 +745,31 @@ describe('bedrock inventory', () => {
         await closing
         assert.deepStrictEqual([bot.inventory.slots[9]?.count, bot.inventory.slots[9]?.stackId, bot.inventory.slots[36], bot.inventory.selectedItem], [20, 24, null, null])
         assert.deepStrictEqual(errors, [])
+        bot.end()
+      })
+
+      it(`bedrock ${version}: the grid's items with no room dropped, a request a slot, as recorded`, async () => {
+        // recorded on 1.26.51.1: 17 planks left in each of a crafting table's first three slots, the inventory full of cobblestone
+        const { bot, internal, server, driver, errors } = await joined(version)
+        const inventory = new ServerInventory(server)
+        internal._core.requestIds.continueProcess(-585)
+        const idOf = (name: string): number => bot.registry.itemsByName[name]?.id ?? 0
+        inventory.content('inventory', Array.from({ length: 36 }, (_, slot) => ({ id: idOf('cobblestone'), count: 64, stackId: 152 + slot, blockRuntimeId: 1741778478 })))
+        receive(server, '2e1d0104770001')
+        for (const [slot, stackId] of [[32, 114], [33, 115], [34, 116]] as const) inventory.slot('ui', slot, { id: idOf('oak_planks'), count: 17, stackId, blockRuntimeId: 1921718966 })
+        await driver.tick()
+        const sent = sentSince(server)
+        const closing = bot.closeWindow(bot.currentWindow ?? bot.inventory)
+        await driver.tick()
+        assert.deepStrictEqual(sent(), ['9301039109010303110d0020720000000000ffffffff9509010303110d0021730000000000ffffffff9909010303110d0022740000000000ffffffff'])
+        receive(server, '94010300910901010d00012020000000000000950901010d00012121000000000000990901010d000122220000000000')
+        const after: string[] = []
+        const frames = await framesUntilClose(driver, version, sent, packets => { after.push(...packets) })
+        assert.deepStrictEqual([after, frames], [['2f1df700'], closeFrame(version, 'workbench')])
+        receive(server, '2f1df700')
+        await driver.frame(10)
+        await closing
+        assert.deepStrictEqual([bot.inventory.slots.slice(1, 4), errors], [[null, null, null], []])
         bot.end()
       })
 
@@ -1441,17 +1464,33 @@ describe('bedrock inventory', () => {
         bot.end()
       })
 
-      it('leaves what has no room in the inventory', async () => {
+      it('hands back what has room, and drops the rest', async () => {
         const { bot, inventory, server, driver } = await withPlanks()
         const stick = bot.registry.itemsByName['stick']?.id ?? 0
-        inventory.content('inventory', Array.from({ length: 36 }, (_, slot) => ({ id: stick, count: 64, stackId: 100 + slot })))
+        inventory.content('inventory', Array.from({ length: 36 }, (_, slot) => slot === 0 ? { ...planks, count: 60, stackId: 100 } : { id: stick, count: 64, stackId: 100 + slot }))
         receive(server, '2e02ff00750001')
-        inventory.slot('ui', 28, { ...planks, count: 1, stackId: 11 })
+        inventory.slot('ui', 28, { ...planks, count: 10, stackId: 11 })
         await driver.tick()
-        const sent = sentSince(server)
+        bot.closeWindow(bot.inventory).catch(() => {})
+        await driver.tick()
+        const moves = server.sentOf('item_stack_request').at(-1)?.requests.map(({ request_id: id, actions }) => [id, ...actions.map(({ type_id: type, count, source, destination }) => [type, count, source?.slot, destination?.slot])])
+        assert.deepStrictEqual(moves, [[-3, ['place', 4, 28, 0]], [-5, ['drop', 6, 28, undefined]]])
+        bot.end()
+      })
+
+      it('rejects a click once the close handed the items back, as the vanilla client\'s screen is gone, and a request alike', async () => {
+        const { bot, internal, server, driver } = await withPlanks()
+        receive(server, '2e02ff00750001')
+        await driver.tick()
         const closing = bot.closeWindow(bot.inventory)
-        await driver.frames([10, 310, 10])
-        assert.deepStrictEqual(sent(), ['2f02f700'])
+        const refused = Promise.all([
+          assert.rejects(bot.clickWindow(9, 0, 0), { message: 'the minecraft:inventory window is closing' }),
+          assert.rejects(request(internal, [{ type: 'take', count: 1, from: HOTBAR_0, to: CURSOR }]), { message: 'the minecraft:inventory window is closing' })
+        ])
+        await driver.tick()
+        await refused
+        assert.deepStrictEqual(server.sentOf('item_stack_request'), [])
+        await driver.frames([310, 10])
         receive(server, '2f02f700')
         await driver.frame(10)
         await closing

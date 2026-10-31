@@ -8,8 +8,10 @@ import { isBedrockVersionAtLeast } from '../version.ts'
 import type { BedrockVersion, StorageEvents } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockClientboundPackets, BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
-import { heldItemOf, itemOf, moveAction, readResponses, readStack, sameItem, sameKind, slotInfo, stackRequest, withCount } from './items.ts'
-import type { ContainerName, MoveType, ResponseSlot, SlotRef, Stack, StackRequest, StackResponse } from './items.ts'
+import { clickMoves, HOTBAR_AND_INVENTORY, isSupportedClick, placesFor } from './clicks.ts'
+import type { ClickedSlots, WindowClick } from './clicks.ts'
+import { dropAction, heldItemOf, itemOf, moveAction, readResponses, readStack, sameItem, sameKind, slotInfo, stackRequest, swapAction, withCount } from './items.ts'
+import type { ContainerName, ResponseSlot, SlotRef, Stack, StackRequest, StackResponse } from './items.ts'
 
 const OWNER = 'inventory'
 const MS = 1_000_000
@@ -22,6 +24,7 @@ const ANIMATIONS: Readonly<Record<ScreenType, Ns>> = Object.freeze({ inventory: 
 const DEFAULT_STACK_SIZE = 64
 const HOTBAR_START = 36
 const OFFHAND = 'offhand:1'
+const OUTSIDE = -999
 
 /** a slot of the bot's containers: `inventory:0` – `inventory:35`, `armor:0` – `armor:3`, `offhand:1`, `ui:<slot>` */
 type Key = string
@@ -63,6 +66,15 @@ function keyOf ({ container, slot }: SlotRef): Key {
   return `${STORES[container]}:${slot}`
 }
 
+/** a window slot as a click's request names it */
+function clickedRefOf (key: Key): SlotRef {
+  const [store, slotName] = key.split(':')
+  const slot = Number(slotName)
+  if (store === 'inventory') return { container: slot < 9 ? 'hotbar' : 'inventory', slot }
+  if (store === 'ui') return { container: slot === 50 ? 'creative_output' : 'crafting_input', slot }
+  return { container: store === 'armor' ? 'armor' : 'offhand', slot }
+}
+
 function isContainerName (name: string): name is ContainerName {
   return Object.hasOwn(STORES, name)
 }
@@ -77,12 +89,23 @@ function changeOf (before: Stack | undefined, after: Stack | undefined): 'item' 
   return sameItem(before, after) && before.count === after.count ? undefined : 'other'
 }
 
-/** a new stack is named by the request's id */
-function afterMove ({ count, from, to }: Move, source: Stack | undefined, destination: Stack | undefined, requestId: number): [Stack | undefined, Stack] {
+/** the stack a move takes `count` of, and what it leaves */
+function takenFrom (count: number, from: SlotRef, source: Stack | undefined): [Stack, Stack | undefined] {
   if (source === undefined || source.count < count) throw new Error(`${from.container} ${from.slot} has not ${count} items`)
-  if (destination !== undefined && !sameItem(source, destination)) throw new Error(`${to.container} ${to.slot} holds another item`)
-  const left = source.count === count ? undefined : withCount(source, source.count - count)
-  return [left, destination === undefined ? { ...withCount(source, count), stackId: requestId } : withCount(destination, destination.count + count)]
+  return [source, source.count === count ? undefined : withCount(source, source.count - count)]
+}
+
+/** what a move leaves in the slots it changes, each as it was before any; a new stack is named by the request's id */
+function changesOf (move: Move, stackAt: (key: Key) => Stack | undefined, requestId: number): Array<[Key, Stack | undefined]> {
+  const fromKey = keyOf(move.from)
+  if (move.type === 'drop') return [[fromKey, takenFrom(move.count, move.from, stackAt(fromKey))[1]]]
+  const toKey = keyOf(move.to)
+  const destination = stackAt(toKey)
+  if (move.type === 'swap') return [[fromKey, destination], [toKey, stackAt(fromKey)]]
+  const [source, left] = takenFrom(move.count, move.from, stackAt(fromKey))
+  if (destination === undefined) return [[fromKey, left], [toKey, { ...withCount(source, move.count), stackId: requestId }]]
+  if (!sameItem(source, destination)) throw new Error(`${move.to.container} ${move.to.slot} holds another item`)
+  return [[fromKey, left], [toKey, withCount(destination, destination.count + move.count)]]
 }
 
 /** WindowID names the dynamic ids 1 and 100 first and last */
@@ -102,12 +125,10 @@ function windowsOf (registry: BedrockBotInternal['registry']): ReturnType<typeof
   return Reflect.apply(prismarineWindows, undefined, [registry])
 }
 
-export interface Move {
-  readonly type: MoveType
-  readonly count: number
-  readonly from: SlotRef
-  readonly to: SlotRef
-}
+export type Move =
+  | { readonly type: 'take' | 'place', readonly count: number, readonly from: SlotRef, readonly to: SlotRef }
+  | { readonly type: 'swap', readonly from: SlotRef, readonly to: SlotRef }
+  | { readonly type: 'drop', readonly count: number, readonly from: SlotRef }
 
 interface PendingRequest {
   readonly id: number
@@ -127,9 +148,14 @@ export interface InventorySettings {
   readonly screenAnimations: boolean
 }
 
+/** from 1.26.60 the vanilla client brackets a click placing from the cursor: when its request left */
+interface CursorDrag {
+  leftAt: Ns | undefined
+}
+
 interface Closing {
   readonly screen: Screen
-  /** when the screen's animation ends, set by the input pass that asked the close */
+  /** when the screen's animation ends, set by the input pass that asked the close, which handed the items back */
   end: Ns | undefined
   ended: boolean
   sent: boolean
@@ -149,6 +175,8 @@ export class Inventory {
   /** in the order they were made: the last that changed a slot names it */
   private pending: PendingRequest[] = []
   private queued: StackRequest[] = []
+  /** the frame's responses, taken in after its input: a click in the frame a response came in names the slots by the request, as the vanilla client's */
+  private answers: StackResponse[] = []
   private screen: Screen | undefined
   private closing: Closing | undefined
   private runtimeId: bigint | undefined
@@ -158,6 +186,13 @@ export class Inventory {
   private readonly screensOpened = new Set<ScreenType>()
   private readonly screensTold = new Set<ScreenType>()
   private optionsDue: Array<{ readonly type: ScreenType, readonly at: Ns }> = []
+  private cursorDrag: CursorDrag | undefined
+  private readonly clickedSlots: ClickedSlots = {
+    stackAt: ref => this.stackAt(ref),
+    stackSize: ({ networkId }) => this.bot.registry.items[networkId]?.stackSize ?? DEFAULT_STACK_SIZE,
+    enchantCategories: ({ networkId }) => this.bot.registry.items[networkId]?.enchantCategories ?? [],
+    itemName: ({ networkId }) => this.bot.registry.items[networkId]?.name
+  }
 
   constructor (bot: BedrockBotInternal, settings: InventorySettings) {
     this.bot = bot
@@ -177,6 +212,7 @@ export class Inventory {
     })
     bot.openInventory = async () => await this.openInventory(core)
     bot.closeWindow = async window => { await this.closeWindow(core, window) }
+    bot.clickWindow = async (slot, mouseButton, mode) => { await this.clickWindow(core, { slot, mouseButton, mode }) }
     this.window.on('updateSlot', (slot, _oldItem, newItem) => {
       if (slot === HOTBAR_START + this.quickBarSlot) core.emit(bot, 'heldItemChanged', newItem)
     })
@@ -211,10 +247,7 @@ export class Inventory {
       core.emit(bot, 'heldItemChanged', bot.heldItem)
       this.equipmentChanged = true
     })
-    core.handle(OWNER, 'item_stack_response', packet => {
-      for (const response of readResponses(packet.responses)) this.answer(response)
-      this.equipmentChanged = true
-    })
+    core.handle(OWNER, 'item_stack_response', packet => { this.answers.push(...readResponses(packet.responses)) })
     core.handle(OWNER, 'container_open', (packet, ctx) => { this.open(core, packet, ctx.now) })
     core.handle(OWNER, 'container_close', packet => {
       const { screen } = this
@@ -223,11 +256,19 @@ export class Inventory {
       this.closing = undefined
       core.emit(bot, 'windowClose', screen.window)
     })
-    core.inputPass(OWNER, ctx => { this.send(ctx) })
+    core.inputPass(OWNER, ctx => {
+      this.takeAnswers()
+      this.send(ctx)
+    })
     // up to 1.19.0 after the tick's auth input, from 1.19.10 before it
     const place = this.atLeast('bedrock_1.19.10') ? { at: 'ActorLegacyTickSystem' as const } : { after: 'lifecycle.hold' }
     core.system(OWNER, { name: 'inventory.equip', place, gate: 'present', replay: false, run: ({ outbox }) => { this.equip(outbox) } })
-    core.system(OWNER, { name: 'inventory.request', place: { after: 'inventory.equip' }, gate: 'always', replay: false, run: ({ outbox }) => { this.sendRequests(outbox) } })
+    core.system(OWNER, { name: 'inventory.request', place: { after: 'inventory.equip' }, gate: 'always', replay: false, run: ({ outbox, now }) => { this.sendRequests(outbox, now) } })
+  }
+
+  /** the open screen that can still be clicked: none once its close handed the items back */
+  get screenType (): ScreenType | undefined {
+    return this.closing?.end === undefined ? this.screen?.type : undefined
   }
 
   /** made in an input pass, it names its slots and predicts its moves at once, as the vanilla client does */
@@ -236,10 +277,9 @@ export class Inventory {
     const request: PendingRequest = { id: core.requestIds.nextStackRequest(), before: new Map(), response: undefined }
     this.pending.push(request)
     const actions = moves.map(move => {
-      const source = slotInfo(this.bot.version, move.from, this.nameOf(move.from))
-      const destination = slotInfo(this.bot.version, move.to, this.nameOf(move.to))
+      const action = this.actionOf(move)
       this.predict(request, move)
-      return moveAction(this.bot.version, move.type, move.count, source, destination)
+      return action
     })
     this.queued.push(stackRequest(this.bot.version, request.id, actions))
     try {
@@ -250,6 +290,44 @@ export class Inventory {
       throw error
     }
     if (request.response?.ok !== true) throw new Error(`the server refused item stack request ${request.id}: ${request.response?.status}`)
+  }
+
+  /** a click names its slots in the input pass it is made in, and its request leaves in the next tick, as the vanilla client's */
+  private async clickWindow (core: BedrockCore, click: WindowClick): Promise<void> {
+    if (!isSupportedClick(click)) throw new Error(`clickWindow does not support mode ${click.mode} with mouse button ${click.mouseButton} on Bedrock`)
+    await core.call(async ctx => { await this.click(core, ctx, click) })
+  }
+
+  private async click (core: BedrockCore, ctx: FrameContext, click: WindowClick): Promise<void> {
+    const { screen } = this
+    if (screen === undefined) throw new Error('clickWindow needs an open window: on Bedrock the inventory too is a screen (bot.openInventory())')
+    if (this.screenType === undefined) throw new Error(`the ${screen.window.type} window is closing`)
+    const key = screen.view[click.slot]
+    if (key === undefined && click.slot !== OUTSIDE) throw new Error(`the ${screen.window.type} window has no slot ${click.slot}`)
+    const clicked = key === undefined ? undefined : clickedRefOf(key)
+    if (clicked?.container === 'creative_output' && click.mode !== 4) return await this.outputClick()
+    const moves = clickMoves(click, clicked, this.clickedSlots)
+    if (moves.length === 0) return
+    const dragged = click.mode === 0 && this.atLeast('bedrock_1.26.60') && moves.some(move => move.type === 'place' && move.from.container === 'cursor')
+    if (dragged) this.startCursorDrag(ctx)
+    await this.request(core, moves)
+  }
+
+  /** a crafting output's mouse click, shift click or hotbar key is crafting's; with no recipe matched, the output holds nothing to take */
+  private async outputClick (): Promise<void> {}
+
+  private startCursorDrag (ctx: FrameContext): void {
+    this.stopCursorDrag(ctx)
+    if (this.cursorDrag !== undefined) return
+    ctx.outbox.queue('serverbound_cursor_item_drag', { state: 'start' })
+    this.cursorDrag = { leftAt: undefined }
+  }
+
+  /** the vanilla client ends the drag in the input pass of the frame after its request left */
+  private stopCursorDrag ({ outbox }: FrameContext): void {
+    if (this.cursorDrag?.leftAt === undefined) return
+    outbox.queue('serverbound_cursor_item_drag', { state: 'stop' })
+    this.cursorDrag = undefined
   }
 
   private async openInventory (core: BedrockCore): Promise<Window> {
@@ -295,29 +373,21 @@ export class Inventory {
     return closing
   }
 
-  /** the inventory screen's grid goes back before the cursor, another screen's after it, as the vanilla client does */
+  /** the inventory screen's grid goes back before the cursor, another screen's after it, as the vanilla client does; what has no room is dropped, a request a slot */
   private handBack (core: BedrockCore, screen: Screen): Array<Promise<void>> {
     const sources = screen.type === 'inventory' ? [...INVENTORY_GRID, CURSOR] : [CURSOR, ...TABLE_GRID]
     const requests: Array<Promise<void>> = []
     for (const from of sources) {
-      for (let stack = this.stackAt(from); stack !== undefined; stack = this.stackAt(from)) {
-        const destination = this.destinationOf(stack)
-        if (destination === undefined) break
-        requests.push(this.request(core, [{ type: 'place', count: Math.min(stack.count, destination.room), from, to: destination.to }]))
+      const stack = this.stackAt(from)
+      if (stack === undefined) continue
+      let left = stack.count
+      for (const { to, count } of placesFor(stack, HOTBAR_AND_INVENTORY, this.clickedSlots)) {
+        requests.push(this.request(core, [{ type: 'place', count, from, to }]))
+        left -= count
       }
+      if (left > 0) requests.push(this.request(core, [{ type: 'drop', count: left, from }]))
     }
     return requests
-  }
-
-  private destinationOf (stack: Stack): { to: SlotRef, room: number } | undefined {
-    const stackSize = this.bot.registry.items[stack.networkId]?.stackSize ?? DEFAULT_STACK_SIZE
-    let empty: number | undefined
-    for (let slot = 0; slot < 36; slot++) {
-      const held = this.slots.get(`inventory:${slot}`)
-      if (held === undefined) empty ??= slot
-      else if (sameItem(held, stack) && held.count < stackSize) return { to: { container: 'hotbar_and_inventory', slot }, room: stackSize - held.count }
-    }
-    return empty === undefined ? undefined : { to: { container: 'hotbar_and_inventory', slot: empty }, room: stackSize }
   }
 
   private open (core: BedrockCore, packet: BedrockClientboundPackets['container_open'], now: Ns): void {
@@ -340,7 +410,9 @@ export class Inventory {
     core.emit(this.bot, 'windowOpen', screen.window)
   }
 
-  private send ({ now, outbox }: FrameContext): void {
+  private send (ctx: FrameContext): void {
+    const { now, outbox } = ctx
+    this.stopCursorDrag(ctx)
     for (const due of this.optionsDue.filter(({ at }) => at <= now)) {
       outbox.queue('set_player_inventory_options', {
         left_tab: 'search',
@@ -358,14 +430,16 @@ export class Inventory {
       closing.ended = true
       return
     }
-    this.sendRequests(outbox)
+    this.sendRequests(outbox, now)
     closing.sent = true
     const close = this.atLeast('bedrock_1.21.0') ? { window_id: closing.screen.id, window_type: 'none' as const, server: false } : { window_id: closing.screen.id, server: false }
     outbox.queue('container_close', close)
   }
 
-  private sendRequests (outbox: OutboxWriter): void {
+  private sendRequests (outbox: OutboxWriter, now: Ns): void {
     if (this.queued.length === 0) return
+    // the drag's request leaves with the requests queued before it
+    if (this.cursorDrag !== undefined) this.cursorDrag.leftAt = now
     outbox.queue('item_stack_request', { requests: this.queued })
     this.queued = []
   }
@@ -383,6 +457,13 @@ export class Inventory {
     if (mainChange === 'item') outbox.queue('interact', this.interact('mouse_over_entity', 0n))
     if (mainChange !== undefined && (equipped !== undefined || main !== undefined)) outbox.queue('mob_equipment', this.mobEquipment(runtimeId, main, this.quickBarSlot, this.quickBarSlot, 'inventory'))
     if (offhandChange !== undefined) outbox.queue('mob_equipment', this.mobEquipment(runtimeId, offhand, 1, 0, 'offhand'))
+  }
+
+  private takeAnswers (): void {
+    if (this.answers.length === 0) return
+    for (const response of this.answers) this.answer(response)
+    this.answers = []
+    this.equipmentChanged = true
   }
 
   private answer (response: StackResponse): void {
@@ -420,24 +501,30 @@ export class Inventory {
     this.pending.splice(index, 1)
   }
 
-  /** throws before a request takes an id */
+  /** throws before a request takes an id: as well once a close handed the items back, the vanilla client's screen being gone */
   private check (moves: readonly Move[]): void {
+    const { screen } = this
+    if (screen !== undefined && this.screenType === undefined) throw new Error(`the ${screen.window.type} window is closing`)
     const planned = new Map<Key, Stack | undefined>()
     const stackAt = (key: Key): Stack | undefined => planned.has(key) ? planned.get(key) : this.slots.get(key)
-    for (const move of moves) {
-      const [fromKey, toKey] = [keyOf(move.from), keyOf(move.to)]
-      const [source, destination] = afterMove(move, stackAt(fromKey), stackAt(toKey), 0)
-      planned.set(fromKey, source)
-      planned.set(toKey, destination)
-    }
+    for (const move of moves) for (const [key, stack] of changesOf(move, stackAt, 0)) planned.set(key, stack)
   }
 
   private predict (request: PendingRequest, move: Move): void {
-    const [fromKey, toKey] = [keyOf(move.from), keyOf(move.to)]
-    for (const key of [fromKey, toKey]) if (!request.before.has(key)) request.before.set(key, this.slots.get(key))
-    const [source, destination] = afterMove(move, this.slots.get(fromKey), this.slots.get(toKey), request.id)
-    this.set(fromKey, source)
-    this.set(toKey, destination)
+    for (const [key, stack] of changesOf(move, key => this.slots.get(key), request.id)) {
+      if (!request.before.has(key)) request.before.set(key, this.slots.get(key))
+      this.set(key, stack)
+    }
+  }
+
+  /** names its slots as they are before the move */
+  private actionOf (move: Move): StackRequest['actions'][number] {
+    const { version } = this.bot
+    const source = slotInfo(version, move.from, this.nameOf(move.from))
+    if (move.type === 'drop') return dropAction(version, move.count, source)
+    const destination = slotInfo(version, move.to, this.nameOf(move.to))
+    if (move.type === 'swap') return swapAction(version, source, destination)
+    return moveAction(version, move.type, move.count, source, destination)
   }
 
   private nameOf (ref: SlotRef): number {

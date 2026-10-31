@@ -86,7 +86,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.bossBars`: as Java's, the bars of the boss entities the bot has (see boss bars below).
 - `bot.players`, `bot.player`: the player list (see below).
 - `bot.inventory`, `bot.currentWindow`, `bot.heldItem`, `bot.quickBarSlot`, `bot.openInventory()` (Bedrock's),
-  `bot.closeWindow(window)`: the player's items and screens (see the inventory below).
+  `bot.closeWindow(window)`, `bot.clickWindow(slot, mouseButton, mode)`: the player's items and screens (see the
+  inventory below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -158,7 +159,7 @@ Events come at their point in the frame:
 | Event | When |
 | --- | --- |
 | `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
-| `heldItemChanged` | where the held slot changes: the packet pass, or the input pass of a request's prediction |
+| `heldItemChanged` | where the held slot changes: the packet pass, or the input pass (a request's prediction, a response taken in) |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
 
@@ -938,9 +939,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   names only ok and error); no response in 100 ticks undoes them too and rejects (an answer after is ignored), and so
   does the answer to a later request for one still unanswered, as the server answers in order. Where a later request changed the slot too, what it
   changed it from is settled instead, so that once the last is answered the slot is the server's; a slot the server
-  sends while a request on it is pending stays as sent. From 1.26.60 the vanilla client brackets a click that places
-  from the cursor with serverbound_cursor_item_drag (start before the request, stop in the next tick); a hand-back has
-  none, and a request sends none. How the slots are written changes by version: `container_id` and `slot_id` on
+  sends while a request on it is pending stays as sent. How the slots are written changes by version: `container_id` and `slot_id` on
   1.16.201, a `cause` (-1) from 1.19.30, a full container name from 1.21.20 (with a dynamic id of 0 on 1.21.20), the
   action's type again (`legacy_type_id`) and 32-bit stack ids from 1.26.40.
 - **What the player holds** is told to the server in the first tick the player is shown (its first auth input's), and in
@@ -958,7 +957,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **`bot.closeWindow(window)`** gives back what the screen holds, one request for each slot an item goes to, in one
   packet: on the inventory screen the grid's items then the cursor's, on a crafting table the cursor's then the grid's;
   each to the stacks of its item with room (64 for an item that names no stack size, as the game has it), then to empty
-  slots, from hotbar slot 0 on. What has no room stays. Then container_close (from 1.21.0 naming the screen's type
+  slots, from hotbar slot 0 on. What has no room is dropped, a request for each slot, as recorded on 1.26.51 (a crafting table's grid with the inventory full). Then container_close (from 1.21.0 naming the screen's type
   `none`): up to 1.21.111 in the same input pass, with the hand-back; from 1.21.120 the hand-back leaves in the next
   tick, and the close in the frame after the screen's animation ended, 240 ms after the frame it was asked in for the
   inventory, 390 ms for a crafting table. Recorded at 32 frames a second (up to 1.26.51) the client closes in the 9th
@@ -969,7 +968,42 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   resolves once the server closed the screen too (its own container_close, which also closes a screen when the server
   closes it, and then gives the items back itself: closing a screen the server closed first hands nothing back), and
   rejects if the server refused to take an item back or did not close the screen in 100 ticks; asked again, it closes it
-  again. Closing a window that is not open does nothing.
+  again. Closing a window that is not open does nothing. Once the close handed the items back, the screen is gone, as the
+  vanilla client's: a click made after rejects, so that no request follows container_close.
+- **`bot.clickWindow(slot, mouseButton, mode)`** clicks a slot of the open screen's window (Java's slot numbers,
+  -999 outside the window) as the vanilla client does, sending the request it sends (none where it sends none), and
+  resolves once the server took it; it rejects a refusal (undoing what it showed), a click with no screen open (on
+  Bedrock the inventory too is a screen: `bot.openInventory()`), a slot the window has not, and the modes it does not
+  make: 3 (creative middle click), 5 (drags) and 6 (double clicks). As recorded on the inventory and crafting table
+  screens (by every gesture on 1.26.51, the take and drop of the cursor and a shield put in the offhand on every build),
+  but where marked:
+
+  | Click | Cursor empty | Cursor holding an item |
+  | --- | --- | --- |
+  | mode 0, button 0 (left) | takes the slot's stack | places it all in an empty slot; onto a stack of its item what fits; swaps it with another item's stack, or with a full stack of its item (nothing when the two are alike) |
+  | mode 0, button 1 (right) | takes half the stack, rounded up | places one, as left does otherwise |
+  | mode 0, slot -999 | nothing | drops the stack (right: one) |
+  | mode 1 (shift, either button) | moves the stack: from the hotbar to the inventory (9 – 35), from the inventory to the hotbar, from the armor, offhand or a grid to either (`hotbar_and_inventory`): onto the stacks of its item with room, in order, then to the first empty slot, in one request; what has no room stays | as with an empty cursor |
+  | mode 2 (hotbar key: the button is its slot, 0 – 8) | moves the slot's stack to the key's slot (or that one's to the slot: recorded moving one item, the bot moves the stack), as a left click moves the cursor's onto a slot | places the cursor's stack in the key's slot if empty (recorded with one item on the cursor, the bot places the stack), else nothing (not recorded) |
+  | mode 4 (drop key: button 1 with ctrl) | drops one of the slot's stack (with ctrl: the stack) | drops one of the cursor's stack (with ctrl: nothing) |
+
+  A click that would put an item in an armor slot it is not worn in sends nothing, as the vanilla client's: a slot takes
+  what the registry's `enchantCategories` say is worn there (the helmet `armor_head` and `cosmetic_head`, the chestplate
+  `armor_torso` and `elytra`, the leggings `armor_legs`, the boots `armor_feet`). The offhand takes the vanilla items
+  allowed there, which the registry does not tell: a shield, arrows, a totem of undying, a firework rocket, a nautilus
+  shell and a filled map; for another the click sends nothing (recorded: a shield on every build, arrows taken and eggs
+  refused on 1.26.51). A mouse click, shift click or hotbar
+  key on a crafting output (slot 0) sends nothing: it is crafting's, and until a recipe is matched there the output holds
+  nothing to take; the drop key never takes from it, but drops one of the cursor's stack as anywhere. Containers are named as the client names them: `hotbar` 0 – 8, `inventory` 9 – 35, `armor`,
+  `offhand` 1, `crafting_input`, `cursor`. A click names its slots in the input pass it is made in, and its request
+  leaves in the next tick, with the requests made since (the clicks of a frame, a hand-back) in one packet; a response
+  is taken in after the input pass of the frame it came in. So neither a response that arrives between the click and
+  that tick nor one that came in the click's own frame renames them, as the vanilla client named 250 slots on 1.26.51
+  by a request whose response had arrived 6 to 31 ms (a frame or less) before its own request left, and none whose
+  response had arrived 52 ms or more before. From 1.26.60 a click of a mouse button placing from the cursor is bracketed
+  with serverbound_cursor_item_drag: its start in the click's input pass (before the request), its stop in the input
+  pass of the frame after the request left (a second click before then shares the bracket); a take, a swap (not
+  recorded), a key, a click outside and a hand-back have none.
 - **set_player_inventory_options** (1.20.50 – 1.21.101): the client tells the server once a process, 120 ms after a
   screen's first opening, the screens it opened so far (the inventory's `layout`, the crafting table's
   `crafting_layout`: `recipe_book` once opened). A bot is a process of its own; a test that continues a recording's
@@ -977,8 +1011,8 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (container_open of the inventory or a crafting table), `windowClose` (the screen
   closed), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: clicks (`clickWindow`), using a block to open its screen, crafting, screens other than the inventory and the
-crafting table (counted, not shown), dropping what has no room, and the hotbar selection by the bot.
+Not yet: drags and double clicks (`clickWindow` modes 5 and 6), using a block to open its screen, crafting, screens
+other than the inventory and the crafting table (counted, not shown), and the hotbar selection by the bot.
 
 ## Tests
 

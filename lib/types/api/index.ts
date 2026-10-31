@@ -214,8 +214,14 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   quickBarSlot: number
   /** opens the inventory screen (its 2 × 2 crafting grid), as the vanilla client does: resolves once the server opened it */
   openInventory: () => Promise<Window<StorageEvents>>
-  /** gives what the cursor and the grid hold back to the inventory, closes the screen, and resolves once the server closed it */
+  /** gives what the cursor and the grid hold back to the inventory (dropping what has no room), closes the screen, and resolves once the server closed it */
   closeWindow: (window: Window) => Promise<void>
+  /**
+   * Java's click on a slot of the open screen's window (-999 outside it), sent as the vanilla client's request:
+   * modes 0 (mouse buttons 0 and 1), 1 (shift), 2 (hotbar keys 0 – 8) and 4 (drop keys: 1 with ctrl). Resolves once the
+   * server took the request, at once where the click sends none
+   */
+  clickWindow: (slot: number, mouseButton: number, mode: number) => Promise<void>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */

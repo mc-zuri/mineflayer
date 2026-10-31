@@ -29,9 +29,9 @@ export interface SlotRef {
   readonly slot: number
 }
 
-export type MoveType = 'take' | 'place'
+export type ActionType = 'take' | 'place' | 'swap' | 'drop'
 
-const LEGACY_TYPE_IDS: Readonly<Record<MoveType, number>> = Object.freeze({ take: 0, place: 1 })
+const LEGACY_TYPE_IDS: Readonly<Record<ActionType, number>> = Object.freeze({ take: 0, place: 1, swap: 2, drop: 3 })
 
 /** Mojang's names: the protocol names only ok and error */
 const STACK_RESULTS = Object.freeze([
@@ -121,9 +121,22 @@ export function slotInfo (version: BedrockVersion, { container, slot }: SlotRef,
   return { slot_type: { container_id: container }, slot, stack_id: stackId }
 }
 
-export function moveAction (version: BedrockVersion, type: MoveType, count: number, source: SlotInfo, destination: SlotInfo): StackAction {
-  if (!isBedrockVersionAtLeast(version, 'bedrock_1.26.40')) return { type_id: type, count, source, destination }
-  return { type_id: type, legacy_type_id: LEGACY_TYPE_IDS[type], count, source, destination }
+/** from 1.26.40 the type is written again, as a byte */
+function action (version: BedrockVersion, type: ActionType, fields: Omit<StackAction, 'type_id'>): StackAction {
+  if (!isBedrockVersionAtLeast(version, 'bedrock_1.26.40')) return { type_id: type, ...fields }
+  return { type_id: type, legacy_type_id: LEGACY_TYPE_IDS[type], ...fields }
+}
+
+export function moveAction (version: BedrockVersion, type: 'take' | 'place', count: number, source: SlotInfo, destination: SlotInfo): StackAction {
+  return action(version, type, { count, source, destination })
+}
+
+export function swapAction (version: BedrockVersion, source: SlotInfo, destination: SlotInfo): StackAction {
+  return action(version, 'swap', { source, destination })
+}
+
+export function dropAction (version: BedrockVersion, count: number, source: SlotInfo): StackAction {
+  return action(version, 'drop', { count, source, randomly: false })
 }
 
 export function stackRequest (version: BedrockVersion, requestId: number, actions: StackAction[]): StackRequest {
