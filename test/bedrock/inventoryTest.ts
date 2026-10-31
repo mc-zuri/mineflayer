@@ -1358,7 +1358,7 @@ describe('bedrock inventory', () => {
 
       it('shows no screen it has no window for', async () => {
         const { bot, internal, server, driver } = await joined(version)
-        server.send('container_open', { window_id: 5, window_type: 'furnace', coordinates: { x: 0, y: 0, z: 0 }, runtime_entity_id: -1n })
+        server.send('container_open', { window_id: 5, window_type: 'command_block', coordinates: { x: 0, y: 0, z: 0 }, runtime_entity_id: -1n })
         await driver.frame(10)
         assert.deepStrictEqual([bot.currentWindow, internal._inventory.stats.otherScreens], [null, 1])
         bot.end()

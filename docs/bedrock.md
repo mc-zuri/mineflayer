@@ -1413,6 +1413,46 @@ told no book of, whose close sent nothing. Not recorded: page turns, taking the 
 1.20.71 its packet is not known), a written book's pages, a lectern screen before 1.26.20, and placing a book, which
 is a use that uses the item up (not supported yet).
 
+## Furnaces
+
+A furnace's, a blast furnace's and a smoker's screen (`lib/bedrock/screens/furnace.ts`, added by the `furnace` plugin)
+shows as Java's window, `minecraft:furnace`, `minecraft:blast_furnace` or `minecraft:smoker` ("Furnace", "Blast
+Furnace", "Smoker"): slot 0 the input, 1 the fuel, 2 the output (its `craftingResultSlot`), 3 – 29 the inventory, 30 –
+38 the hotbar. Its three slots are the screen's own window, sent by its id; a request names the input
+`furnace_ingredient`, `blast_furnace_ingredient` or `smoker_ingredient`, the fuel `furnace_fuel`, the output
+`furnace_output`, alike on every version (the codec writes their numbers, which 1.19.50 renumbered). Its clicks are
+the vanilla client's where they differ from the inventory's:
+
+- the fuel slot takes only an item that burns: for another (an egg) the client sends nothing, no place and no swap.
+  No packet tells which items burn: the bot knows the vanilla game's fuels by every version's item names (coal, wood
+  and wooden items, wool, carpets, …; the nether woods do not burn);
+- the output is never placed into: a left click with its item on the cursor takes it all onto the cursor, a right click
+  half of it rounded up, only what fits; with another item, or a full stack, on the cursor it sends nothing;
+- a shift click from the inventory or the hotbar puts a fuel in the fuel slot and anything else in the input (eggs, an
+  iron sword); one from the furnace's slots goes to the hotbar or inventory, as anywhere;
+- hotbar keys over the furnace's slots do nothing; the drop key drops from the output too.
+
+Its close gives back the cursor's stack only (the furnace keeps its slots), and from 1.21.120 leaves after the
+crafting table's animation (390 ms), as recorded for the three screens on every build. When the server closes a
+screen during the animation, the bot still sends its container_close when the animation ends, and the server answers
+it with its own again: the vanilla client did so each of the 153 times recorded on 1.26.51 (gestures: furnaces, blast
+furnaces and chests). This holds for every screen (the window module's close). Until that close left, the vanilla
+client's screen stays up: `closeWindow` resolves only then, and an `openInventory`, `openBlock` or `openEntity` asked
+while a screen is being closed waits until the server closed it and the close left.
+
+Up to 1.18.0 the vanilla client rolls the experience of a take from the output itself and, before the take's request,
+asks the server for its orb (spawn_experience_orb, the player's position and the experience; recorded on 1.16.201 –
+1.18.0, and never from 1.18.11, where the server rolls it). The bot sends none: no packet tells a recipe's experience,
+and a roll is random. On those versions the server gives the bot no experience for a take.
+
+As recorded on every build (reduced_stations: an input and a coal put in from the hotbar, the furnace's and the
+smoker's output taken to the cursor and put in the hotbar, the blast furnace's shift clicked; `furnaceTest` plays it
+in ten groups by how the requests and the close are written) and, on 1.26.51, every gesture over the three slots of the
+three screens. Not recorded, so as the bot does it: a shift click of an item that both burns and cooks there (to the
+fuel slot), into a slot holding another item or full (nothing), a take from the output onto a cursor with room for part
+of it (what fits), a hotbar key with an item on the cursor over a furnace's slot (nothing). The fuels besides coal, oak
+planks and a wooden sword (accepted) and an egg (refused) are the game's table, not recorded.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):

@@ -141,7 +141,7 @@ function clicks (server: FakeBedrockClient): Array<[runtime: bigint | number, po
   })
 }
 
-function openScreen (server: FakeBedrockClient, type: 'inventory' | 'workbench' | 'furnace', runtime: bigint): void {
+function openScreen (server: FakeBedrockClient, type: 'inventory' | 'workbench' | 'command_block', runtime: bigint): void {
   server.send('container_open', { window_id: 3, window_type: type, coordinates: { x: 2, y: -60, z: 0 }, runtime_entity_id: runtime })
 }
 
@@ -334,11 +334,11 @@ describe('bedrock using an entity', () => {
       const testBot = await joined(version)
       const { internal, server, driver } = testBot
       const villager = await show(testBot, 2, 'minecraft:villager_v2', { x: 2.5, y: -60, z: 0.5 }, VILLAGER)
-      const furnace = assert.rejects(internal._entityUse.open(internal._core, villager), { message: 'the server opened a furnace screen, which the bot does not show' })
+      const unshown = assert.rejects(internal._entityUse.open(internal._core, villager), { message: 'the server opened a command_block screen, which the bot does not show' })
       await driver.ticks(3)
-      openScreen(server, 'furnace', 2n)
+      openScreen(server, 'command_block', 2n)
       await driver.tick()
-      await furnace
+      await unshown
       const none = assert.rejects(internal._entityUse.open(internal._core, villager), { message: 'the server did not open the villager_v2 in 100 ticks' })
       await driver.ticks(100)
       await none

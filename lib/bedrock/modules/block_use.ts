@@ -131,6 +131,9 @@ export function useTransaction (version: BedrockVersion, type: 'item_use' | 'ite
 
 /** a use, resolving with the screen the server opened, once shown: at its opening, or at its window's first content */
 export async function openedBy (core: BedrockCore, bot: BedrockBotInternal, inventory: Inventory, name: string, use: () => Promise<void>): Promise<Window> {
+  // a block or an entity cannot be used through a screen still up
+  const closed = inventory.whenClosed()
+  if (closed !== undefined) await closed
   const openings = inventory.openings
   const shown = core.waits.until(() => inventory.openings > openings, OPEN_TICKS, `the server did not open the ${name} in ${OPEN_TICKS} ticks`)
   await Promise.all([shown, use()])

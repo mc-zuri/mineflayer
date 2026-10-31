@@ -729,7 +729,7 @@ async function settle (driver: ManualDriver, promise: Promise<unknown>): Promise
   await done
 }
 
-function openScreen (server: FakeBedrockClient, type: 'inventory' | 'workbench' | 'furnace', { x, y, z }: Vec3 = new Vec3(2, -60, 0)): void {
+function openScreen (server: FakeBedrockClient, type: 'inventory' | 'workbench' | 'command_block', { x, y, z }: Vec3 = new Vec3(2, -60, 0)): void {
   server.send('container_open', { window_id: 3, window_type: type, coordinates: { x, y, z }, runtime_entity_id: -1n })
 }
 
@@ -984,11 +984,11 @@ describe('bedrock using a block', () => {
 
     it('rejects openBlock when the server opens a screen the bot does not show, or none in 100 ticks', async () => {
       const { bot, server, driver, table } = await atTable(version)
-      const furnace = assert.rejects(bot.openBlock(table), { message: 'the server opened a furnace screen, which the bot does not show' })
+      const unshown = assert.rejects(bot.openBlock(table), { message: 'the server opened a command_block screen, which the bot does not show' })
       await driver.ticks(3)
-      openScreen(server, 'furnace')
+      openScreen(server, 'command_block')
       await driver.tick()
-      await furnace
+      await unshown
       const none = assert.rejects(bot.openBlock(table), { message: 'the server did not open the crafting_table in 100 ticks' })
       await driver.ticks(100)
       await none

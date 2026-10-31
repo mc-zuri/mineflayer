@@ -233,6 +233,8 @@ export class Inventory {
   private openingCount = 0
   private lastOpening: WindowType | undefined
   private closing: Closing | undefined
+  /** the close asked when the screen closed: still sent if the server closed the screen before its animation ended */
+  private lateClose: Closing | undefined
   private runtimeId: bigint | undefined
   private equipmentChanged = true
   /** undefined until the player is first shown */
@@ -323,6 +325,11 @@ export class Inventory {
   /** the open screen that can still be clicked: none once its close handed the items back */
   get screenType (): WindowTypeName | undefined {
     return this.closing?.end === undefined ? this.screen?.definition.type : undefined
+  }
+
+  /** while a screen is being closed, until the server closed it and the close left: the vanilla client's screen stays up until then */
+  whenClosed (): Promise<void> | undefined {
+    return (this.closing ?? this.lateClose)?.done.catch(() => {})
   }
 
   /** the screens the server opened, each counted once shown or refused: what openBlock waits for */
@@ -506,8 +513,9 @@ export class Inventory {
   }
 
   private async openInventory (core: BedrockCore): Promise<Window> {
-    // the inventory being closed opens again once the server closed it, as the vanilla client's
-    if (this.closing !== undefined) await this.closing.done.catch(() => {})
+    // the inventory being closed opens again once the server closed it and the close left, as the vanilla client's
+    const closed = this.whenClosed()
+    if (closed !== undefined) await closed
     const { screen, runtimeId } = this
     if (screen?.window === this.window) return this.window
     if (screen !== undefined) throw new Error(`the inventory cannot open over the ${screen.window.type} window`)
@@ -527,13 +535,16 @@ export class Inventory {
   private close (core: BedrockCore, screen: Screen): Closing {
     let handedBack: Promise<unknown> = Promise.resolve()
     const closed = core.waits.until(() => this.screen !== screen, RESPONSE_TICKS, `the server did not close the ${screen.definition.type} screen in ${RESPONSE_TICKS} ticks`)
+    const left = core.waits.until(() => closing.sent || (this.screen !== screen && closing.end === undefined), RESPONSE_TICKS, `the ${screen.definition.type} screen's close did not leave in ${RESPONSE_TICKS} ticks`)
+    // awaited once the screen closed: the bot's end before then is not unhandled
+    left.catch(() => {})
     const closing: Closing = {
       screen,
       end: undefined,
       ended: false,
       sent: false,
-      // a close the server never answers does not hold back the next
-      done: closed.finally(() => { if (this.closing === closing) this.closing = undefined }).then(async () => { await handedBack })
+      // a close the server never answers does not hold back the next; one it answered during the animation still leaves at its end
+      done: closed.finally(() => { if (this.closing === closing) this.closing = undefined }).then(async () => { await handedBack; await left })
     }
     core.command(ctx => {
       // the server closed it first, and gives the items back itself
@@ -639,6 +650,9 @@ export class Inventory {
 
   /** by the server, or by the bot alone for a screen whose close is its feature's */
   private closed (core: BedrockCore, screen: Screen): void {
+    const { closing } = this
+    // closed by the server during the close's animation, the vanilla client still sends its close when the animation ends
+    if (closing?.end !== undefined && !closing.sent) this.lateClose = closing
     this.screen = undefined
     this.closing = undefined
     this.clearOwn()
@@ -660,7 +674,7 @@ export class Inventory {
       })
       this.optionsDue = this.optionsDue.filter(other => other !== due)
     }
-    const { closing } = this
+    const closing = this.closing ?? this.lateClose
     if (closing === undefined || closing.sent || closing.end === undefined || now < closing.end) return
     // the vanilla client closes the screen in the frame after its animation ended
     if (!closing.ended) {
@@ -669,6 +683,7 @@ export class Inventory {
     }
     this.sendRequests(outbox, now)
     closing.sent = true
+    this.lateClose = undefined
     const { screen } = closing
     const close = screen.hooks.find(hooks => hooks.close !== undefined)?.close
     if (close !== undefined) {
