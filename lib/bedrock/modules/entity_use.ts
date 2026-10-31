@@ -77,6 +77,7 @@ export class EntityUse {
   install (core: BedrockCore): void {
     this.bot.activateEntity = async entity => { await this.use(core, entity) }
     this.bot.activateEntityAt = async (entity, position) => { await this.use(core, entity, position) }
+    this.bot.openEntity = async entity => await this.open(core, entity)
   }
 
   /** the use, resolving with the screen the server opened, once shown */

@@ -152,8 +152,8 @@ describe('bedrock using an entity', () => {
         it(`bedrock ${version}: sends the use where its pick meets the boat's box in one input pass, and nothing else`, async () => {
           const testBot = await joined(version, { feetY: recorded.feetY })
           const { bot, server, driver, errors } = testBot
-          // the boat's feet, where the client's box stands: its add_entity names a point 0.375 over them, which bot.entities keeps
-          const boat = await show(testBot, 6, 'minecraft:boat', { x: 2.7, y: recorded.feetY, z: 0.7 }, BOAT)
+          // as recorded, 0.375 over the boat's feet, where the client's box stands and the bot puts it
+          const boat = await show(testBot, 6, 'minecraft:boat', { x: 2.7, y: recorded.feetY + 0.375, z: 0.7 }, BOAT)
           const batches = batchesSince(server)
           let used = false
           const use = bot.activateEntity(boat).then(() => { used = true })
@@ -208,7 +208,7 @@ describe('bedrock using an entity', () => {
       // the stone on the way to the villager south east, nothing on the way to the one 7 south
       const testBot = await joined(version, { blocks: [[1, -59, 3, 'stone']] })
       const { bot, server, driver } = testBot
-      const boat = await show(testBot, 2, 'minecraft:boat', { x: 3.5, y: -60, z: 0.5 }, BOAT)
+      const boat = await show(testBot, 2, 'minecraft:boat', { x: 3.5, y: -59.625, z: 0.5 }, BOAT)
       // in front of the boat, on the way to its centre
       await show(testBot, 3, 'minecraft:villager_v2', { x: 2.5, y: -60, z: 0.5 }, VILLAGER)
       const behindBlock = await show(testBot, 4, 'minecraft:villager_v2', { x: 2.5, y: -60, z: 5.5 }, VILLAGER)

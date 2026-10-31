@@ -90,8 +90,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   cursorPos)`, `bot.openBlock(block, direction, cursorPos)`, `bot.activateEntity(entity)`,
   `bot.activateEntityAt(entity, position)`: the player's items and screens, and using a block or an entity (see the
   inventory below).
-- `bot.openContainer(block, direction, cursorPos)`, `bot.openChest`, `bot.openDispenser`: a container block's screen
-  (see containers below).
+- `bot.openContainer(block, direction, cursorPos)`, `bot.openChest`, `bot.openDispenser`, `bot.openEntity(entity)`: a
+  container block's or entity's screen (see containers below).
 - `bot.recipesFor(itemType, metadata, minResultCount, craftingTable)`, `bot.recipesAll(itemType, metadata,
   craftingTable)`, `bot.craft(recipe, count, craftingTable)`, `bot.placeRecipe(recipe, all)` (Bedrock's): the recipes
   crafting_data sends, and crafting them (see crafting below).
@@ -666,7 +666,7 @@ Where a Bedrock entity differs from Java's, and why:
 | `entity.metadata` | by the protocol's key | by Bedrock's key numbers (the name tag 4, the bounding box 53 and 54; 1.16.201 numbers the keys from 85 one lower), the flags (0) and the extended flags as a bigint |
 | `name`, `type`, `displayName`, `entityType`, `kind` | the registry's of the entity type | the registry's of the identifier the server names, without `minecraft:` (`villager_v2`): an empty type is `object`, as Java; one minecraft-data does not have (all up to 1.16.210) is `other` of kind `unknown`, without a displayName |
 | `width`, `height` | the registry's | the metadata's bounding box, which servers send with every entity, else the registry's (on 1.19.1 – 1.20.80 minecraft-data has no sizes) |
-| `position` | the feet | Bedrock's actor position: the feet of a mob, above them for some (a boat by 0.375, a minecart on a rail by 0.35) |
+| `position` | the feet | Bedrock's actor position: the feet of a mob, above them for some (a minecart on a rail by 0.35); a boat's and a chest boat's 0.375 under the point their packets name, where the vanilla client's box stands (recorded: a boat on every version, by where its use met the box; a chest boat moving as a boat on 1.26.20 and 1.26.60) |
 | `count` | an experience orb's count | an experience orb's experience |
 | `attributes` | Java's names | Bedrock's (`minecraft:health`, `minecraft:movement`) |
 | `effects`, `entityEffect` | Java's effect ids | Bedrock's: minecraft-data names none |
@@ -1061,8 +1061,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   use waits for a block's use to end, as a held key cannot be pressed again; both resolve once the use is sent. They
   reject before the player is shown, over a screen, and for an entity not in `bot.entities`. As recorded using a boat on
   every build and a villager holding wheat on 1.26.20, 1.26.51 and 1.26.60: the client's uses are the bot's, byte for
-  byte, when the bot looks as the client's camera did. A boat's add_entity names a point 0.375 over its feet, which
-  `bot.entities` keeps as sent: the client's box stands on the feet, so the bot's pick meets a boat 0.375 too high.
+  byte, when the bot looks as the client's camera did, a boat's position its feet (see entities above).
 - **set_player_inventory_options** (1.20.50 – 1.21.101): the client tells the server once a process, 120 ms after a
   screen's first opening, the screens it opened so far (the inventory's `layout`, the crafting table's
   `crafting_layout`: `recipe_book` once opened). A bot is a process of its own; a test that continues a recording's
@@ -1070,7 +1069,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: `bot.openEntity` (the screens an entity opens), using
+Not yet: using
 a block with an item the use places or uses up (the client then names the slot it changes), screens other than the inventory, the crafting table and the containers (counted, not
 shown), and the hotbar selection by the bot.
 
@@ -1190,10 +1189,26 @@ container's, then the player's inventory and hotbar (`inventoryStart` the contai
   client clicks where it looks. They reject with Java's errors: `containerToOpen is neither a block nor an entity` for
   another block (a crafter too, as Java's), and `Non-container window used as a container: …` when the server opens
   another screen, or the windows plugin is not loaded (naming the window's id, type and title: Java writes the whole
-  window). An entity rejects: its screens are not yet shown.
+  window). An entity they open with `bot.openEntity`.
+- **`bot.openEntity(entity, Class)`** is Java's: `bot.activateEntity(entity)`, resolving with the screen the server
+  opens once shown, rejecting as `openBlock` does (no screen in 100 ticks, one the bot does not show); `Class` is
+  ignored, as Java's. `openContainer` opens any entity with it, as Java's, and resolves with a container's window. The
+  entities' screens, as a scripted server opened them on 1.26.20, 1.26.51 and 1.26.60 (containers_minecart_chest,
+  containers_minecart_hopper, containers_chest_boat: no use, no content, the slots by inventory_slot, the requests
+  naming `container`):
 
-Not yet: `bot.openEntity` and the entities' containers (minecarts, chest boats,
-the horse), and `chestLidMove` (block_event).
+  | Entity | container_open's type | `window.type`, `window.title` | Its slots |
+  | --- | --- | --- | --- |
+  | chest minecart | `container` naming its runtime id | `minecraft:chest`, Minecart with Chest | 27 |
+  | chest boat | `container` naming its runtime id | `minecraft:chest`, Boat with Chest | 27 |
+  | hopper minecart | `hopper` naming its runtime id | `minecraft:hopper`, Minecart with Hopper | 5 |
+
+  The protocol has a type of each too (`minecart_chest`, `chest_boat` from 1.19.50, `minecart_hopper`), which the
+  bot shows as the same screens: no server was recorded opening them by these, nor Bedrock Dedicated Server opening an
+  entity's at all. An opening naming an entity without a container is the block's at its coordinates. Slots a server
+  sends of the screen before it is shown (the scripted server, in the opening's batch) are its own.
+
+Not yet: the horse's screen, and `chestLidMove` (block_event).
 
 ### Drags and double clicks
 

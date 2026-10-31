@@ -526,13 +526,12 @@ describe('bedrock containers', () => {
       bot.end()
     })
 
-    it('openContainer refuses a block that is no container (Java\'s message: a crafter too) and an entity, and a window that is not a container\'s, or has no deposit without the windows plugin', async () => {
+    it('openContainer refuses a block that is no container (Java\'s message: a crafter too), and a window that is not a container\'s, or has no deposit without the windows plugin', async () => {
       const { bot, server, driver } = await containerBot(version)
       const crafter = bot.blockAt(new Vec3(CRAFTER_AT.x, CRAFTER_AT.y, CRAFTER_AT.z))
       const chest = bot.blockAt(new Vec3(CHEST_AT.x, CHEST_AT.y, CHEST_AT.z))
       assert.ok(crafter !== null && chest !== null)
       await assert.rejects(bot.openContainer(crafter), { message: 'containerToOpen is neither a block nor an entity' })
-      await assert.rejects(bot.openContainer(bot.entity), { message: 'openContainer does not open an entity\'s container on Bedrock yet' })
       const table = assert.rejects(bot.openContainer(chest), { message: 'Non-container window used as a container: {"id":4,"type":"minecraft:crafting_table","title":"Crafting"}' })
       await driver.ticks(4)
       openContainer(server, 4, 'workbench')

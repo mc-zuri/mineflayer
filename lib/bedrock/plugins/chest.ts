@@ -6,7 +6,7 @@ import { containerScreen } from '../screens/container.ts'
 import { CRAFTER_SCREEN } from '../screens/crafter.ts'
 import { DISPENSER_SCREEN } from '../screens/dispenser.ts'
 import { DROPPER_SCREEN } from '../screens/dropper.ts'
-import { HOPPER_SCREEN } from '../screens/hopper.ts'
+import { hopperScreen } from '../screens/hopper.ts'
 import type { Chest } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 
@@ -24,17 +24,28 @@ function isChest (window: Window): window is Chest {
   return CONTAINER_WINDOWS.some(type => String(window.type).startsWith(type)) && 'deposit' in window
 }
 
-/** The container screens (chests, barrels, shulker boxes, hoppers, dispensers, droppers, crafters), and Java's openContainer. */
+/**
+ * The container screens (chests, barrels, shulker boxes, hoppers, dispensers, droppers, crafters, chest minecarts, hopper
+ * minecarts, chest boats), and Java's openContainer.
+ */
 export default function chest (bot: BedrockBotInternal): void {
   const { screens } = bot._inventory
-  screens.add(containerScreen(point => bot.blockAt(point)))
-  for (const screen of [HOPPER_SCREEN, DISPENSER_SCREEN, DROPPER_SCREEN, CRAFTER_SCREEN]) screens.add(screen)
+  const blockAt = (point: Vec3): Block | null => bot.blockAt(point)
+  const nameOf = (runtimeId: bigint): string | undefined => bot._entities.byRuntimeId(runtimeId)?.name
+  // a server may open an entity's screen by the entity's type (not recorded): the same screens
+  for (const type of ['container', 'minecart_chest', 'chest_boat'] as const) screens.add(containerScreen(type, blockAt, nameOf))
+  for (const type of ['hopper', 'minecart_hopper'] as const) screens.add(hopperScreen(type, nameOf))
+  for (const screen of [DISPENSER_SCREEN, DROPPER_SCREEN, CRAFTER_SCREEN]) screens.add(screen)
+
+  async function openTarget (target: Block | Entity, direction?: Vec3, cursorPos?: Vec3): Promise<Window> {
+    if (!('stateId' in target)) return await bot.openEntity(target)
+    if (!isContainerBlock(target)) throw new Error('containerToOpen is neither a block nor an entity')
+    return await bot.openBlock(target, direction, cursorPos)
+  }
 
   /** Java's defaults (the top face's centre) are not passed: openBlock clicks where the look meets the block, as the vanilla client */
   async function openContainer (target: Block | Entity, direction?: Vec3, cursorPos?: Vec3): Promise<Chest> {
-    if (!('stateId' in target)) throw new Error('openContainer does not open an entity\'s container on Bedrock yet')
-    if (!isContainerBlock(target)) throw new Error('containerToOpen is neither a block nor an entity')
-    const window = await bot.openBlock(target, direction, cursorPos)
+    const window = await openTarget(target, direction, cursorPos)
     if (!isChest(window)) throw new Error(`Non-container window used as a container: ${JSON.stringify({ id: window.id, type: window.type, title: window.title })}`)
     return window
   }

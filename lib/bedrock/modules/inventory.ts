@@ -619,10 +619,11 @@ export class Inventory {
     return new this.Window<StorageEvents>(id, windowType, title, viewOf(layout).length, { start: slots.length, end: slots.length + PLAYER_SLOTS.length - 1 }, craftingResultSlot, true)
   }
 
-  /** where a window id's items go: the player's windows, the ui, or the open screen's own */
+  /** where a window id's items go: the player's windows, the ui, or the open screen's own, shown or not yet */
   private whereOf (id: string): Where | undefined {
-    const { screen } = this
-    return WINDOWS[id] ?? (screen !== undefined && String(screen.opening.id) === id && ownsWindow(screen.definition) ? OWN : undefined)
+    const { screen, unshown } = this
+    const own = screen ?? (unshown === undefined ? undefined : { opening: unshown.opening, definition: unshown.defined.definition })
+    return WINDOWS[id] ?? (own !== undefined && String(own.opening.id) === id && ownsWindow(own.definition) ? OWN : undefined)
   }
 
   /** shown or not, an opening is counted for openBlock */

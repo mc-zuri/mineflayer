@@ -272,7 +272,7 @@ describe('bedrock entities', () => {
   for (const [layout, from, to] of deltaLayouts) {
     describe(`servers sending move_entity_delta with ${layout}`, () => {
       for (const version of bedrockTestVersionsFrom(from, to)) {
-        it(`bedrock ${version}: moves the entity along the axes and rotations present, in the packet pass`, async () => {
+        it(`bedrock ${version}: moves the entity along the axes and rotations present, in the packet pass, a boat's feet 0.375 under the point named`, async () => {
           const { bot, internal, server, driver } = await started(version)
           const boat = { unique: -8589934590n, runtime: 2, type: 'minecraft:boat', position: { x: -12.5, y: 12, z: 41.5 }, yaw: 90 }
           write(server, 'add_entity', addEntity(version, boat))
@@ -281,11 +281,11 @@ describe('bedrock entities', () => {
           const entity = spawned(bot, 2)
           receive(server, deltaOnlyY(version))
           await driver.frame(0)
-          assert.deepStrictEqual([events.splice(0), positionOf(entity), entity.yaw, entity.onGround], [['entityMoved 2'], { x: -12.5, y: 11.960800170898438, z: 41.5 }, Math.PI / 2, false])
+          assert.deepStrictEqual([events.splice(0), positionOf(entity), entity.yaw, entity.onGround], [['entityMoved 2'], { x: -12.5, y: 11.585800170898438, z: 41.5 }, Math.PI / 2, false])
           if (atLeast(version, 'bedrock_1.26.40')) write(server, 'move_entity_delta', { runtime_entity_id: 2n, x: 6.319220542907715, z: 33.68252182006836, rot_x: 32, rot_y: 244, rot_z: 64, on_ground: true })
           else write(server, 'move_entity_delta', { runtime_entity_id: 2n, flags: deltaFlags('has_x', 'has_z', 'has_rot_x', 'has_rot_y', 'has_rot_z', 'on_ground'), x: 6.319220542907715, z: 33.68252182006836, rot_x: 32, rot_y: 244, rot_z: 64 })
           await driver.frame(0)
-          assert.deepStrictEqual([events.splice(0), positionOf(entity), entity.pitch, entity.yaw, entity.headYaw, entity.onGround], [['entityMoved 2'], { x: 6.319220542907715, y: 11.960800170898438, z: 33.68252182006836 }, -Math.PI / 4, 3.436116964863836, Math.PI / 2, true])
+          assert.deepStrictEqual([events.splice(0), positionOf(entity), entity.pitch, entity.yaw, entity.headYaw, entity.onGround], [['entityMoved 2'], { x: 6.319220542907715, y: 11.585800170898438, z: 33.68252182006836 }, -Math.PI / 4, 3.436116964863836, Math.PI / 2, true])
           write(server, 'move_entity_delta', { runtime_entity_id: 1n, ...atLeast(version, 'bedrock_1.26.40') ? { y: 20 } : { flags: deltaFlags('has_y'), y: 20 } })
           write(server, 'move_entity_delta', { runtime_entity_id: 9n, ...atLeast(version, 'bedrock_1.26.40') ? { y: 20 } : { flags: deltaFlags('has_y'), y: 20 } })
           await driver.frame(0)
@@ -315,21 +315,21 @@ describe('bedrock entities', () => {
 
   describe('servers sending move_entity (every version)', () => {
     for (const version of bedrockTestVersions()) {
-      it(`bedrock ${version}: places the entity, turned, on the ground or not, in the packet pass`, async () => {
+      it(`bedrock ${version}: places the entity, turned, on the ground or not, in the packet pass, a boat's feet 0.375 under the point named`, async () => {
         const { bot, internal, server, driver } = await started(version)
         write(server, 'add_entity', addEntity(version, { unique: -8589934590n, runtime: 2, type: 'minecraft:boat', position: { x: -12.5, y: 12, z: 41.5 }, yaw: 90, headYaw: 180 }))
         await driver.frame(0)
         const events = recorded(bot)
         const entity = spawned(bot, 2)
-        assert.deepStrictEqual([entity.yaw, entity.headYaw], [Math.PI / 2, 0])
-        const [recordedMove, y] = version === 'bedrock_1.16.201' ? ['1202f8000048c1a3183f4100002642000000', 11.943514823913574] : ['1202f8000048c189493f4100002642000000', 11.955452919006348]
+        assert.deepStrictEqual([entity.yaw, entity.headYaw, positionOf(entity)], [Math.PI / 2, 0, { x: -12.5, y: 11.625, z: 41.5 }])
+        const [recordedMove, y] = version === 'bedrock_1.16.201' ? ['1202f8000048c1a3183f4100002642000000', 11.568514823913574] : ['1202f8000048c189493f4100002642000000', 11.580452919006348]
         receive(server, recordedMove)
         await driver.frame(0)
         assert.deepStrictEqual([events.splice(0), positionOf(entity), entity.yaw, entity.onGround], [['entityMoved 2'], { x: -12.5, y, z: 41.5 }, Math.PI, false])
         write(server, 'move_entity', { runtime_entity_id: runtimeId(version, 2), flags: 1, position: { x: 1, y: 2, z: 3 }, rotation: { yaw: 90, pitch: 45, head_yaw: 180 } })
         write(server, 'move_entity', { runtime_entity_id: runtimeId(version, 1), flags: 1, position: { x: 1, y: 2, z: 3 }, rotation: { yaw: 90, pitch: 45, head_yaw: 180 } })
         await driver.frame(0)
-        assert.deepStrictEqual([events, positionOf(entity), entity.yaw, entity.pitch, entity.headYaw, entity.onGround], [['entityMoved 2'], { x: 1, y: 2, z: 3 }, Math.PI / 2, -Math.PI / 4, 0, true])
+        assert.deepStrictEqual([events, positionOf(entity), entity.yaw, entity.pitch, entity.headYaw, entity.onGround], [['entityMoved 2'], { x: 1, y: 1.625, z: 3 }, Math.PI / 2, -Math.PI / 4, 0, true])
         assert.notDeepStrictEqual(positionOf(bot.entity), { x: 1, y: 2, z: 3 })
         assert.strictEqual(internal._entities.stats.local, 1)
         bot.end()
@@ -548,6 +548,16 @@ describe('bedrock entities', () => {
       await driver.frame(0)
       const pig = spawned(bot, 4)
       assert.deepStrictEqual([pig.id, internal._entities.byRuntimeId(2n ** 32n + 4n), internal._entities.byRuntimeId(4)], [4, pig, pig])
+      bot.end()
+    })
+
+    it("puts a chest boat's feet 0.375 under the point its packets name, as a boat's, and keeps a minecart's (recorded on 1.26.20 and 1.26.60, the chest boat moving as a boat)", async () => {
+      const { bot, server, driver } = await started(version)
+      write(server, 'add_entity', addEntity(version, { unique: -2n, runtime: 2, type: 'minecraft:chest_boat', position: { x: 2.5, y: 12, z: 2645.5 } }))
+      write(server, 'add_entity', addEntity(version, { unique: -3n, runtime: 3, type: 'minecraft:minecart', position: { x: 2.5, y: 12.350000381469727, z: 1499.5 } }))
+      write(server, 'move_entity_delta', { runtime_entity_id: 2n, y: 12.375 })
+      await driver.frame(0)
+      assert.deepStrictEqual([positionOf(spawned(bot, 2)), positionOf(spawned(bot, 3))], [{ x: 2.5, y: 12, z: 2645.5 }, { x: 2.5, y: 12.350000381469727, z: 1499.5 }])
       bot.end()
     })
 

@@ -20,6 +20,9 @@ const OWNER = 'entities'
 const ON_GROUND = 1
 // set_entity_link's type of a removed link; 1 is a rider, 2 a passenger
 const UNLINK = 0
+/** the boats' packets name a point 0.375 over their feet, where the vanilla client's box stands (recorded on every version) */
+const BOAT_HEIGHT = 0.375
+const BOATS: readonly string[] = Object.freeze(['boat', 'chest_boat'])
 
 const ENTITY_TYPES: readonly EntityType[] = Object.freeze(['player', 'mob', 'object', 'global', 'orb', 'projectile', 'hostile', 'other', 'animal', 'passive', 'ambient', 'living', 'water_creature'])
 
@@ -131,9 +134,14 @@ export default function inject (bot: BedrockBotInternal): void {
     if (typeof experience === 'number') entity.count = experience
   }
 
+  /** the feet under the point a packet names: a boat's 0.375 under it */
+  function feetOf (name: string, y: number): number {
+    return BOATS.includes(name) ? y - BOAT_HEIGHT : y
+  }
+
   /** a player's position in move_entity and move_entity_delta is its eye, as in move_player */
   function feetY (entity: Entity, y: number): number {
-    return entity.type === 'player' ? feetFromEye({ x: 0, y, z: 0 }).y : y
+    return entity.type === 'player' ? feetFromEye({ x: 0, y, z: 0 }).y : feetOf(String(entity.name), y)
   }
 
   /** the entity of an add packet, in bot.entities, its entitySpawn to come */
@@ -157,7 +165,7 @@ export default function inject (bot: BedrockBotInternal): void {
     }
     entity.width = entry?.width ?? 0
     entity.height = entry?.height ?? 0
-    entity.position.set(position.x, position.y, position.z)
+    entity.position.set(position.x, feetOf(name, position.y), position.z)
     entity.velocity.set(velocity.x, velocity.y, velocity.z)
     turn(entity, yaw, pitch, headYaw)
     const values = metadata.read(spawned.metadata)

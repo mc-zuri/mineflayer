@@ -276,7 +276,9 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   activateEntity: (entity: Entity) => Promise<void>
   /** Java's: looks at `position` first, then uses the entity where the eye's ray meets it (at `position` if it does not); resolves once sent */
   activateEntityAt: (entity: Entity, position: Vec3) => Promise<void>
-  /** Java's, on a chest, trapped chest, ender chest, barrel, shulker box, hopper, dispenser or dropper: openBlock (direction and cursorPos only when given), resolving with the container's window */
+  /** Java's: activateEntity, resolving with the screen the server opens, once shown (`Class` is ignored, as Java's) */
+  openEntity: (entity: Entity, Class?: new () => EventEmitter) => Promise<Window>
+  /** Java's, on a chest, trapped chest, ender chest, barrel, shulker box, hopper, dispenser or dropper: openBlock (direction and cursorPos only when given), or an entity: openEntity, resolving with the container's window */
   openContainer: (chest: Block | Entity, direction?: Vec3, cursorPos?: Vec3) => Promise<Chest | Dispenser>
   /** openContainer (Java's types direction as a number, which its code passes on as openBlock's Vec3) */
   openChest: (chest: Block | Entity, direction?: Vec3, cursorPos?: Vec3) => Promise<Chest>
