@@ -29,9 +29,11 @@ export interface SlotRef {
   readonly slot: number
 }
 
-export type ActionType = 'take' | 'place' | 'swap' | 'drop'
+export type ActionType = 'take' | 'place' | 'swap' | 'drop' | 'consume' | 'create' | 'craft_recipe' | 'craft_recipe_auto' | 'results_deprecated'
 
-const LEGACY_TYPE_IDS: Readonly<Record<ActionType, number>> = Object.freeze({ take: 0, place: 1, swap: 2, drop: 3 })
+const LEGACY_TYPE_IDS: Readonly<Record<ActionType, number>> = Object.freeze({
+  take: 0, place: 1, swap: 2, drop: 3, consume: 5, create: 6, craft_recipe: 12, craft_recipe_auto: 13, results_deprecated: 19
+})
 
 /** Mojang's names: the protocol names only ok and error */
 const STACK_RESULTS = Object.freeze([
@@ -85,7 +87,9 @@ function kindOf ({ networkId, metadata, wire }: Stack): Array<number | undefined
 /** two stacks of one item stack together */
 function identityOf (stack: Stack): string {
   const extra = extraOf(stack.wire)
-  return JSON.stringify([...kindOf(stack), extra?.nbt, extra?.can_place_on, extra?.can_destroy])
+  // an empty compound is none: the decorated pot's multi recipe makes pots with one, which stack onto those without
+  const nbt = Object.keys(extra?.nbt?.nbt.value ?? {}).length === 0 ? undefined : extra?.nbt
+  return JSON.stringify([...kindOf(stack), nbt, extra?.can_place_on, extra?.can_destroy])
 }
 
 export function sameItem (a: Stack, b: Stack): boolean {
@@ -125,10 +129,11 @@ export function slotInfo (version: BedrockVersion, { container, slot }: SlotRef,
   return { slot_type: { container_id: container }, slot, stack_id: stackId }
 }
 
-/** from 1.26.40 the type is written again, as a byte */
+// from 1.26.40 the type is written again, as a byte: 1.26.60's craft_reserved comes before results_deprecated
 function action (version: BedrockVersion, type: ActionType, fields: Omit<StackAction, 'type_id'>): StackAction {
   if (!isBedrockVersionAtLeast(version, 'bedrock_1.26.40')) return { type_id: type, ...fields }
-  return { type_id: type, legacy_type_id: LEGACY_TYPE_IDS[type], ...fields }
+  const reserved = type === 'results_deprecated' && isBedrockVersionAtLeast(version, 'bedrock_1.26.60') ? 1 : 0
+  return { type_id: type, legacy_type_id: LEGACY_TYPE_IDS[type] + reserved, ...fields }
 }
 
 export function moveAction (version: BedrockVersion, type: 'take' | 'place', count: number, source: SlotInfo, destination: SlotInfo): StackAction {
@@ -141,6 +146,42 @@ export function swapAction (version: BedrockVersion, source: SlotInfo, destinati
 
 export function dropAction (version: BedrockVersion, count: number, source: SlotInfo): StackAction {
   return action(version, 'drop', { count, source, randomly: false })
+}
+
+export function consumeAction (version: BedrockVersion, count: number, source: SlotInfo): StackAction {
+  return action(version, 'consume', { count, source })
+}
+
+export function createAction (version: BedrockVersion, index: number): StackAction {
+  return action(version, 'create', { result_slot_id: index })
+}
+
+// the times from 1.21.20
+export function craftRecipeAction (version: BedrockVersion, networkId: number, times: number): StackAction {
+  if (!isBedrockVersionAtLeast(version, 'bedrock_1.21.20')) return action(version, 'craft_recipe', { recipe_network_id: networkId })
+  return action(version, 'craft_recipe', { recipe_network_id: networkId, times_crafted: times })
+}
+
+type AutoIngredients = NonNullable<StackAction['ingredients']>
+export type AutoIngredient = AutoIngredients[number]
+
+// the times from 1.17.10 (twice over 1.21.20 – 1.26.30), the ingredients from 1.19.40
+export function craftRecipeAutoAction (version: BedrockVersion, networkId: number, times: number, written: AutoIngredient[]): StackAction {
+  // each of the version's kind
+  const ingredients = written as AutoIngredients
+  const atLeast = (since: BedrockVersion): boolean => isBedrockVersionAtLeast(version, since)
+  if (!atLeast('bedrock_1.17.10')) return action(version, 'craft_recipe_auto', { recipe_network_id: networkId })
+  if (!atLeast('bedrock_1.19.40')) return action(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted: times })
+  if (!atLeast('bedrock_1.21.20') || atLeast('bedrock_1.26.40')) return action(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted: times, ingredients })
+  return action(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted_2: times, times_crafted: times, ingredients })
+}
+
+type ResultItems = NonNullable<StackAction['result_items']>
+export type ResultItem = ResultItems[number]
+
+export function resultsAction (version: BedrockVersion, items: ResultItem[], times: number): StackAction {
+  // each of the version's kind
+  return action(version, 'results_deprecated', { result_items: items as ResultItems, times_crafted: times })
 }
 
 export function stackRequest (version: BedrockVersion, requestId: number, actions: StackAction[]): StackRequest {

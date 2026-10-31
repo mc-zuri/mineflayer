@@ -121,7 +121,7 @@ function movesOf ({ mouseButton, mode }: WindowClick, clicked: SlotRef | undefin
 
 /** each slot a move puts a stack in, and the slot that stack comes from */
 function arrivals (move: Move): Array<readonly [to: SlotRef, from: SlotRef]> {
-  if (move.type === 'drop') return []
+  if (!('to' in move)) return []
   return move.type === 'swap' ? [[move.to, move.from], [move.from, move.to]] : [[move.to, move.from]]
 }
 

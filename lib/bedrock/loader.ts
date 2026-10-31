@@ -15,6 +15,7 @@ import abilities from './plugins/abilities.ts'
 import bossBar from './plugins/boss_bar.ts'
 import breath from './plugins/breath.ts'
 import chat from './plugins/chat.ts'
+import craft from './plugins/craft.ts'
 import entities from './plugins/entities.ts'
 import experience from './plugins/experience.ts'
 import game from './plugins/game.ts'
@@ -52,7 +53,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   title,
   boss_bar: bossBar,
   sound,
-  particle
+  particle,
+  craft
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

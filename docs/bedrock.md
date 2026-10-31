@@ -5,7 +5,7 @@ minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, sp
 the scoreboards, the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows
 and the player list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does,
 telling the server every tick, follows the server's corrections, chats, keeps the player's items and opens and closes
-its inventory, and ends; the rest of the API is Java's only so far.
+its inventory, crafts, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -89,6 +89,9 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   `bot.closeWindow(window)`, `bot.clickWindow(slot, mouseButton, mode)`, `bot.activateBlock(block, direction,
   cursorPos)`, `bot.openBlock(block, direction, cursorPos)`: the player's items and screens, and using a block (see the
   inventory below).
+- `bot.recipesFor(itemType, metadata, minResultCount, craftingTable)`, `bot.recipesAll(itemType, metadata,
+  craftingTable)`, `bot.craft(recipe, count, craftingTable)`, `bot.placeRecipe(recipe, all)` (Bedrock's): the recipes
+  crafting_data sends, and crafting them (see crafting below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -971,7 +974,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   closes it, and then gives the items back itself: closing a screen the server closed first hands nothing back), and
   rejects if the server refused to take an item back or did not close the screen in 100 ticks; asked again, it closes it
   again. Closing a window that is not open does nothing. Once the close handed the items back, the screen is gone, as the
-  vanilla client's: a click made after rejects, so that no request follows container_close.
+  vanilla client's: a click, a craft or a select made after rejects, so that no request follows container_close.
 - **`bot.clickWindow(slot, mouseButton, mode)`** clicks a slot of the open screen's window (Java's slot numbers,
   -999 outside the window) as the vanilla client does, sending the request it sends (none where it sends none), and
   resolves once the server took it; it rejects a refusal (undoing what it showed), a click with no screen open (on
@@ -994,9 +997,9 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   `armor_torso` and `elytra`, the leggings `armor_legs`, the boots `armor_feet`). The offhand takes the vanilla items
   allowed there, which the registry does not tell: a shield, arrows, a totem of undying, a firework rocket, a nautilus
   shell and a filled map; for another the click sends nothing (recorded: a shield on every build, arrows taken and eggs
-  refused on 1.26.51). A mouse click, shift click or hotbar
-  key on a crafting output (slot 0) sends nothing: it is crafting's, and until a recipe is matched there the output holds
-  nothing to take; the drop key never takes from it, but drops one of the cursor's stack as anywhere. A drop swings the arm
+  refused on 1.26.51).
+  A mouse click, shift click or hotbar key on a crafting output (slot 0) crafts what the grid holds (see crafting
+  below); the drop key never takes from it, but drops one of the cursor's stack as anywhere. A drop swings the arm
   first, in the click's input pass, as recorded with the request on every build: `animate swing_arm`, for a dropped
   item (`dropitem`) from 1.21.130. Containers are named as the client names them: `hotbar` 0 – 8, `inventory` 9 – 35, `armor`,
   `offhand` 1, `crafting_input`, `cursor`. A click names its slots in the input pass it is made in, and its request
@@ -1039,8 +1042,128 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   closed), `heldItemChanged` (each update of the held slot, and a new selection).
 
 Not yet: drags and double clicks (`clickWindow` modes 5 and 6), using a block with an item the use places or uses up
-(the client then names the slot it changes), crafting, screens other than the inventory and the crafting table
-(counted, not shown), and the hotbar selection by the bot.
+(the client then names the slot it changes), screens other than the inventory and the crafting table (counted, not
+shown), and the hotbar selection by the bot.
+
+## Crafting
+
+The recipes are crafting_data's, as the server sends them for the connection (their network ids are the
+connection's): up to 1.26.30 in one list naming each one's type, from 1.26.40 a list for each type; a packet that
+clears the recipes (`clear_recipes`, `is_clean` up to 1.17.10) replaces them, another adds its own (the recipes given
+out before still craft). They are read when first asked for. Each recipe with an input and an output is one
+`BedrockRecipe`, however many items a cell takes:
+
+- Java's fields: `result`, `inShape` (a shaped recipe's rows top to bottom, each left to right, as Java's: the wire has
+  the cells row by row; empty cells id -1), `outShape` (always null), `ingredients` (a shapeless recipe's, counted
+  negative), `delta` and `requiresTable` (a shaped recipe wider or higher than 2, a shapeless one of more than 4
+  ingredients). A cell that takes several items shows the first: a tag's first item in the registry's order, a complex
+  alias's first.
+- Bedrock's: `id` (the recipe id), `type`, `networkId` (what requests name), `uuid` (what crafting_event names),
+  `priority`, `block` (`crafting_table` for the crafting table's) and `results` (every output: the cake's buckets too,
+  which Java leaves in the grid).
+
+A cell takes, by its descriptor: up to 1.19.21 an item by network id and data; from 1.19.30 `int_id_meta` the same,
+`item_tag` the items whose `tags` (in the registry, from minecraft-data) include the tag, `complex_alias` (1.19.70 –
+1.26.30) the alias's items; from 1.26.40 `name` an item by name, or first a complex alias's (with a data value, the
+alias's item of that index), 1.26.60 writing the data after the name (`minecraft:stone:0`). Data 32767 is any. A molang
+expression takes no item. From 1.16.220 the server sends a block's item with data 0 and the block state it places (as
+acacia planks the planks block of `wood_type` acacia): its data is that state's legacy data, each state's value in its
+own bits, the state the version's palette varies fastest lowest (acacia planks 4, stripped acacia wood 12).
+
+- **`bot.recipesAll(itemType, metadata, craftingTable)`** and **`bot.recipesFor(itemType, metadata, minResultCount,
+  craftingTable)`** are Java's: the crafting table's recipes making the item (of the metadata, unless null or
+  undefined), but those needing a table without one; `recipesFor` only those whose ingredients the inventory
+  (`hotbar_and_inventory`) has, for enough crafts to make `minResultCount` (1; 0 needs no craft, so every one, as
+  Java's).
+- **`bot.craft(recipe, count, craftingTable)`** crafts as the recipe book does (auto), `count` times (1, as Java's
+  `null`; 0 crafts nothing, as Java's; a `null` table is none, as Java's): on the screen open if it crafts the recipe (a
+  crafting table's crafts any, the inventory's those that fit its grid, without a table given), else on the crafting
+  table's it opens with `bot.openBlock(craftingTable)`, or the inventory's with `bot.openInventory()`, closing it again
+  (only a screen it opened, and when the craft fails too, which it then rejects with). A request crafts a stack's worth
+  of the result at most (`count` 100 of sticks: 16 times, 16, … then 4), all in one input pass. Each request is
+  `craft_recipe_auto` (the times from 1.17.10, twice over 1.21.20 – 1.26.30 as `times_crafted_2`; the ingredients from
+  1.19.40: each cell's, as the recipe names it, a tag's or an alias's by the item it took, of any metadata up to
+  1.26.30, by name with the item's metadata from 1.26.40), `results_deprecated` (the outputs as crafting_data has them,
+  a craft's count, the times), a `consume` for each cell and slot it takes from (the slots in order, a slot's items
+  going to the first cells: a slot is named by its stack id the first time, by the request after), then each output
+  moved from the created output (50) to the inventory, onto the stacks of its item with room then to the first empty
+  slots, a stack's size each: with several outputs, the others before the result, `create` naming the output before
+  each place (the 256 glass bottles of 64 honey blocks four stacks of 64, each after its `create`). Without the
+  ingredients it rejects before opening a screen; without room for an output it rejects, sending nothing, as the
+  vanilla client sent nothing on 1.26.51.
+- **The grid's output** (`bot.clickWindow(0, …)`) crafts what the output shows: the recipe `bot.placeRecipe` selected
+  on the screen, while the grid makes it, until a craft; else, of the recipes that match the grid (a shaped one where
+  the grid's items fill its cells, mirrored too unless it says it is not symmetric; a shapeless one by exactly its
+  ingredients in any cells; with enough of each), the lowest priority, then the earliest in crafting_data, or the
+  multi recipe that stands for it (below). On 1.26.51 a white bed from a grid filled by hand was the earlier of two
+  recipes alike, whichever the recipe book selects. A request is `craft_recipe` (the times from 1.21.20),
+  `results_deprecated` (always once), a `consume` for each slot of the grid it uses, then the result: with a mouse
+  button (either: right takes the whole result too) taken to the cursor, with a hotbar key to the key's slot, unless
+  the cursor or the slot holds another item or has no room for it (then nothing is sent: a second unstackable result
+  too); with a shift click to the inventory as above, from 1.18.30 firework rockets to the offhand first (onto its
+  stack, then the inventory: as the vanilla client did on the inventory screen, 63 rockets then 1 more there and 2 in
+  the inventory), as often as the grid allows (once in a select's pass), up to 1.21.2 a request a craft, from 1.21.20 a
+  stack's worth a request, while there is room. With several outputs, the result first, the others to the inventory,
+  `create` goes before each place. A grid no recipe matches sends nothing.
+- **Multi recipes**: crafting_data names one by its uuid alone, without an input or an output; the vanilla client
+  crafts one where it stands for the recipe the grid matches, naming the multi recipe's network id and uuid (in
+  crafting_event too) and telling what that recipe makes. As recorded, a select's first craft is the selected recipe's
+  and the crafts after it, by a shift click, the multi recipe's (up to 1.21.2 a request a craft, from 1.21.20 after the
+  first stack's worth). The bot knows three:
+  - fireworks (`00000000-0000-0000-0200-000000000000` as the codec reads it): firework rockets, and firework stars,
+    from 1.20.10 not a star of a dye item not named `…_dye` (recorded: an ink sac's black star by its own recipe, a
+    lime dye's by the multi recipe);
+  - map extending (`4b43944b-9422-cdae-2793-2cbb99446786`): an empty map and a compass (a shapeless recipe of those
+    two), not the locator map's eight paper and compass;
+  - the decorated pot (`4e4a2ec4-2a74-5a68-5b8e-c93fb85eea88`): its result with an empty NBT compound, which stacks
+    onto the pots without one.
+
+  `recipesAll`, `recipesFor`, `craft` and `placeRecipe` take the recipes they stand for, as the vanilla client's recipe
+  book does: no recording crafts a multi recipe by `craft_recipe_auto` or selects one.
+- **`bot.placeRecipe(recipe, all)`** (Bedrock's) selects a recipe as the recipe book does: the grid's items go back to
+  the inventory first (as a close hands them back), then each cell's items from the inventory, a `place` for each cell
+  and slot it takes from, a shaped recipe's from the grid's top left, a shapeless one's in the first slots; `all`
+  places as many crafts' as each slot takes (a stack of the item, 64 crafts at most) and the inventory has. With an
+  output click in the same pass, as the vanilla client's select by the keyboard, it is one packet; a shift click in
+  that pass crafts once, as the vanilla client's select with shift did on 1.26.51 (4 planks: 2 a cell, then 4
+  sticks). Lacking some of a craft's ingredients, it places a craft's of those the inventory has (`all` too), the
+  others' cells left empty, as the vanilla client placed a bamboo bed's wool without its bamboo planks (experimental
+  on 1.19.50 – 1.19.80). A recipe that does not fit the inventory's grid, no screen open, or none of the ingredients
+  reject before anything is sent.
+- **What a craft says it makes** is the output as crafting_data has it, but: a grid's damageable item (that the
+  registry gives a `maxDurability`) has NBT `Damage` 0; a dyed bundle keeps the `bundle_id` of the one it was (the
+  server gives a bundle one); from 1.26.40 a block's item of data 0 takes the legacy data of the block state
+  crafting_data gives it, as an ingredient's is read (a chest's `minecraft:cardinal_direction` south 0, west 1, north 2,
+  east 3; a dispenser's `facing_direction` 3 is 3), as the chest's 2 and the dispenser's 3 were recorded. Up to
+  1.16.210 an item is an aux item; from 1.26.40 it is named (`minecraft:<name>`, a custom item by its own namespace),
+  and the action's type is repeated as a byte (results 19, 20 on 1.26.60, which adds `craft_reserved` before it).
+- **crafting_event** (up to 1.20.40) goes before each craft's request, in the input pass the craft is made in: the
+  recipe's uuid, `inventory` or `crafting` by the screen, and the result, as many as the request crafts.
+
+Recorded and replayed by the tests on every build: the recipe book's craft of an acacia button on the inventory screen
+(from 1.16.220 to 1.20.40 the planks named by their block state), of all the honey blocks 256 honey bottles make, of
+all the cakes its ingredients make, of all the cobblestone slabs 33 cobblestone make at a crafting table, its select
+by the keyboard, by the mouse then a shift click (a set of ingredients, and a stack's worth: a craft a request up to
+1.21.2), and by the mouse then a click taking the result to the cursor and on to the hotbar; from 1.17.0 firework
+rockets selected, then shift clicked (to the offhand from 1.18.30); on 1.19.50 – 1.19.80 a bamboo bed's select without
+the bamboo planks; from 1.19.40 sticks from a tag; from 1.26.40 a cake and a dispenser; on 1.26.51 the grid's crafts by
+a mouse click, a right click, a hotbar key and shift clicks, a select with shift, a wooden pickaxe by the recipe book
+(no `Damage`), a dyed bundle. Recorded and replayed on some builds: 22 rockets' worth selected with all then shift
+clicked, the crafts after the first by the fireworks' multi recipe (1.20.0 – 1.20.40 each after its crafting_event,
+from 1.21.20 21 crafts to the offhand then the multi recipe's one), and on 1.21.0 – 1.21.2 64 enhanced empty maps and
+64 decorated pots the same way. Not recorded, so as the bot does it: what a select does with what the grid holds, a
+select with `all` or a cell of several items lacking some ingredients, a hotbar key over a slot holding another item,
+an extra output with no room or going onto stacks of its item, a selection forgotten when a screen opens, which
+recipe type crafting_event names when the inventory's recipe is crafted at a crafting table, firework rockets shift
+clicked at a crafting table or with the offhand empty and a stack of rockets in the inventory, the grid mirrored
+before 1.20.80 (crafting_data has no `assume_symmetry` then: the bot mirrors every shaped recipe), a block's item
+facing other than north or the dispenser's way from 1.26.40, a grid filled by hand that a multi recipe stands for, the
+stars of cocoa beans, lapis lazuli and bone meal from 1.20.10, and the decorated pot's multi recipe before 1.20.50.
+
+Not yet: the other multi recipes (a filled map extended or cloned, banners' patterns, a book cloned, an item repaired,
+a decorated pot of sherds, a firework star of a shape or a fade: no recording crafts them, and the bot sends nothing
+for a grid only one of them makes), the recipe book's choice between recipes alike (the bot crafts the one given), the
+stonecutter, the smithing table and the other stations.
 
 ## Tests
 
@@ -1092,7 +1215,12 @@ Not yet: drags and double clicks (`clickWindow` modes 5 and 6), using a block wi
   commands are; the inventory: by how items, requests, responses, held items and closes are written, and when the held
   item is told, each group playing a recorded spawn, give, move and close with the bot, byte for byte; using a block: by
   how its packets are written and the block numbered, each group playing a recorded opening of a crafting table with the
-  bot, byte for byte, and a recorded use of a barrel). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
+  bot, byte for byte, and a recorded use of a barrel; the clicks: by how a request names its containers and stacks, each
+  group playing the recorded drop of the cursor's stack and a shield put in the offhand, with every gesture recorded on
+  1.26.51 played from 1.26.40, the slots named in the click's frame from 1.26.51 and the cursor drags from 1.26.60; the
+  crafting: by how crafting_data lists recipes and descriptors and how craft_recipe, craft_recipe_auto,
+  results_deprecated and crafting_event (up to 1.20.40) are written, each group playing a recorded craft with the bot,
+  byte for byte). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
   workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.

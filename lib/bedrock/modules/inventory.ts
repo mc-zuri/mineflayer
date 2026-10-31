@@ -11,8 +11,10 @@ import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockClientboundPackets, BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
 import { clickMoves, HOTBAR_AND_INVENTORY, isSupportedClick, placesFor } from './clicks.ts'
 import type { ClickedSlots, WindowClick } from './clicks.ts'
-import { dropAction, heldItemOf, itemOf, moveAction, readResponses, readStack, sameItem, sameKind, slotInfo, stackRequest, swapAction, withCount } from './items.ts'
+import { consumeAction, dropAction, heldItemOf, itemOf, moveAction, readResponses, readStack, sameItem, sameKind, slotInfo, stackRequest, swapAction, withCount } from './items.ts'
 import type { ContainerName, ResponseSlot, SlotRef, Stack, StackRequest, StackResponse } from './items.ts'
+
+type StackAction = StackRequest['actions'][number]
 
 const OWNER = 'inventory'
 const MS = 1_000_000
@@ -30,7 +32,7 @@ const OUTSIDE = -999
 /** a slot of the bot's containers: `inventory:0` – `inventory:35`, `armor:0` – `armor:3`, `offhand:1`, `ui:<slot>` */
 type Key = string
 
-type ScreenType = 'inventory' | 'workbench'
+export type ScreenType = 'inventory' | 'workbench'
 
 const STORES: Readonly<Record<ContainerName, string>> = Object.freeze({
   hotbar_and_inventory: 'inventory',
@@ -60,6 +62,7 @@ const INVENTORY_VIEW: readonly Key[] = Object.freeze(['ui:50', ...keysOf('ui', 2
 const CRAFTING_TABLE_VIEW: readonly Key[] = Object.freeze(['ui:50', ...keysOf('ui', 32, 40), ...keysOf('inventory', 9, 35), ...keysOf('inventory', 0, 8)])
 
 const CURSOR: SlotRef = Object.freeze({ container: 'cursor', slot: 0 })
+const OUTPUT_KEY = 'ui:50'
 const INVENTORY_GRID: readonly SlotRef[] = Object.freeze([28, 29, 30, 31].map(slot => Object.freeze({ container: 'crafting_input', slot })))
 const TABLE_GRID: readonly SlotRef[] = Object.freeze([32, 33, 34, 35, 36, 37, 38, 39, 40].map(slot => Object.freeze({ container: 'crafting_input', slot })))
 
@@ -90,6 +93,9 @@ function changeOf (before: Stack | undefined, after: Stack | undefined): 'item' 
   return sameItem(before, after) && before.count === after.count ? undefined : 'other'
 }
 
+/** the crafting grid of each screen, row by row */
+export const GRIDS: Readonly<Record<ScreenType, readonly SlotRef[]>> = Object.freeze({ inventory: INVENTORY_GRID, workbench: TABLE_GRID })
+
 /** the stack a move takes `count` of, and what it leaves */
 function takenFrom (count: number, from: SlotRef, source: Stack | undefined): [Stack, Stack | undefined] {
   if (source === undefined || source.count < count) throw new Error(`${from.container} ${from.slot} has not ${count} items`)
@@ -98,8 +104,9 @@ function takenFrom (count: number, from: SlotRef, source: Stack | undefined): [S
 
 /** what a move leaves in the slots it changes, each as it was before any; a new stack is named by the request's id */
 function changesOf (move: Move, stackAt: (key: Key) => Stack | undefined, requestId: number): Array<[Key, Stack | undefined]> {
+  if (move.type === 'action') return move.output === undefined ? [] : [[OUTPUT_KEY, move.output]]
   const fromKey = keyOf(move.from)
-  if (move.type === 'drop') return [[fromKey, takenFrom(move.count, move.from, stackAt(fromKey))[1]]]
+  if (move.type === 'drop' || move.type === 'consume') return [[fromKey, takenFrom(move.count, move.from, stackAt(fromKey))[1]]]
   const toKey = keyOf(move.to)
   const destination = stackAt(toKey)
   if (move.type === 'swap') return [[fromKey, destination], [toKey, stackAt(fromKey)]]
@@ -126,10 +133,42 @@ function windowsOf (registry: BedrockBotInternal['registry']): ReturnType<typeof
   return Reflect.apply(prismarineWindows, undefined, [registry])
 }
 
+/** `action` writes an action that names no slot, after which the created output holds `output`, if given */
 export type Move =
   | { readonly type: 'take' | 'place', readonly count: number, readonly from: SlotRef, readonly to: SlotRef }
   | { readonly type: 'swap', readonly from: SlotRef, readonly to: SlotRef }
   | { readonly type: 'drop', readonly count: number, readonly from: SlotRef }
+  | { readonly type: 'consume', readonly count: number, readonly from: SlotRef }
+  | { readonly type: 'action', readonly action: StackAction, readonly output?: Stack | undefined }
+
+/** the slots as moves made so far would leave them, on top of the bot's */
+export class Draft implements Pick<ClickedSlots, 'stackAt' | 'stackSize'> {
+  private readonly planned = new Map<Key, Stack | undefined>()
+  private readonly base: (key: Key) => Stack | undefined
+  private readonly sizes: Pick<ClickedSlots, 'stackSize'>
+
+  constructor (base: (key: Key) => Stack | undefined, sizes: Pick<ClickedSlots, 'stackSize'>) {
+    this.base = base
+    this.sizes = sizes
+  }
+
+  stackAt (ref: SlotRef): Stack | undefined {
+    return this.at(keyOf(ref))
+  }
+
+  stackSize (stack: Stack): number {
+    return this.sizes.stackSize(stack)
+  }
+
+  /** throws where the slots cannot make a move */
+  apply (moves: readonly Move[]): void {
+    for (const move of moves) for (const [key, stack] of changesOf(move, key => this.at(key), 0)) this.planned.set(key, stack)
+  }
+
+  private at (key: Key): Stack | undefined {
+    return this.planned.has(key) ? this.planned.get(key) : this.base(key)
+  }
+}
 
 interface PendingRequest {
   readonly id: number
@@ -154,6 +193,9 @@ interface CursorDrag {
   leftAt: Ns | undefined
 }
 
+/** a click on a crafting output, made in an input pass: the crafting plugin's */
+export type OutputClick = (ctx: FrameContext, click: WindowClick, screen: ScreenType) => Promise<void>
+
 interface Closing {
   readonly screen: Screen
   /** when the screen's animation ends, set by the input pass that asked the close, which handed the items back */
@@ -166,6 +208,8 @@ interface Closing {
 /** The player's items as the server sends them and the bot's requests predict them, shown in Java's windows. */
 export class Inventory {
   quickBarSlot = 0
+  /** with none, a click on a crafting output sends nothing */
+  outputClick: OutputClick | undefined
   readonly stats = { otherWindows: 0, otherScreens: 0, unknownResponses: 0 }
   readonly window: Window<StorageEvents>
   private readonly bot: BedrockBotInternal
@@ -277,6 +321,15 @@ export class Inventory {
     return this.closing?.end === undefined ? this.screen?.type : undefined
   }
 
+  /** the slots as the bot predicts them, for moves to be planned on */
+  draft (): Draft {
+    return new Draft(key => this.slots.get(key), this.clickedSlots)
+  }
+
+  stackAt (ref: SlotRef): Stack | undefined {
+    return this.slots.get(keyOf(ref))
+  }
+
   /** made in an input pass, it names its slots and predicts its moves at once, as the vanilla client does; the arm swings for each drop, in the pass */
   async request (core: BedrockCore, { outbox }: FrameContext, moves: readonly Move[]): Promise<void> {
     this.check(moves)
@@ -313,16 +366,13 @@ export class Inventory {
     const key = screen.view[click.slot]
     if (key === undefined && click.slot !== OUTSIDE) throw new Error(`the ${screen.window.type} window has no slot ${click.slot}`)
     const clicked = key === undefined ? undefined : clickedRefOf(key)
-    if (clicked?.container === 'creative_output' && click.mode !== 4) return await this.outputClick()
+    if (clicked?.container === 'creative_output' && click.mode !== 4) return await this.outputClick?.(ctx, click, screen.type)
     const moves = clickMoves(click, clicked, this.clickedSlots)
     if (moves.length === 0) return
     const dragged = click.mode === 0 && this.atLeast('bedrock_1.26.60') && moves.some(move => move.type === 'place' && move.from.container === 'cursor')
     if (dragged) this.startCursorDrag(ctx)
     await this.request(core, ctx, moves)
   }
-
-  /** a crafting output's mouse click, shift click or hotbar key is crafting's; with no recipe matched, the output holds nothing to take */
-  private async outputClick (): Promise<void> {}
 
   private startCursorDrag (ctx: FrameContext): void {
     this.stopCursorDrag(ctx)
@@ -457,14 +507,20 @@ export class Inventory {
     const { runtimeId, equipped } = this
     if (!this.equipmentChanged || runtimeId === undefined) return
     this.equipmentChanged = false
-    const main = this.mainHand()
-    const offhand = this.slots.get(OFFHAND)
+    const main = this.confirmed(`inventory:${this.quickBarSlot}`)
+    const offhand = this.confirmed(OFFHAND)
     const mainChange = equipped === undefined ? 'item' : changeOf(equipped.main, main)
     const offhandChange = changeOf(equipped?.offhand, offhand)
     this.equipped = { main, offhand }
     if (mainChange === 'item') outbox.queue('interact', this.interact('mouse_over_entity', 0n))
     if (mainChange !== undefined && (equipped !== undefined || main !== undefined)) outbox.queue('mob_equipment', this.mobEquipment(runtimeId, main, this.quickBarSlot, this.quickBarSlot, 'inventory'))
     if (offhandChange !== undefined) outbox.queue('mob_equipment', this.mobEquipment(runtimeId, offhand, 1, 0, 'offhand'))
+  }
+
+  /** the slot as the server last told it: what the first request still unanswered that changed it found there */
+  private confirmed (key: Key): Stack | undefined {
+    const request = this.pending.find(pending => pending.before.has(key))
+    return request === undefined ? this.slots.get(key) : request.before.get(key)
   }
 
   private takeAnswers (): void {
@@ -513,9 +569,7 @@ export class Inventory {
   private check (moves: readonly Move[]): void {
     const { screen } = this
     if (screen !== undefined && this.screenType === undefined) throw new Error(`the ${screen.window.type} window is closing`)
-    const planned = new Map<Key, Stack | undefined>()
-    const stackAt = (key: Key): Stack | undefined => planned.has(key) ? planned.get(key) : this.slots.get(key)
-    for (const move of moves) for (const [key, stack] of changesOf(move, stackAt, 0)) planned.set(key, stack)
+    this.draft().apply(moves)
   }
 
   private predict (request: PendingRequest, move: Move): void {
@@ -526,10 +580,12 @@ export class Inventory {
   }
 
   /** names its slots as they are before the move */
-  private actionOf (move: Move): StackRequest['actions'][number] {
+  private actionOf (move: Move): StackAction {
     const { version } = this.bot
+    if (move.type === 'action') return move.action
     const source = slotInfo(version, move.from, this.nameOf(move.from))
     if (move.type === 'drop') return dropAction(version, move.count, source)
+    if (move.type === 'consume') return consumeAction(version, move.count, source)
     const destination = slotInfo(version, move.to, this.nameOf(move.to))
     if (move.type === 'swap') return swapAction(version, source, destination)
     return moveAction(version, move.type, move.count, source, destination)
@@ -544,10 +600,6 @@ export class Inventory {
   private receive (key: Key, stack: Stack | undefined): void {
     for (const request of this.pending) request.before.delete(key)
     this.set(key, stack)
-  }
-
-  private stackAt (ref: SlotRef): Stack | undefined {
-    return this.slots.get(keyOf(ref))
   }
 
   private set (key: Key, stack: Stack | undefined): void {

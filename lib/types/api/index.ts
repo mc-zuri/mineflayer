@@ -128,6 +128,35 @@ export interface BedrockPlayer extends Entity {
   isCollidedVertically: boolean
 }
 
+/** prismarine-recipe's `RecipeItem`: `metadata` null for any; `id` -1 for an empty cell */
+export interface BedrockRecipeItem {
+  id: number
+  metadata: number | null
+  count: number
+}
+
+/** a crafting_data recipe: Java's fields, a cell naming a tag or an alias shown by its first item, and Bedrock's */
+export interface BedrockRecipe {
+  result: BedrockRecipeItem
+  /** a shaped recipe's rows, else null */
+  inShape: BedrockRecipeItem[][] | null
+  /** always null: what Java leaves in the grid, Bedrock makes as more results */
+  outShape: null
+  /** a shapeless recipe's, each counted negative, else null */
+  ingredients: BedrockRecipeItem[] | null
+  delta: BedrockRecipeItem[]
+  requiresTable: boolean
+  /** crafting_data's recipe id (none for a multi recipe, which is not shown), its type, network id, uuid, priority and block */
+  id: string
+  type: string
+  networkId: number
+  uuid: string
+  priority: number
+  block: string
+  /** every result: `result` and those Java leaves in the grid, as the bucket the cake leaves */
+  results: BedrockRecipeItem[]
+}
+
 export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   username: string
   protocolVersion: number
@@ -216,16 +245,20 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   openInventory: () => Promise<Window<StorageEvents>>
   /** gives what the cursor and the grid hold back to the inventory (dropping what has no room), closes the screen, and resolves once the server closed it */
   closeWindow: (window: Window) => Promise<void>
-  /**
-   * Java's click on a slot of the open screen's window (-999 outside it), sent as the vanilla client's request:
-   * modes 0 (mouse buttons 0 and 1), 1 (shift), 2 (hotbar keys 0 – 8) and 4 (drop keys: 1 with ctrl). Resolves once the
-   * server took the request, at once where the click sends none
-   */
+  /** Java's click (modes 0, 1, 2 and 4; on a crafting output the grid's craft), sent as the vanilla client's request: resolves once the server took it */
   clickWindow: (slot: number, mouseButton: number, mode: number) => Promise<void>
   /** Java's: clicks where the eye's ray meets the block, else looks at `cursorPos` on `direction`'s face first; resolves once the use ended */
   activateBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<void>
   /** activateBlock, resolving with the screen the server opened (the crafting table's), once the use ended too */
   openBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<Window>
+  /** Java's: the crafting table's recipes making the item (of any metadata for null), of which the inventory has the ingredients for `minResultCount` (1) */
+  recipesFor: (itemType: number, metadata: number | null | undefined, minResultCount: number | null, craftingTable: Block | boolean | null) => BedrockRecipe[]
+  /** Java's: the crafting table's recipes making the item (of any metadata for null) */
+  recipesAll: (itemType: number, metadata: number | null | undefined, craftingTable: Block | boolean | null) => BedrockRecipe[]
+  /** the recipe book's craft, `count` (1, as null; 0 crafts nothing) times, on the screen open or one it opens (a crafting table's, the inventory's without one) and closes; rejects, sending nothing, without the ingredients */
+  craft: (recipe: BedrockRecipe, count?: number | null, craftingTable?: Block | null) => Promise<void>
+  /** Bedrock's: the recipe book's select, putting a craft's ingredients (`all`: as many crafts' as the grid takes; those the inventory has, where it lacks some) in the open screen's grid */
+  placeRecipe: (recipe: BedrockRecipe, all?: boolean) => Promise<void>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */

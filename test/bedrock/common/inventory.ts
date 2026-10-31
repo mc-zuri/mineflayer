@@ -1,3 +1,4 @@
+import type { NBT } from 'prismarine-nbt'
 import { isBedrockVersionAtLeast } from '../../../lib/bedrock/version.ts'
 import type { BedrockVersion } from '../../../lib/types/api/index.ts'
 import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
@@ -5,7 +6,7 @@ import type { FakeBedrockClient } from './server.ts'
 
 type SlotItem = MCProtocol.Bedrock.Write.Types.ItemStack | MCProtocol.Bedrock.Write.Types.Item | MCProtocol.Bedrock.Write.Types.ItemV4
 
-/** an item as a test gives it: its network id, count and metadata, its stack id (none: 0), its block's runtime id, a shield's blocking tick */
+/** an item as a test gives it: its network id, count and metadata, its stack id (none: 0), its block's runtime id, a shield's blocking tick, its NBT compound's ints */
 export interface Given {
   id: number
   count: number
@@ -13,13 +14,24 @@ export interface Given {
   stackId?: number
   blockRuntimeId?: number
   blockingTick?: bigint
+  ints?: Readonly<Record<string, number>>
 }
 
 export type InventoryWindow = 'inventory' | 'armor' | 'offhand' | 'ui'
 
 /** no NBT, no blocks to be placed on or destroy; a shield's blocking tick, which only a shield is written with */
-function extra ({ blockingTick }: Given): { has_nbt: number, can_place_on: string[], can_destroy: string[], blocking_tick?: bigint } {
-  const none = { has_nbt: 0, can_place_on: [], can_destroy: [] }
+interface ExtraData {
+  has_nbt: true | number
+  nbt?: { version: number, nbt: NBT }
+  can_place_on: string[]
+  can_destroy: string[]
+  blocking_tick?: bigint
+}
+
+function extra ({ blockingTick, ints }: Given): ExtraData {
+  const value = Object.fromEntries(Object.entries(ints ?? {}).map(([name, int]) => [name, { type: 'int' as const, value: int }]))
+  const nbt: Pick<ExtraData, 'has_nbt' | 'nbt'> = ints === undefined ? { has_nbt: 0 } : { has_nbt: true, nbt: { version: 1, nbt: { type: 'compound', name: '', value } } }
+  const none = { ...nbt, can_place_on: [], can_destroy: [] }
   return blockingTick === undefined ? none : { ...none, blocking_tick: blockingTick }
 }
 

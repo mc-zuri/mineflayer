@@ -716,6 +716,41 @@ describe('bedrock window clicks', () => {
       bot.end()
     })
 
+    it('tells the hand as the server last gave it, not as clicks still unanswered left it: half of 2 planks taken, then put back', async () => {
+      const { bot, server, driver, inventory, idOf } = await withScreen()
+      inventory.slot('inventory', 0, { id: idOf('oak_planks'), count: 2, stackId: 7 })
+      await driver.tick()
+      const told = server.sentOf('mob_equipment').length
+      const clicks = [bot.clickWindow(36, 1, 0), bot.clickWindow(36, 1, 0)]
+      await driver.tick()
+      assert.deepStrictEqual(lastMoves(server), [[-3, ['take', 1, 'hotbar:0#7', 'cursor:0#0']], [-5, ['place', 1, 'cursor:0#-3', 'hotbar:0#-3']]])
+      // another slot told, which has the hand looked at again
+      inventory.slot('inventory', 5, { id: idOf('stick'), count: 1, stackId: 8 })
+      await driver.tick()
+      assert.strictEqual(server.sentOf('mob_equipment').length, told)
+      bot.end()
+      Promise.allSettled(clicks).catch(() => {})
+    })
+
+    it('tells the offhand as the server last gave it too: an arrow put there, then the response', async () => {
+      const { bot, server, driver, inventory, idOf } = await withScreen()
+      inventory.slot('ui', 0, { id: idOf('arrow'), count: 1, stackId: 7 })
+      await driver.tick()
+      const offhands = (): unknown[] => server.sentOf('mob_equipment').filter(({ window_id: window }) => window === 'offhand').map(({ item }) => item.network_id)
+      const click = bot.clickWindow(45, 0, 0)
+      await driver.tick()
+      assert.deepStrictEqual(lastMoves(server), [[-3, ['place', 1, 'cursor:0#7', 'offhand:1#0']]])
+      // another slot told, which has the hands looked at again
+      inventory.slot('inventory', 5, { id: idOf('stick'), count: 1, stackId: 8 })
+      await driver.tick()
+      assert.deepStrictEqual(offhands(), [])
+      server.send('item_stack_response', { responses: [{ status: 'ok', request_id: -3, containers: [{ slot_type: { container_id: 'cursor' }, slots: [{ slot: 0, hotbar_slot: 0, count: 0, custom_name: '', durability_correction: 0 }] }, { slot_type: { container_id: 'offhand' }, slots: [{ slot: 1, hotbar_slot: 1, count: 1, item_stack_id: 9, custom_name: '', durability_correction: 0 }] }] }] })
+      await driver.tick()
+      await click
+      assert.deepStrictEqual(offhands(), [idOf('arrow')])
+      bot.end()
+    })
+
     it('shifts a stack onto the stacks of its item with room, in order, then to the first empty slot, in one request', async () => {
       const { bot, server, driver, inventory, idOf } = await withScreen()
       inventory.slot('ui', 28, { id: idOf('oak_planks'), count: 40, stackId: 7 })
