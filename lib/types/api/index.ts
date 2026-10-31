@@ -272,6 +272,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   activateBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<void>
   /** activateBlock, resolving with the screen the server opened (the crafting table's), once the use ended too */
   openBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<Window>
+  /** Java's: uses the entity where the eye's ray meets it, else looks at its box's centre first; resolves once sent */
+  activateEntity: (entity: Entity) => Promise<void>
+  /** Java's: looks at `position` first, then uses the entity where the eye's ray meets it (at `position` if it does not); resolves once sent */
+  activateEntityAt: (entity: Entity, position: Vec3) => Promise<void>
   /** Java's: the crafting table's recipes making the item (of any metadata for null), of which the inventory has the ingredients for `minResultCount` (1) */
   recipesFor: (itemType: number, metadata: number | null | undefined, minResultCount: number | null, craftingTable: Block | boolean | null) => BedrockRecipe[]
   /** Java's: the crafting table's recipes making the item (of any metadata for null) */

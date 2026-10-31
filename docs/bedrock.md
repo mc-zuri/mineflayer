@@ -87,7 +87,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.players`, `bot.player`: the player list (see below).
 - `bot.inventory`, `bot.currentWindow`, `bot.heldItem`, `bot.quickBarSlot`, `bot.openInventory()` (Bedrock's),
   `bot.closeWindow(window)`, `bot.clickWindow(slot, mouseButton, mode)`, `bot.activateBlock(block, direction,
-  cursorPos)`, `bot.openBlock(block, direction, cursorPos)`: the player's items and screens, and using a block (see the
+  cursorPos)`, `bot.openBlock(block, direction, cursorPos)`, `bot.activateEntity(entity)`,
+  `bot.activateEntityAt(entity, position)`: the player's items and screens, and using a block or an entity (see the
   inventory below).
 - `bot.recipesFor(itemType, metadata, minResultCount, craftingTable)`, `bot.recipesAll(itemType, metadata,
   craftingTable)`, `bot.craft(recipe, count, craftingTable)`, `bot.placeRecipe(recipe, all)` (Bedrock's): the recipes
@@ -1034,6 +1035,24 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   none in 100 ticks. As recorded opening a crafting table on every build: the client's clicks are the bot's, byte for
   byte, when the bot looks as the client's camera did (up to 1.26.10 its auth inputs mostly report a rotation a little
   off its camera's).
+- **`bot.activateEntity(entity)`** and **`bot.activateEntityAt(entity, position)`** use an entity as the vanilla client
+  does when the use key is pressed with the crosshair on it: one `inventory_transaction item_use_on_entity interact`, in
+  an input pass, before its auth input. It changes no slot: the entity's runtime id, the hotbar slot, the held item
+  without its stack id (an ItemV4 from 1.26.30), from 1.26.60 the hand (the main one), the eye as the auth inputs
+  report it, and the point clicked, not from the entity's feet. That point is where the client's pick meets the entity:
+  its look's first 5.5 blocks from the eye, a segment clipped against each entity's box grown by 0.1 on each side, in
+  floats (this reach and these float steps give every point recorded, to the bit), the nearest entity before the first
+  block. Java's `activateEntity` looks at 1 over the feet, which misses a low box (a boat's), and sends `use_entity`
+  without a point: the bot clicks at once when the pick meets the entity, else looks at its box's centre first and
+  clicks once an auth input carried the look; `activateEntityAt` looks at `position` first, as Java's. After a look, the
+  click is where the pick meets the entity, else (another entity or a block in the way, or farther than the pick
+  reaches) at the point looked at, as Java's `activateEntityAt` names its position. No swing and no `player_action`:
+  the swing recorded after an entity use is the server's `animate` copied by the recording's observer (10 µs apart). A
+  use waits for a block's use to end, as a held key cannot be pressed again; both resolve once the use is sent. They
+  reject before the player is shown, over a screen, and for an entity not in `bot.entities`. As recorded using a boat on
+  every build and a villager holding wheat on 1.26.20, 1.26.51 and 1.26.60: the client's uses are the bot's, byte for
+  byte, when the bot looks as the client's camera did. A boat's add_entity names a point 0.375 over its feet, which
+  `bot.entities` keeps as sent: the client's box stands on the feet, so the bot's pick meets a boat 0.375 too high.
 - **set_player_inventory_options** (1.20.50 – 1.21.101): the client tells the server once a process, 120 ms after a
   screen's first opening, the screens it opened so far (the inventory's `layout`, the crafting table's
   `crafting_layout`: `recipe_book` once opened). A bot is a process of its own; a test that continues a recording's
@@ -1041,8 +1060,8 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: drags and double clicks (`clickWindow` modes 5 and 6), using a block with an item the use places or uses up
-(the client then names the slot it changes), screens other than the inventory and the crafting table (counted, not
+Not yet: `bot.openEntity` (the screens an entity opens), drags and double clicks (`clickWindow` modes 5 and 6), using
+a block with an item the use places or uses up (the client then names the slot it changes), screens other than the inventory and the crafting table (counted, not
 shown), and the hotbar selection by the bot.
 
 ### Screens
@@ -1282,7 +1301,10 @@ stonecutter, the smithing table and the other stations.
   commands are; the inventory: by how items, requests, responses, held items and closes are written, and when the held
   item is told, each group playing a recorded spawn, give, move and close with the bot, byte for byte; using a block: by
   how its packets are written and the block numbered, each group playing a recorded opening of a crafting table with the
-  bot, byte for byte, and a recorded use of a barrel; the clicks: by how a request names its containers and stacks, each
+  bot, byte for byte, and a recorded use of a barrel; using an entity: by how its transaction is written, the legacy
+  wrapper 1.16.201 – 1.16.210, an Item 1.16.220 – 1.26.20, an ItemV4 and the transaction's type and actions present
+  1.26.30 – 1.26.45, without them 1.26.51, the hand 1.26.60, each group playing a recorded use of a boat with the bot,
+  byte for byte; the clicks: by how a request names its containers and stacks, each
   group playing the recorded drop of the cursor's stack and a shield put in the offhand, with every gesture recorded on
   1.26.51 played from 1.26.40, the slots named in the click's frame from 1.26.51 and the cursor drags from 1.26.60; the
   crafting: by how crafting_data lists recipes and descriptors and how craft_recipe, craft_recipe_auto,

@@ -56,7 +56,7 @@ function faceOf (direction: Vec3): number {
 }
 
 /** where the player looks, from Bedrock degrees */
-function lookDirection ({ yaw, pitch }: Rotation): Vec3 {
+export function lookDirection ({ yaw, pitch }: Rotation): Vec3 {
   const [yawRadians, pitchRadians] = [yaw * Math.PI / 180, pitch * Math.PI / 180]
   return new Vec3(-Math.sin(yawRadians) * Math.cos(pitchRadians), -Math.sin(pitchRadians), Math.cos(yawRadians) * Math.cos(pitchRadians))
 }
@@ -114,18 +114,33 @@ export function clickBlock (version: BedrockVersion, click: BlockClick): Bedrock
   }
   if (atLeast(version, 'bedrock_1.26.10')) data['client_cooldown_state'] = 'off'
   if (atLeast(version, 'bedrock_1.26.51')) data['hand'] = 'main_hand'
+  return useTransaction(version, 'item_use', data)
+}
+
+/** a use's data, in a transaction that changes no slot, as the version wraps it */
+export function useTransaction (version: BedrockVersion, type: 'item_use' | 'item_use_on_entity', data: Record<string, unknown>): BedrockServerboundPackets['inventory_transaction'] {
   // the fields are the version's
   const transactionData = data as NonNullable<BedrockServerboundPackets['inventory_transaction']['transaction']['transaction_data']>
   if (!atLeast(version, 'bedrock_1.16.210')) {
-    return { transaction: { legacy_request_id: 0, transaction_type: 'item_use', network_ids: false, inventory_actions: [], transaction_data: transactionData } }
+    return { transaction: { legacy_request_id: 0, transaction_type: type, network_ids: false, inventory_actions: [], transaction_data: transactionData } }
   }
   // 1.16.210 says whether the actions name items by network id
   const actions = atLeast(version, 'bedrock_1.16.220') ? [] : { network_ids: false, actions: [] }
-  return { transaction: { legacy: { legacy_request_id: 0 }, transaction_type: 'item_use', actions, transaction_data: transactionData } }
+  return { transaction: { legacy: { legacy_request_id: 0 }, transaction_type: type, actions, transaction_data: transactionData } }
 }
 
-/** an input pass a block can be used in */
-interface UsePass {
+/** a use, resolving with the screen the server opened, once shown: at its opening, or at its window's first content */
+export async function openedBy (core: BedrockCore, bot: BedrockBotInternal, inventory: Inventory, name: string, use: () => Promise<void>): Promise<Window> {
+  const openings = inventory.openings
+  const shown = core.waits.until(() => inventory.openings > openings, OPEN_TICKS, `the server did not open the ${name} in ${OPEN_TICKS} ticks`)
+  await Promise.all([shown, use()])
+  const window = bot.currentWindow
+  if (window === null) throw new Error(`the server opened a ${String(inventory.lastOpened)} screen, which the bot does not show`)
+  return window
+}
+
+/** an input pass a block or an entity can be used in */
+export interface UsePass {
   readonly tick: number
   readonly outbox: OutboxWriter
   readonly runtimeId: bigint
@@ -169,15 +184,9 @@ export class BlockUse {
     core.system(OWNER, { name: 'use.end', place: { after: 'input.cook' }, gate: 'present', replay: false, run: ({ tick, outbox }) => { this.end(tick, outbox) } })
   }
 
-  /** the use, resolving with the screen the server opened, once shown: at its opening, or at its window's first content */
+  /** the use, resolving with the screen the server opened, once shown */
   async open (core: BedrockCore, block: Block, options: UseOptions = {}): Promise<Window> {
-    const { inventory } = this
-    const openings = inventory.openings
-    const shown = core.waits.until(() => inventory.openings > openings, OPEN_TICKS, `the server did not open the ${block.name} in ${OPEN_TICKS} ticks`)
-    await Promise.all([shown, this.use(core, block, options)])
-    const window = this.bot.currentWindow
-    if (window === null) throw new Error(`the server opened a ${String(inventory.lastOpened)} screen, which the bot does not show`)
-    return window
+    return await openedBy(core, this.bot, this.inventory, block.name, async () => { await this.use(core, block, options) })
   }
 
   /** with the pick on the block (on the face asked for), at once; else after looking at the point, as Java's; resolves once the use ended */
@@ -197,16 +206,16 @@ export class BlockUse {
     await clicked.ended
   }
 
-  /** run in the first input pass with no use going on, as a held key cannot be pressed again, where a block can be used */
-  private async whenFree<Result> (core: BedrockCore, run: (pass: UsePass) => Result): Promise<Result> {
-    return await core.call(async ctx => this.pressed === undefined ? run(this.usable(core, ctx)) : await this.whenFree(core, run))
+  /** run in the first input pass with no use going on, as a held key cannot be pressed again, where `what` can be used */
+  async whenFree<Result> (core: BedrockCore, run: (pass: UsePass) => Result, what = 'a block'): Promise<Result> {
+    return await core.call(async ctx => this.pressed === undefined ? run(this.usable(core, ctx, what)) : await this.whenFree(core, run, what))
   }
 
-  private usable (core: BedrockCore, { tick, outbox }: FrameContext): UsePass {
+  private usable (core: BedrockCore, { tick, outbox }: FrameContext, what: string): UsePass {
     const { runtimeId } = this
-    if (!core.activation.present || tick === undefined || runtimeId === undefined) throw new Error('a block cannot be used before the player is shown')
+    if (!core.activation.present || tick === undefined || runtimeId === undefined) throw new Error(`${what} cannot be used before the player is shown`)
     const window = this.bot.currentWindow
-    if (window !== null) throw new Error(`a block cannot be used while the ${window.type} window is open`)
+    if (window !== null) throw new Error(`${what} cannot be used while the ${window.type} window is open`)
     return { tick, outbox, runtimeId }
   }
 

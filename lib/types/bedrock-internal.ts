@@ -1,6 +1,7 @@
 import type { Entity } from 'prismarine-entity'
 import type { BedrockCore } from '../bedrock/core/core.ts'
 import type { BlockUse } from '../bedrock/modules/block_use.ts'
+import type { EntityUse } from '../bedrock/modules/entity_use.ts'
 import type { Inventory } from '../bedrock/modules/inventory.ts'
 import type { LocalPlayer } from '../bedrock/modules/movement.ts'
 import type { Session } from '../bedrock/modules/session.ts'
@@ -38,6 +39,8 @@ export interface BedrockBotInternal extends BedrockBot {
   _inventory: Inventory
   /** using a block: the use key's press, its hold and its release */
   _blockUse: BlockUse
+  /** using an entity: the use with the pick on it, and the screen it opens */
+  _entityUse: EntityUse
   loadPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => void
   loadPlugins: (plugins: Array<BedrockPlugin | BedrockInternalPlugin>) => void
   hasPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => boolean

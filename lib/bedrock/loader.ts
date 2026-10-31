@@ -4,6 +4,7 @@ import { BedrockCore } from './core/core.ts'
 import type { InboxWriter, Ns, Transport } from './core/types.ts'
 import { monotonicClock, startRealtimeDriver } from './drivers/realtime.ts'
 import { BlockUse } from './modules/block_use.ts'
+import { EntityUse } from './modules/entity_use.ts'
 import { Controls } from './modules/input.ts'
 import { Inventory } from './modules/inventory.ts'
 import { Lifecycle } from './modules/lifecycle.ts'
@@ -141,6 +142,8 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   bot._inventory.install(core)
   bot._blockUse = new BlockUse(bot, player, bot._inventory)
   bot._blockUse.install(core)
+  bot._entityUse = new EntityUse(bot, player, bot._inventory, bot._blockUse)
+  bot._entityUse.install(core)
   bot.waitForTicks = async ticks => {
     // before start_game, the ticks after it
     if (ticks > 0) await core.waits.untilTick((core.tick ?? 0) + ticks)
