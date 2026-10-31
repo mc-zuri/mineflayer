@@ -1044,6 +1044,23 @@ export interface BedrockBrewingStand extends Window<BedrockBrewingStandEvents> {
   takeFuel (): Promise<Item>
 }
 
+/** Bedrock's lectern window (the one openBlock resolves with for a lectern): no slot of its own, the book being the lectern's block entity's, as the server last told it */
+export interface BedrockLectern extends Window<StorageEvents> {
+  /** null for a lectern the server told no book of */
+  readonly book: Item | null
+  /** the page the book is open at */
+  readonly page: number
+  readonly totalPages: number
+
+  close (): Promise<void>
+
+  /** unsupported on Bedrock: no recording turns a lectern's page */
+  setPage (page: number): Promise<void>
+
+  /** unsupported on Bedrock: no recording takes a lectern's book */
+  takeBook (): Promise<void>
+}
+
 export interface Dispenser extends Window<StorageEvents> {
   close (): Promise<void>
 

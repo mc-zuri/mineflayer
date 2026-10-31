@@ -22,6 +22,7 @@ import craft from './plugins/craft.ts'
 import entities from './plugins/entities.ts'
 import experience from './plugins/experience.ts'
 import game from './plugins/game.ts'
+import lectern from './plugins/lectern.ts'
 import particle from './plugins/particle.ts'
 import rain from './plugins/rain.ts'
 import scoreboard from './plugins/scoreboard.ts'
@@ -63,7 +64,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   windows,
   villager,
   brewing_stand: brewingStand,
-  beacon
+  beacon,
+  lectern
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

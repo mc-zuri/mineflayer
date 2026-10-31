@@ -1387,6 +1387,32 @@ secondary effect (`setBeaconEffects` rejects one, as the vanilla client's id for
 (paid as the ingot is), and which items the vanilla client lets into the payment slot. A payment left in the slot was
 given back at the close against a scripted server (containers_beacon); the cursor's place before it is not recorded.
 
+## Lectern
+
+Java has no lectern helper: a Java bot opens a lectern with `openBlock`, whose window holds the book in slot 0, and
+turns its page or takes it with `container_button_click`. On Bedrock the server opens the lectern's book screen
+(`lectern`) when the lectern holds a book: a screen with no slot, the book being the lectern's block entity's, which
+block_entity_data tells (`book`, `page`, `totalPages`). Its window is Java's type with the player's 36 slots only (the
+inventory part from 0): the vanilla client's book screen shows no slot, so `clickWindow` on it rejects, and nothing is
+given back at its close. The close has no animation and no container_close from either side: in the next frame the
+bot sends `lectern_update` with the page the book is open at (`page`, `page_count` the book's pages, the lectern's
+`position`; `drop_book: false` up to 1.20.61) and closes the screen at once, `windowClose` and `closeWindow` with it.
+For a lectern the server told no book of, the close sends nothing, as the vanilla client's.
+
+- **`openBlock(lectern)`** resolves with a **`BedrockLectern`**: **`book`** (the book as an item, null for a lectern
+  the server told no book of), **`page`** and **`totalPages`** read the last block_entity_data the bot received at the
+  lectern's position, while the screen is open too (0 untold). A lectern whose block entity came only in its chunk is
+  untold: the bot reads no block entity of a chunk.
+- **`setPage(page)`** and **`takeBook()`** are unsupported: they reject naming the member, as no recording turns a
+  page or takes the book.
+
+Recorded on 1.26.20, 1.26.51 and 1.26.60 (protocol_blocks_ui): a book and quill put on a lectern (block_entity_data
+`hasBook 1`, page 0 of 0), its screen opened, the close sending `lectern_update {page 0, page_count 0, position}` 5,
+31 and 61 ms after the close step, which is the next frame; against a scripted server (containers_lectern) a lectern
+told no book of, whose close sent nothing. Not recorded: page turns, taking the book (`drop_book` up to 1.20.61; from
+1.20.71 its packet is not known), a written book's pages, a lectern screen before 1.26.20, and placing a book, which
+is a use that uses the item up (not supported yet).
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
