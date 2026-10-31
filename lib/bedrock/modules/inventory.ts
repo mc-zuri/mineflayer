@@ -392,6 +392,13 @@ export class Inventory {
     return stack === undefined || destination === undefined || defaultAccepts(destination, stack, this.draft())
   }
 
+  /** bot.inventory's slot as requests name it; throws for a slot it has not */
+  inventoryRef (inventorySlot: number): SlotRef {
+    const ref = this.inventoryView[inventorySlot]
+    if (ref === undefined) throw new Error(`bot.inventory has no slot ${inventorySlot}`)
+    return ref
+  }
+
   /** a slot of the player's windows, the ui's or the open screen's own, as inventory_slot sends it; another window's is counted */
   receiveSlot (id: WindowId, slot: number, stack: Stack | undefined): void {
     const where = this.whereOf(String(id))

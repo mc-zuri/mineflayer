@@ -24,6 +24,7 @@ import chest from './plugins/chest.ts'
 import craft from './plugins/craft.ts'
 import enchantmentTable from './plugins/enchantment_table.ts'
 import drags from './plugins/drags.ts'
+import creative from './plugins/creative.ts'
 import entities from './plugins/entities.ts'
 import experience from './plugins/experience.ts'
 import furnace from './plugins/furnace.ts'
@@ -87,7 +88,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   smithing,
   loom,
   cartography,
-  simple_inventory: simpleInventory
+  simple_inventory: simpleInventory,
+  creative
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

@@ -11,6 +11,7 @@ type WriteItem = MCProtocol.Bedrock.Write.Types.Item | MCProtocol.Bedrock.Write.
 type SlotInfo = MCProtocol.Bedrock.Write.Types.StackRequestSlotInfo
 export type StackRequest = MCProtocol.Bedrock.Write.Types.ItemStackRequest
 type StackAction = StackRequest['actions'][number]
+type LegacyStackAction = MCProtocol.Bedrock.Write.Types.ItemStackRequests[number]['actions'][number]
 
 export interface Stack {
   readonly networkId: number
@@ -187,6 +188,17 @@ export function createAction (version: BedrockVersion, index: number): StackActi
 export function craftRecipeAction (version: BedrockVersion, networkId: number, times: number): StackAction {
   if (!isBedrockVersionAtLeast(version, 'bedrock_1.21.20')) return stackAction(version, 'craft_recipe', { recipe_network_id: networkId })
   return stackAction(version, 'craft_recipe', { recipe_network_id: networkId, times_crafted: times })
+}
+
+/** a creative inventory's item by its entry id: named apart on 1.16.201, made once (times) from 1.21.20 */
+export function craftCreativeAction (version: BedrockVersion, entryId: number): StackAction {
+  if (!isBedrockVersionAtLeast(version, 'bedrock_1.16.210')) {
+    const action: LegacyStackAction = { type_id: 'craft_creative', creative_item_network_id: entryId }
+    // 1.16.201's own action, which its codec writes by these names
+    return action as StackAction
+  }
+  if (!isBedrockVersionAtLeast(version, 'bedrock_1.21.20')) return stackAction(version, 'craft_creative', { item_id: entryId })
+  return stackAction(version, 'craft_creative', { item_id: entryId, times_crafted: 1 })
 }
 
 type AutoIngredients = NonNullable<StackAction['ingredients']>

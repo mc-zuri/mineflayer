@@ -107,6 +107,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.equip(item, destination)`, `bot.unequip(destination)`, `bot.getEquipmentDestSlot(destination)`,
   `bot.entity.equipment`: as Java's, by clicks (see items below).
 - `bot.toss(itemType, metadata, count)`, `bot.tossStack(item)`: as Java's, by clicks (see items below).
+- `bot.creative` (`setInventorySlot(slot, item)`, `clearSlot(slot)`, `clearInventory()`): the creative inventory's
+  items, by item stack requests (see items below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1946,6 +1948,25 @@ the cursor's place in the hand-back.
   whole where that is not more than wanted, else one item a right click, the rest put back. Too few items reject with
   Java's `Can't find …` after dropping those found, an unknown item with `Invalid itemType`. The drop key outside any
   screen, the vanilla client's other way to drop the held item (a legacy inventory transaction), is not used.
+- **`bot.creative.setInventorySlot(slot, item)`** makes, in creative mode, an item of the server's creative_content as
+  the vanilla client takes one from its creative inventory, on the inventory screen (the screen open, else one opened
+  and closed again): the slot's stack destroyed first, then the item made and taken to the cursor (`craft_creative` of
+  its entry, `results_deprecated` of the entry's item, a take of `item.count` from `creative_output` 50), then put in
+  the slot by a click, each once the server took the one before. Java writes any item and NBT (set_creative_slot) and
+  waits for the slot; Bedrock has no such packet, and the requests make only what the creative inventory lists: the
+  entry of the item's id and metadata (a block's legacy data, as recipes name it) with the item's NBT, else the one
+  with none (prismarine-item gives a new tool a `Damage` 0 no entry has). It resolves at once for what the slot holds
+  (Java's `Item.equal`); a second call for a slot still being set rejects with Java's message. It rejects, sending
+  nothing, outside creative mode (the vanilla client shows the creative inventory there only), for slots 0 – 4 (the
+  creative inventory has no crafting grid; slot 45, the offhand, is set too: Java asserts 0 – 44), for an item the
+  creative inventory has not, a count no stack has, an item the slot does not take (the clicks' rule for the armor and
+  the offhand), with another screen open or an item on the cursor. Calls run one after another, each on its screen.
+  Java's `waitTimeout` is ignored: a refusal rejects naming the server's reason (`PlayerNotInCreativeMode`).
+- **`bot.creative.clearSlot(slot)`** is Java's `setInventorySlot(slot, null)`: the slot's stack destroyed.
+  **`bot.creative.clearInventory()`** destroys the stack of each slot 5 – 45, one after another, on one screen (the
+  grid's items go back at its close). No recording destroys an item in creative.
+- **`bot.creative.flyTo`, `startFlying` and `stopFlying`** throw (`flyTo` rejects) `bot.creative.<name> is not
+  supported on Bedrock yet`: flying is the movement's.
 
 Recorded and replayed by the tests: the selection of an empty slot, then of one of dirt, on every build, in groups by
 how the items and the interact are written and where the tick tells them (up to 1.19.0 after its auth input, from
@@ -1957,6 +1978,14 @@ by `equip` on every build, byte for byte, in groups by how requests are written.
 Recorded and replayed by the tests too: 10 sticks in hotbar slot 0 taken to the cursor on the inventory screen, then
 dropped by a click outside it, played by `tossStack` on every build, byte for byte, with the arm's swing (for a dropped
 item from 1.21.130), in groups by how requests are written.
+
+Recorded and replayed by the tests too: in creative mode, on the inventory screen, the creative inventory's first item,
+oak planks, taken to the cursor as a stack of 64, played by `setInventorySlot` byte for byte on 1.26.20 – 1.26.30, 1.26.51
+and 1.26.60, the builds recorded in creative, then put in the slot by the inventory screen's click (the recording gives
+the stack back at the close instead). Every other version makes the same requests, written by its codec, in groups by
+how creative_content numbers its entries (`runtime_id` 1.16.201, `stack_id` 1.16.210, `entry_id` from 1.16.220, in
+groups from 1.21.60) and craft_creative names them (`creative_item_network_id` 1.16.201, `item_id`, with the times from
+1.21.20).
 
 ## Tests
 

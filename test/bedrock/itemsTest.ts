@@ -1,5 +1,7 @@
 import assert from 'assert'
+import prismarineItem from 'prismarine-item'
 import type { Item } from 'prismarine-item'
+import { Vec3 } from 'vec3'
 import { isBedrockVersionAtLeast, latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
 import type { SlotRef } from '../../lib/bedrock/modules/items.ts'
 import type { BedrockBot, BedrockVersion } from '../../lib/types/api/index.ts'
@@ -303,14 +305,84 @@ const TOSSES: readonly RecordedToss[] = [
   }
 ]
 
+/** recorded in the protocol_item_stacks scenario (case protocol.creative_inventory): in creative mode, on the inventory screen, the creative inventory's first item, oak planks, taken to the cursor as a stack of 64 */
+interface RecordedCreative {
+  from: BedrockVersion
+  to: BedrockVersion
+  firstRequest: number
+  /** the oak planks' entry as the server listed it: its block's runtime id */
+  blockRuntimeId: number
+  take: string
+  taken: string
+  /** the cursor's stack id the server answered */
+  stackId: number
+}
+
+const CREATIVE: readonly RecordedCreative[] = [
+  {
+    // recorded on 1.26.20.4: the result by its network id
+    from: 'bedrock_1.26.20',
+    to: 'bedrock_1.26.30',
+    firstRequest: -35,
+    blockRuntimeId: 1921718966,
+    take: '93010145030e010113010a010000ecead8a80e0a000000000000000000000100403c0032453b00000000ffffffff',
+    taken: '9401010045013b00010000408a01000000',
+    stackId: 69
+  },
+  {
+    // recorded on 1.26.51.1: the result by its name, the types written again
+    from: 'bedrock_1.26.51',
+    to: 'bedrock_1.26.51',
+    firstRequest: -79,
+    blockRuntimeId: 1921718966,
+    take: '9301019d01030c0e01011113010101146d696e6563726166743a6f616b5f706c616e6b73000100b6b5ac94070a00000000000000000000010000403c0032b1ffffff3b00000000000000ffffffff',
+    taken: '940101009d0101013b0001000040013a000000',
+    stackId: 29
+  },
+  {
+    // recorded on 1.26.60.5: results_deprecated after craft_reserved
+    from: 'bedrock_1.26.60',
+    to: latestSupportedBedrockVersion,
+    firstRequest: -35,
+    blockRuntimeId: 1921718966,
+    take: '93010145030c0e01011214010101146d696e6563726166743a6f616b5f706c616e6b73000100b6b5ac94070a00000000000000000000010000403c0032ddffffff3b00000000000000ffffffff',
+    taken: '940101004501013b0001000040018001000000',
+    stackId: 64
+  }
+]
+
+/** how a version names a creative inventory's item: creative_content's layout and craft_creative's */
+interface CreativeLayout {
+  from: BedrockVersion
+  to: BedrockVersion
+  /** craft_creative's fields making the first entry */
+  craft: Record<string, number>
+}
+
+const CREATIVE_LAYOUTS: readonly CreativeLayout[] = [
+  // the entries numbered runtime_id, the item creative_item_network_id
+  { from: 'bedrock_1.16.201', to: 'bedrock_1.16.201', craft: { creative_item_network_id: 1 } },
+  // the entries numbered stack_id
+  { from: 'bedrock_1.16.210', to: 'bedrock_1.16.210', craft: { item_id: 1 } },
+  // the entries numbered entry_id, their items without a stack id
+  { from: 'bedrock_1.16.220', to: 'bedrock_1.21.2', craft: { item_id: 1 } },
+  { from: 'bedrock_1.21.20', to: 'bedrock_1.21.50', craft: { item_id: 1, times_crafted: 1 } },
+  // the entries in groups
+  { from: 'bedrock_1.21.60', to: 'bedrock_1.26.30', craft: { item_id: 1, times_crafted: 1 } },
+  // a group's category a byte
+  { from: 'bedrock_1.26.40', to: latestSupportedBedrockVersion, craft: { item_id: 1, times_crafted: 1 } }
+]
+
 type SentRequest = BedrockServerboundPackets['item_stack_request']['requests'][number]
 type SentSlot = NonNullable<SentRequest['actions'][number]['source']>
 
 function refOf (info: SentSlot): SlotRef {
-  const type = info.slot_type
+  // 1.16.201 names a slot's container and index apart
+  const type = info.slot_type ?? info.container_id
   const container = typeof type === 'object' ? type.container_id : type
-  assert.ok(typeof container === 'string' && info.slot !== undefined)
-  return { container, slot: info.slot }
+  const slot = info.slot ?? info.slot_id
+  assert.ok(typeof container === 'string' && slot !== undefined)
+  return { container, slot }
 }
 
 function nameOf (info: SentSlot): string {
@@ -348,11 +420,13 @@ interface ServedBot extends TestBot {
   served: <Result>(operation: Promise<Result>) => Promise<Result>
 }
 
-/** joined on the latest version; the server takes each request as the bot predicts it, opens the inventory screen when asked, and answers each close */
-async function servedBot (): Promise<ServedBot> {
-  const testBot = await bedrockTestBot(bedrockCodec(latestSupportedBedrockVersion), { screenAnimations: false })
+/** joined (on the latest version, in the world's game mode); the server takes each request as the bot predicts it, opens the inventory screen when asked, and answers each close */
+async function servedBot (version: BedrockVersion = latestSupportedBedrockVersion, gameMode?: 'creative'): Promise<ServedBot> {
+  const testBot = await bedrockTestBot(bedrockCodec(version), { screenAnimations: false })
   const { server, driver, internal } = testBot
-  await new ServerWorld(server).join(testBot, { game: { runtime_entity_id: 1n } })
+  const world = new ServerWorld(server)
+  const itemStates = atLeast(version, 'bedrock_1.21.60') ? {} : { itemstates: world.registry.writeItemStates() }
+  await world.join(testBot, { game: { runtime_entity_id: 1n, ...gameMode === undefined ? {} : { player_gamemode: gameMode }, ...itemStates } })
   const inventory = new ServerInventory(server)
   let [answered, opened, closed, nextStackId] = [0, 0, 0, 500]
   const answer = (): void => {
@@ -369,7 +443,8 @@ async function servedBot (): Promise<ServedBot> {
     asked.slice(opened).forEach(() => { openScreen(server, 'inventory') })
     opened = asked.length
     const closes = server.sentOf('container_close')
-    for (const { window_id: id } of closes.slice(closed)) server.send('container_close', { window_id: id, window_type: 'none', server: false })
+    // from 1.21.0 a close names the window's type
+    for (const { window_id: id } of closes.slice(closed)) server.send('container_close', atLeast(version, 'bedrock_1.21.0') ? { window_id: id, window_type: 'none', server: false } : { window_id: id, server: false })
     closed = closes.length
   }
   const served = async <Result>(operation: Promise<Result>): Promise<Result> => {
@@ -421,12 +496,29 @@ function sentSince (server: FakeBedrockClient): () => string[] {
   }
 }
 
-/** a bot joined, its items named by start_game's palette up to 1.21.50, holding `given` in hotbar slot 0 */
-async function holding (version: BedrockVersion, given: Given | null): Promise<TestBot & { inventory: ServerInventory, tick: () => number }> {
+/** the craft_creative actions the bot sent since the last call, but their type ids */
+function craftsSince (server: FakeBedrockClient): () => object[] {
+  let seen = server.sentOf('item_stack_request').length
+  return () => {
+    const sent = server.sentOf('item_stack_request')
+    const fresh = sent.slice(seen).flatMap(({ requests }) => requests).flatMap(({ actions }) => actions)
+    seen = sent.length
+    return fresh.filter(({ type_id: type }) => type === 'craft_creative').map(action => Object.fromEntries(Object.entries(action).filter(([key]) => !key.endsWith('type_id'))))
+  }
+}
+
+/** an item as Java's code makes one */
+function itemOf (bot: BedrockBot, name: string, count: number, metadata = 0, nbt?: object): Item {
+  const Item = prismarineItem(bot.registry)
+  return new Item(bot.registry.itemsByName[name]?.id ?? 0, count, metadata, nbt)
+}
+
+/** a bot joined (in the world's game mode), its items named by start_game's palette up to 1.21.50, holding `given` in hotbar slot 0 */
+async function holding (version: BedrockVersion, given: Given | null, gameMode?: 'creative'): Promise<TestBot & { inventory: ServerInventory, tick: () => number }> {
   const testBot = await bedrockTestBot(bedrockCodec(version))
   const world = new ServerWorld(testBot.server)
   const itemStates = atLeast(version, 'bedrock_1.21.60') ? {} : { itemstates: world.registry.writeItemStates() }
-  await world.join(testBot, { game: { runtime_entity_id: 1n, ...itemStates } })
+  await world.join(testBot, { game: { runtime_entity_id: 1n, ...gameMode === undefined ? {} : { player_gamemode: gameMode }, ...itemStates } })
   const inventory = new ServerInventory(testBot.server)
   if (given !== null) inventory.slot('inventory', 0, given)
   await testBot.driver.tick()
@@ -514,6 +606,68 @@ describe('bedrock items', () => {
           await driver.tick()
           await toss
           assert.deepStrictEqual([bot.inventory.slots[36], bot.inventory.selectedItem, bot.currentWindow, server.sentOf('container_close').length, errors], [null, null, bot.inventory, 0, []])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  for (const recorded of CREATIVE) {
+    describe(`making a creative item as the vanilla client takes it from the creative inventory (${recorded.from.slice(8)} – ${recorded.to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(recorded.from, recorded.to)) {
+        it(`bedrock ${version}: takes the stack its entry makes to the cursor, then puts it in the slot, each once the server took the one before`, async () => {
+          const { bot, internal, server, driver, inventory } = await holding(version, null, 'creative')
+          const errors: string[] = []
+          bot.on('error', error => { errors.push(error.message) })
+          const planks = bot.registry.itemsByName['oak_planks']?.id ?? 0
+          inventory.creativeContent([{ id: planks, count: 1, blockRuntimeId: recorded.blockRuntimeId }, { id: bot.registry.itemsByName['stone']?.id ?? 0, count: 1 }])
+          openScreen(server, 'inventory')
+          await driver.tick()
+          internal._core.requestIds.continueProcess(recorded.firstRequest)
+          const [written, requests] = [writtenSince(server), requestsSince(server)]
+
+          const made = bot.creative.setInventorySlot(36, itemOf(bot, 'oak_planks', 64))
+          await driver.tick()
+          assert.deepStrictEqual(written(), [recorded.take])
+          server.receive(Buffer.from(recorded.taken, 'hex'))
+          await driver.ticks(2)
+          const place = server.sentOf('item_stack_request').at(-1)?.requests[0]
+          assert.deepStrictEqual([requests(), place?.actions[0]?.source?.stack_id], [['craft_creative, results_deprecated, take 64 creative_output:50 → cursor:0', 'place 64 cursor:0 → hotbar:0'], recorded.stackId])
+          inventory.respond(place?.request_id ?? 0, [{ container: 'cursor', slot: 0, count: 0 }, { container: 'hotbar', slot: 0, count: 64, stackId: recorded.stackId }])
+          await driver.tick()
+          await made
+          // from 1.26.60 the vanilla client brackets a click placing from the cursor
+          const drags = server.sentOf('serverbound_cursor_item_drag').map(({ state }) => state)
+          assert.deepStrictEqual([namesOf(bot, [36]), bot.inventory.slots[36]?.count, bot.inventory.slots[36]?.stackId, bot.currentWindow, drags, errors], [
+            ['oak_planks'], 64, recorded.stackId, bot.inventory, atLeast(version, 'bedrock_1.26.60') ? ['start', 'stop'] : [], []
+          ])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  for (const layout of CREATIVE_LAYOUTS) {
+    describe(`making creative items by the entries creative_content lists (${layout.from.slice(8)} – ${layout.to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(layout.from, layout.to)) {
+        it(`bedrock ${version}: destroys the slot's stack, makes the item by its entry, takes it to the cursor and puts it in the slot, on the inventory screen it opens and closes`, async () => {
+          const { bot, server, inventory, idOf, served, driver } = await servedBot(version, 'creative')
+          const [stone, dirt] = [idOf('stone'), idOf('dirt')]
+          inventory.creativeContent([{ id: stone, count: 1 }, { id: dirt, count: 1 }])
+          inventory.slot('inventory', 1, { id: dirt, count: 3, stackId: 7 })
+          await driver.tick()
+          const [requests, crafts] = [requestsSince(server), craftsSince(server)]
+          await served(bot.creative.setInventorySlot(37, itemOf(bot, 'stone', 10)))
+          const results: Array<string | number | undefined> = []
+          for (const { result_items: items } of server.sentOf('item_stack_request').flatMap(({ requests }) => requests).flatMap(({ actions }) => actions)) {
+            // from 1.26.40 named
+            for (const item of items ?? []) results.push('network_id' in item ? item.network_id : item.name)
+          }
+          const opened = server.sentOf('interact').filter(({ action_id: action }) => action === 'open_inventory')
+          assert.deepStrictEqual([requests(), crafts(), results, namesOf(bot, [37]), bot.inventory.slots[37]?.count, opened.length, server.sentOf('container_close').length, bot.currentWindow], [
+            ['destroy 3 hotbar:1', 'craft_creative, results_deprecated, take 10 creative_output:50 → cursor:0', 'place 10 cursor:0 → hotbar:1'],
+            [layout.craft], [atLeast(version, 'bedrock_1.26.40') ? 'minecraft:stone' : stone], ['stone'], 10, 1, 1, null
+          ])
           bot.end()
         })
       }
@@ -833,6 +987,166 @@ describe('bedrock items', () => {
       await served(bot.toss(planks, 1, 5))
       await assert.rejects(served(bot.toss(stone, null, 1)), { message: `Can't find stone in slots [10 - 46], (item id: ${stone})` })
       assert.deepStrictEqual([requests(), server.sentOf('container_close').length, bot.currentWindow?.type], [['take 5 inventory:9 → cursor:0', 'drop 5 cursor:0'], 3, 'minecraft:crafting_table'])
+      bot.end()
+    })
+  })
+
+  describe(`the creative inventory, alike on every version: (on ${latestSupportedBedrockVersion})`, () => {
+    it('makes the entry of the item\'s id, metadata and NBT, else of none (an empty compound being none), of the last creative_content; rejects, sending nothing, an item it has not', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot(latestSupportedBedrockVersion, 'creative')
+      const [potion, book] = [idOf('potion'), idOf('enchanted_book')]
+      inventory.creativeContent([
+        { id: 0, count: 0 }, { id: potion, count: 1 }, { id: potion, count: 1, metadata: 5 }, { id: book, count: 1, ints: { level: 2 } }, { id: book, count: 1, ints: { level: 1 } },
+        { id: idOf('iron_helmet'), count: 1, ints: {} }
+      ])
+      await driver.tick()
+      const [crafts, requests] = [craftsSince(server), requestsSince(server)]
+      const level = (value: number): object => ({ type: 'compound', name: '', value: { level: { type: 'int', value } } })
+      const helmet = itemOf(bot, 'iron_helmet', 1)
+      await served(bot.creative.setInventorySlot(36, itemOf(bot, 'potion', 1, 5)))
+      await served(bot.creative.setInventorySlot(37, itemOf(bot, 'potion', 1)))
+      await served(bot.creative.setInventorySlot(38, itemOf(bot, 'enchanted_book', 1, 0, level(1))))
+      await served(bot.creative.setInventorySlot(39, helmet))
+      assert.deepStrictEqual([crafts(), namesOf(bot, [36, 37, 38, 39]), bot.inventory.slots[36]?.metadata, helmet.nbt, bot.inventory.slots[39]?.nbt], [
+        [3, 2, 5, 6].map(entry => ({ item_id: entry, times_crafted: 1 })), ['potion', 'potion', 'enchanted_book', 'iron_helmet'], 5,
+        { type: 'compound', name: '', value: { Damage: { type: 'int', value: 0 } } }, { type: 'compound', name: '', value: {} }
+      ])
+      await assert.rejects(served(bot.creative.setInventorySlot(40, itemOf(bot, 'potion', 1, 7))), { message: 'bot.creative.setInventorySlot: the creative inventory has no potion of metadata 7 and this NBT' })
+      await assert.rejects(served(bot.creative.setInventorySlot(40, itemOf(bot, 'enchanted_book', 1, 0, level(3)))), { message: 'bot.creative.setInventorySlot: the creative inventory has no enchanted_book of metadata 0 and this NBT' })
+      await assert.rejects(served(bot.creative.setInventorySlot(40, itemOf(bot, 'enchanted_book', 1))), { message: 'bot.creative.setInventorySlot: the creative inventory has no enchanted_book of metadata 0 and this NBT' })
+      inventory.creativeContent([{ id: idOf('dirt'), count: 1 }])
+      await driver.tick()
+      await assert.rejects(served(bot.creative.setInventorySlot(40, itemOf(bot, 'potion', 1))), { message: 'bot.creative.setInventorySlot: the creative inventory has no potion of metadata 0 and this NBT' })
+      await served(bot.creative.setInventorySlot(40, itemOf(bot, 'dirt', 1)))
+      assert.deepStrictEqual([crafts(), requests().length, namesOf(bot, [40])], [[{ item_id: 1, times_crafted: 1 }], 10, ['dirt']])
+      bot.end()
+    })
+
+    it('rejects, sending nothing, outside creative mode', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot()
+      inventory.creativeContent([{ id: idOf('stone'), count: 1 }])
+      inventory.slot('inventory', 0, { id: idOf('stone'), count: 5, stackId: 7 })
+      await driver.tick()
+      const sent = sentSince(server)
+      const survival = (member: string): object => ({ message: `bot.creative.${member} needs the creative game mode, not survival: the vanilla client shows the creative inventory there only` })
+      await assert.rejects(served(bot.creative.setInventorySlot(37, itemOf(bot, 'stone', 1))), survival('setInventorySlot'))
+      await assert.rejects(served(bot.creative.clearInventory()), survival('clearInventory'))
+      assert.deepStrictEqual(sent(), [])
+      bot.end()
+    })
+
+    it('rejects, sending nothing, a slot of the grid or out of bot.inventory, a count no stack has, an item the slot does not take; resolves at once for what the slot holds', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot(latestSupportedBedrockVersion, 'creative')
+      inventory.creativeContent([{ id: idOf('stone'), count: 1 }, { id: idOf('iron_helmet'), count: 1 }])
+      inventory.slot('inventory', 1, { id: idOf('stone'), count: 5, stackId: 7 })
+      await driver.tick()
+      const requests = requestsSince(server)
+      await assert.rejects(served(bot.creative.setInventorySlot(-1, null)), { name: 'AssertionError' })
+      await assert.rejects(served(bot.creative.setInventorySlot(46, null)), { name: 'AssertionError' })
+      await assert.rejects(served(bot.creative.setInventorySlot(4, itemOf(bot, 'stone', 1))), { message: 'bot.creative.setInventorySlot: the creative inventory has no crafting grid, slot 4 of bot.inventory' })
+      await assert.rejects(served(bot.creative.setInventorySlot(38, itemOf(bot, 'stone', 0))), { message: 'bot.creative.setInventorySlot: 0 stone make no stack' })
+      await assert.rejects(served(bot.creative.setInventorySlot(38, itemOf(bot, 'stone', 65))), { message: 'bot.creative.setInventorySlot: 65 stone make no stack' })
+      await assert.rejects(served(bot.creative.setInventorySlot(5, itemOf(bot, 'stone', 1))), { message: 'bot.creative.setInventorySlot: stone does not go in slot 5' })
+      await assert.rejects(served(bot.creative.setInventorySlot(8, itemOf(bot, 'iron_helmet', 1))), { message: 'bot.creative.setInventorySlot: iron_helmet does not go in slot 8' })
+      // as Java's Item.equal: none for none, else the same id, metadata, count and NBT
+      await served(bot.creative.setInventorySlot(37, itemOf(bot, 'stone', 5)))
+      await served(bot.creative.clearSlot(38))
+      assert.deepStrictEqual([requests(), server.sentOf('interact').filter(({ action_id: action }) => action === 'open_inventory').length], [[], 0])
+      await served(bot.creative.setInventorySlot(5, itemOf(bot, 'iron_helmet', 1)))
+      await served(bot.creative.setInventorySlot(37, itemOf(bot, 'stone', 64)))
+      assert.deepStrictEqual([requests(), namesOf(bot, [5, 37]), bot.inventory.slots[37]?.count, server.sentOf('container_close').length], [[
+        'craft_creative, results_deprecated, take 1 creative_output:50 → cursor:0', 'place 1 cursor:0 → armor:0',
+        'destroy 5 hotbar:1', 'craft_creative, results_deprecated, take 64 creative_output:50 → cursor:0', 'place 64 cursor:0 → hotbar:1'
+      ], ['iron_helmet', 'stone'], 64, 2])
+      bot.end()
+    })
+
+    it('sets the slots one call after another, rejecting with Java\'s message a call for a slot still being set; on the inventory screen open, else on one it opens, never on another screen or with an item on the cursor', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot(latestSupportedBedrockVersion, 'creative')
+      inventory.creativeContent([{ id: idOf('stone'), count: 1 }, { id: idOf('dirt'), count: 1 }])
+      await driver.tick()
+      const requests = requestsSince(server)
+      const first = bot.creative.setInventorySlot(36, itemOf(bot, 'stone', 1))
+      await assert.rejects(bot.creative.setInventorySlot(36, itemOf(bot, 'dirt', 1)), { message: 'Setting slot 36 cancelled due to calling bot.creative.setInventorySlot(36, ...) again' })
+      await served(Promise.all([first, bot.creative.setInventorySlot(37, itemOf(bot, 'dirt', 2))]))
+      await served(bot.creative.setInventorySlot(36, itemOf(bot, 'dirt', 1)))
+      assert.deepStrictEqual([requests(), namesOf(bot, [36, 37]), server.sentOf('container_close').length], [[
+        'craft_creative, results_deprecated, take 1 creative_output:50 → cursor:0', 'place 1 cursor:0 → hotbar:0',
+        'craft_creative, results_deprecated, take 2 creative_output:50 → cursor:0', 'place 2 cursor:0 → hotbar:1',
+        'destroy 1 hotbar:0', 'craft_creative, results_deprecated, take 1 creative_output:50 → cursor:0', 'place 1 cursor:0 → hotbar:0'
+      ], ['dirt', 'dirt'], 3])
+      await served(bot.openInventory())
+      await served(bot.creative.setInventorySlot(38, itemOf(bot, 'stone', 3)))
+      inventory.slot('ui', 0, { id: idOf('dirt'), count: 1, stackId: 9 })
+      await driver.tick()
+      await assert.rejects(served(bot.creative.setInventorySlot(39, itemOf(bot, 'stone', 1))), { message: 'bot.creative.setInventorySlot: the cursor holds an item' })
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, bot.currentWindow], [[
+        'craft_creative, results_deprecated, take 3 creative_output:50 → cursor:0', 'place 3 cursor:0 → hotbar:2'
+      ], 3, bot.inventory])
+      // the close gives the cursor's item back
+      await served(bot.closeWindow(bot.inventory))
+      inventory.slot('ui', 0, { id: idOf('dirt'), count: 1, stackId: 10 })
+      await driver.tick()
+      // the next call waits for the one rejected
+      const [cleared, set] = await served(Promise.allSettled([bot.creative.clearSlot(38), bot.creative.setInventorySlot(39, itemOf(bot, 'stone', 1))]))
+      assert.deepStrictEqual([cleared, set], [{ status: 'rejected', reason: new Error('bot.creative.setInventorySlot: the cursor holds an item') }, { status: 'fulfilled', value: undefined }])
+      openScreen(server, 'workbench')
+      await driver.tick()
+      await assert.rejects(served(bot.creative.setInventorySlot(40, itemOf(bot, 'stone', 1))), { message: 'bot.creative.setInventorySlot needs the inventory screen: the minecraft:crafting_table window is open' })
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, bot.currentWindow?.type, namesOf(bot, [38, 39])], [[
+        'place 1 cursor:0 → hotbar_and_inventory:0', 'place 1 cursor:0 → hotbar_and_inventory:0',
+        'craft_creative, results_deprecated, take 1 creative_output:50 → cursor:0', 'place 1 cursor:0 → hotbar:3'
+      ], 6, 'minecraft:crafting_table', ['stone', 'stone']])
+      bot.end()
+    })
+
+    it('empties a slot by a destroy, and the inventory by a destroy a slot but the grid, on one screen', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot(latestSupportedBedrockVersion, 'creative')
+      inventory.slot('armor', 0, { id: idOf('iron_helmet'), count: 1, stackId: 7 })
+      inventory.slot('inventory', 9, { id: idOf('stone'), count: 3, stackId: 8 })
+      inventory.slot('offhand', 0, { id: idOf('shield'), count: 1, stackId: 9 })
+      inventory.slot('ui', 28, { id: idOf('dirt'), count: 1, stackId: 10 })
+      await driver.tick()
+      const requests = requestsSince(server)
+      await served(bot.creative.clearInventory())
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, namesOf(bot, [5, 9, 45, 1, 36])], [[
+        'destroy 1 armor:0', 'destroy 3 inventory:9', 'destroy 1 offhand:1', 'place 1 crafting_input:28 → hotbar_and_inventory:0'
+      ], 1, [null, null, null, null, 'dirt']])
+      await served(bot.creative.clearInventory().then(async () => { await bot.creative.clearSlot(36) }))
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, bot.inventory.slots[36]], [['destroy 1 hotbar:0'], 2, null])
+      await served(bot.creative.clearInventory())
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length], [[], 2])
+      bot.end()
+    })
+
+    it('rejects naming the server\'s refusal, once the screen it opened closed, or did not close', async () => {
+      const { bot, server, driver, inventory } = await holding(latestSupportedBedrockVersion, null, 'creative')
+      inventory.creativeContent([{ id: bot.registry.itemsByName['stone']?.id ?? 0, count: 1 }])
+      await driver.tick()
+      let done = false
+      const settled = (): boolean => done
+      const made = bot.creative.setInventorySlot(36, itemOf(bot, 'stone', 1))
+      made.then(() => { done = true }, () => { done = true })
+      await driver.tick()
+      openScreen(server, 'inventory')
+      await driver.ticks(2)
+      const request = server.sentOf('item_stack_request').at(-1)?.requests[0]?.request_id
+      assert.ok(request !== undefined)
+      // PlayerNotInCreativeMode; the close is never answered
+      inventory.respond(request, [], 28)
+      for (let tick = 0; tick < 150 && !settled(); tick++) await driver.tick()
+      await assert.rejects(made, { message: `the server refused item stack request ${request}: PlayerNotInCreativeMode` })
+      assert.deepStrictEqual([bot.inventory.slots[36], bot.inventory.selectedItem, server.sentOf('container_close').length], [null, null, 1])
+      bot.end()
+    })
+
+    it('throws naming flyTo, startFlying and stopFlying, which need the movement; bot.inventory has slots 0 – 45', async () => {
+      const { bot, internal } = await servedBot()
+      await assert.rejects(bot.creative.flyTo(new Vec3(0, 0, 0)), { message: 'bot.creative.flyTo is not supported on Bedrock yet' })
+      assert.throws(() => { bot.creative.startFlying() }, { message: 'bot.creative.startFlying is not supported on Bedrock yet' })
+      assert.throws(() => { bot.creative.stopFlying() }, { message: 'bot.creative.stopFlying is not supported on Bedrock yet' })
+      assert.deepStrictEqual(internal._inventory.inventoryRef(45), { container: 'offhand', slot: 1 })
+      assert.throws(() => internal._inventory.inventoryRef(46), { message: 'bot.inventory has no slot 46' })
       bot.end()
     })
   })

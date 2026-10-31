@@ -29,6 +29,7 @@ export interface RespondedSlot {
 }
 
 type Responses = MCProtocol.Bedrock.Write.Types.ItemStackResponses
+type CreativeContent = MCProtocol.Bedrock.Write.Types.packet_creative_content
 
 /** no NBT, no blocks to be placed on or destroy; a shield's blocking tick, which only a shield is written with */
 interface ExtraData {
@@ -103,6 +104,21 @@ export class ServerInventory {
   /** container_set_data */
   setData (window: InventoryWindow, property: number, value: number): void {
     this.server.send('container_set_data', { window_id: window, property, value })
+  }
+
+  /** creative_content, the items its entries 1, 2, …: up to 1.16.210 numbered as an item's stack id, from 1.16.220 without one; from 1.21.60 in one group */
+  creativeContent (items: readonly Given[]): void {
+    const grouped = this.atLeast('bedrock_1.21.60')
+    const entries = items.map((given, index) => {
+      if (!this.atLeast('bedrock_1.16.220')) return this.item({ ...given, stackId: index + 1 }, false)
+      const item = { network_id: given.id, count: given.count, metadata: given.metadata ?? 0, block_runtime_id: given.blockRuntimeId ?? 0, extra: extra(given) }
+      return grouped ? { entry_id: index + 1, item, group_index: 0 } : { entry_id: index + 1, item }
+    })
+    // from 1.26.40 an empty item is written whole
+    const none = this.atLeast('bedrock_1.26.40') ? { network_id: 0, count: 0, metadata: 0, block_runtime_id: 0 } : { network_id: 0 }
+    const groups = grouped ? { groups: [{ category: 'construction', name: '', icon_item: none }] } : {}
+    // the version's layout
+    this.server.send('creative_content', { ...groups, items: entries } as CreativeContent)
   }
 
   private item (given: Given | null, v4: boolean): SlotItem {

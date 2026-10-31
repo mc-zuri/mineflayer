@@ -264,6 +264,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   tossStack: (item: Item) => Promise<void>
   /** Java's: transfer of `count` (1 for null) of the item from the player's slots of the screen open (else bot.inventory's) to outside it */
   toss: (itemType: number, metadata: number | null, count: number | null) => Promise<void>
+  /** in creative mode, the items creative_content lists made in bot.inventory's slots 5 – 45 on the inventory screen (the open one, else one it opens and closes), a slot emptied by a destroy, each resolving once the server took its requests; flyTo, startFlying and stopFlying throw */
+  creative: creativeMethods
   /** opens the inventory screen (its 2 × 2 crafting grid), as the vanilla client does: resolves once the server opened it */
   openInventory: () => Promise<Window<StorageEvents>>
   /** gives back what the screen's definition says (the cursor, a grid, a station's inputs; dropping what has no room), closes the screen, and resolves once the server closed it */
