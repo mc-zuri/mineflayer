@@ -11,7 +11,7 @@ import type { ChatMessage } from 'prismarine-chat'
 import type { world } from 'prismarine-world'
 import type { Registry } from 'prismarine-registry'
 import type { IndexedData, SupportsFeature } from 'minecraft-data'
-import type { Tags, TagType } from 'prismarine-nbt'
+import type { NBT, Tags, TagType } from 'prismarine-nbt'
 
 export declare function createBot<Options extends BedrockBotOptions> (options: Options & OnlyKeysOf<Options, BedrockBotOptions>): BedrockBotFor<Options>
 export declare function createBot<Version extends string | false = false> (options?: BotOptions & { version?: Version extends BedrockVersion ? never : Version }): BotFor<Version>
@@ -157,6 +157,15 @@ export interface BedrockRecipe {
   results: BedrockRecipeItem[]
 }
 
+/** Java's transfer options as its code reads them: the window open by default, sourceEnd sourceStart + 1, destEnd destStart + 1, count 1, an NBT the items match */
+export interface BedrockTransferOptions extends Omit<TransferOptions, 'window' | 'sourceEnd' | 'destEnd' | 'count'> {
+  window?: Window
+  sourceEnd?: number
+  destEnd?: number
+  count?: number | null
+  nbt?: NBT | null | undefined
+}
+
 export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   username: string
   protocolVersion: number
@@ -247,6 +256,18 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   closeWindow: (window: Window) => Promise<void>
   /** Java's click (modes 0, 1, 2 and 4; on a crafting output the grid's craft), sent as the vanilla client's request: resolves once the server took it */
   clickWindow: (slot: number, mouseButton: number, mode: number) => Promise<void>
+  /** Java's clickWindow(slot, 0 or 1, 0) */
+  simpleClick: simpleClick
+  /** Java's, by clicks on the window given (else the screen open, else bot.inventory, whose screen it opens and closes), each resolving once the server took it */
+  transfer: (options: BedrockTransferOptions) => Promise<void>
+  /** Java's: the cursor's item onto stacks of it with room in [start, end), else empty slots, else `slot` and the rest dropped */
+  putSelectedItemRange: (start: number, end: number, window: Window, slot: number | null) => Promise<void>
+  /** Java's: a shift click, or on an output or with no room a click then putSelectedItemRange over the inventory; resolves once the clicks did */
+  putAway: (slot: number) => Promise<void>
+  /** Java's: clicks the source, the destination, then the source again while the cursor holds an item */
+  moveSlotItem: (sourceSlot: number, destSlot: number) => Promise<void>
+  /** emits heldItemChanged in the next input pass */
+  updateHeldItem: () => void
   /** Java's: clicks where the eye's ray meets the block, else looks at `cursorPos` on `direction`'s face first; resolves once the use ended */
   activateBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<void>
   /** activateBlock, resolving with the screen the server opened (the crafting table's), once the use ended too */

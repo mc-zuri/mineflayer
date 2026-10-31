@@ -643,6 +643,7 @@ export class Inventory {
     this.closing = undefined
     this.clearOwn()
     core.emit(this.bot, 'windowClose', screen.window)
+    core.emitWindow(screen.window, 'close', [])
     for (const hooks of screen.hooks) hooks.closed?.(screen)
   }
 

@@ -1039,7 +1039,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   `crafting_layout`: `recipe_book` once opened). A bot is a process of its own; a test that continues a recording's
   process sends none.
 - **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
-  closed), `heldItemChanged` (each update of the held slot, and a new selection).
+  closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
 Not yet: drags and double clicks (`clickWindow` modes 5 and 6), using a block with an item the use places or uses up
 (the client then names the slot it changes), screens other than the inventory and the crafting table (counted, not
@@ -1074,6 +1074,43 @@ those of a furnace, which come before its opening), what its window gets before 
 what a request on it is told (its custom names and cause), packets that leave before its requests, what a response
 tells of a slot, a close of its own (a lectern's), and a click mode clickWindow does not make itself (a drag). A
 screen the bot has no definition for is counted, not shown: `openBlock` rejects naming it.
+
+### Window members
+
+Java's members made of clicks are Java's code over `bot.clickWindow`, so each click sends the vanilla client's request
+for it (see the clicks above), and waits for the server's answer (100 ticks) instead of Java's confirmation:
+
+- **`bot.transfer(options)`** moves `count` (1) items of `itemType` (any metadata for null; an `nbt`, if given, as
+  `findItemRange` matches it) from the slots `[sourceStart, sourceEnd)` (`sourceEnd` `sourceStart + 1`) to
+  `[destStart, destEnd)` (`destStart` -999 tosses them): it takes the first stack of the item to the cursor, places it
+  all where that is not more than wanted, else one item a right click, or takes back the larger half of the
+  destination and places one at a time where that is fewer clicks, then puts the cursor's rest back where it took it.
+  It rejects with Java's errors (`Can't find …`, `Invalid itemType`, `destination full`), and when the server leaves
+  the cursor without the item it took.
+- **`bot.putSelectedItemRange(start, end, window, slot)`** puts the cursor's item onto stacks of it with room in
+  `[start, end)`, then into empty slots; with no room left into `slot`, if given, and drops the rest. It rejects a slot
+  that does not take the item (an armor slot, the offhand), for which the vanilla client sends nothing: Java would
+  click it forever.
+- **`bot.putAway(slot)`** shift clicks the slot when the window's inventory part has room for its item, else (or on the
+  window's `craftingResultSlot`, a shift click on which would craft again) clicks it and puts the cursor's item in the
+  inventory part with `putSelectedItemRange`, dropping what has no room. It resolves once its clicks did: Java waits
+  for an update of the slot, which never comes where the clicks changed nothing.
+- **`bot.moveSlotItem(source, destination)`** clicks the source, the destination, then the source again while the
+  cursor holds an item (what the destination held). `heldItemChanged` comes where the held slot changes, not again in
+  between as Java's.
+- **`bot.simpleClick.leftMouse(slot)` / `rightMouse(slot)`** are `clickWindow(slot, 0 or 1, 0)`.
+- **`bot.updateHeldItem()`** emits `heldItemChanged` with `bot.heldItem` in the next input pass (Java's at once).
+- **`window.close()`**, **`window.withdraw(itemType, metadata, count)`** and **`window.deposit(…)`** are on every
+  screen's window, added before `windowOpen` (Java's only on those `openBlock` and `openEntity` resolve with):
+  `close` is `bot.closeWindow(window)`; `withdraw` a transfer of `count` (1 for null) from the screen's slots to the
+  window's inventory part, rejecting at once with `Unable to withdraw, Bot inventory is full.` when `bot.inventory` has
+  no empty slot; `deposit` the reverse. The window's `close` event comes right after `windowClose`, whoever closed the
+  screen (Java's only from `window.close()`, at once, before the server answered).
+
+They click the window given (`transfer`'s `window`, else the screen open) or, for `putAway` and `moveSlotItem`, the
+screen open; with none open they click `bot.inventory`, whose screen they open (`bot.openInventory()`) and close after,
+also when they fail, so that the close gives back what the cursor holds. A window that is not open rejects
+(`transfer needs the minecraft:chest window open`): Java clicks whatever window is open with its slots.
 
 ## Crafting
 
