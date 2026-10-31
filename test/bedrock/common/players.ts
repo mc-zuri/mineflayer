@@ -8,6 +8,8 @@ export interface ListedPlayer {
   uuid: string
   uniqueId: bigint
   username: string
+  /** the record's xbox_user_id: none, '' */
+  xuid?: string
 }
 
 const PLAYER_LIST = 0x3f
@@ -31,6 +33,7 @@ function playerList (codec: BedrockCodec, type: 'add' | 'remove', fields: Partia
   assert.ok(record !== undefined, `${codec.version}: no blank player_list record`)
   Object.assign(record, { uuid: fields.uuid })
   if (fields.uniqueId !== undefined) Object.assign(record, { entity_unique_id: fields.uniqueId, username: fields.username })
+  if (fields.xuid !== undefined) Object.assign(record, { xbox_user_id: fields.xuid })
   const buffer = codec.serializer.createPacketBuffer({ name: 'player_list', params })
   readPacket(codec, buffer)
   return buffer

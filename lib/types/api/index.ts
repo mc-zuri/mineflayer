@@ -266,6 +266,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   toss: (itemType: number, metadata: number | null, count: number | null) => Promise<void>
   /** in creative mode, the items creative_content lists made in bot.inventory's slots 5 – 45 on the inventory screen (the open one, else one it opens and closes), a slot emptied by a destroy, each resolving once the server took its requests; flyTo, startFlying and stopFlying throw */
   creative: creativeMethods
+  /** Java's: a writable book of bot.inventory's slots 0 – 44 moved to the hotbar (and back), selected, and written page by page by book_edit, each once the server shows the book so */
+  writeBook: (slot: number, pages: string[]) => Promise<void>
+  /** Java's: as writeBook, then the book signed by book_edit, once the server shows it written */
+  signBook: (slot: number, pages: string[], author: string, title: string) => Promise<void>
   /** opens the inventory screen (its 2 × 2 crafting grid), as the vanilla client does: resolves once the server opened it */
   openInventory: () => Promise<Window<StorageEvents>>
   /** gives back what the screen's definition says (the cursor, a grid, a station's inputs; dropping what has no room), closes the screen, and resolves once the server closed it */
@@ -693,6 +697,13 @@ export interface Bot extends TypedEmitter<BotEvents> {
   writeBook: (
     slot: number,
     pages: string[]
+  ) => Promise<void>
+
+  signBook: (
+    slot: number,
+    pages: string[],
+    author: string,
+    title: string
   ) => Promise<void>
 
   openContainer: (chest: Block | Entity, direction?: Vec3, cursorPos?: Vec3) => Promise<Chest | Dispenser>

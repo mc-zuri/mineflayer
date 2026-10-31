@@ -1,4 +1,4 @@
-import type { NBT } from 'prismarine-nbt'
+import type { NBT, Tags, TagType } from 'prismarine-nbt'
 import { isBedrockVersionAtLeast } from '../../../lib/bedrock/version.ts'
 import type { BedrockVersion } from '../../../lib/types/api/index.ts'
 import type { MCProtocol } from '../../../lib/types/protocol/Bedrock.d.ts'
@@ -6,7 +6,7 @@ import type { FakeBedrockClient } from './server.ts'
 
 type SlotItem = MCProtocol.Bedrock.Write.Types.ItemStack | MCProtocol.Bedrock.Write.Types.Item | MCProtocol.Bedrock.Write.Types.ItemV4
 
-/** an item as a test gives it: its network id, count and metadata, its stack id (none: 0), its block's runtime id, a shield's blocking tick, its NBT compound's ints */
+/** an item as a test gives it: its network id, count and metadata, its stack id (none: 0), its block's runtime id, a shield's blocking tick, its NBT compound's ints and other tags */
 export interface Given {
   id: number
   count: number
@@ -15,6 +15,7 @@ export interface Given {
   blockRuntimeId?: number
   blockingTick?: bigint
   ints?: Readonly<Record<string, number>>
+  nbt?: Readonly<Record<string, Tags[TagType]>>
 }
 
 /** one of the player's windows, the ui, or a screen's own window by its dynamic id */
@@ -52,9 +53,9 @@ interface ExtraData {
   blocking_tick?: bigint
 }
 
-function extra ({ blockingTick, ints }: Given): ExtraData {
-  const value = Object.fromEntries(Object.entries(ints ?? {}).map(([name, int]) => [name, { type: 'int' as const, value: int }]))
-  const nbt: Pick<ExtraData, 'has_nbt' | 'nbt'> = ints === undefined ? { has_nbt: 0 } : { has_nbt: true, nbt: { version: 1, nbt: { type: 'compound', name: '', value } } }
+function extra ({ blockingTick, ints, nbt: tags }: Given): ExtraData {
+  const value = { ...Object.fromEntries(Object.entries(ints ?? {}).map(([name, int]) => [name, { type: 'int' as const, value: int }])), ...tags }
+  const nbt: Pick<ExtraData, 'has_nbt' | 'nbt'> = ints === undefined && tags === undefined ? { has_nbt: 0 } : { has_nbt: true, nbt: { version: 1, nbt: { type: 'compound', name: '', value } } }
   const none = { ...nbt, can_place_on: [], can_destroy: [] }
   return blockingTick === undefined ? none : { ...none, blocking_tick: blockingTick }
 }

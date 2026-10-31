@@ -315,7 +315,7 @@ describe('bedrock players', () => {
     })
 
     it('handles no player packet without its plugin', async () => {
-      const { bot, internal, server, driver } = await bedrockTestBot(bedrockCodec(version), { plugins: { entities: false, scoreboard: false } })
+      const { bot, internal, server, driver } = await bedrockTestBot(bedrockCodec(version), { plugins: { entities: false, scoreboard: false, book: false } })
       list(server, 'add', LOCAL)
       await driver.frame(0)
       assert.deepStrictEqual([bot.players, internal._core.stats.packets.get('player_list')], [undefined, { handled: 0, threw: 0, unhandled: 1 }])

@@ -39,6 +39,15 @@ function transactionSlots ({ inventory_actions: inline, actions = [] }: Transact
   })
 }
 
+/** bot.inventory's slot in the window open: Java clicks the inventory's numbers whatever window is open */
+export function shownSlot (bot: BedrockBotInternal, member: string, slot: number): number {
+  const window = bot.currentWindow
+  if (window === null) return slot
+  const windowSlot = bot._inventory.windowSlotOf(window, slot)
+  if (windowSlot === undefined) throw new Error(`${member}: the ${window.type} window open shows no slot ${slot} of the inventory`)
+  return windowSlot
+}
+
 /** Java's simple_inventory: the hotbar selection, equip, unequip, toss and tossStack; and the slots the server's inventory transactions change */
 export default function simpleInventory (bot: BedrockBotInternal): void {
   // Java's: the hotbar slot an equip fills next when none is empty
@@ -59,13 +68,8 @@ export default function simpleInventory (bot: BedrockBotInternal): void {
     return destSlot
   }
 
-  /** bot.inventory's slot in the window open: Java clicks the inventory's numbers whatever window is open */
   function shown (member: string, slot: number): number {
-    const window = bot.currentWindow
-    if (window === null) return slot
-    const shownSlot = bot._inventory.windowSlotOf(window, slot)
-    if (shownSlot === undefined) throw new Error(`${member}: the ${window.type} window open shows no slot ${slot} of the inventory`)
-    return shownSlot
+    return shownSlot(bot, member, slot)
   }
 
   function firstEmptyHotbarSlot (): number | null {

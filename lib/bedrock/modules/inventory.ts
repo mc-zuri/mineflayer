@@ -375,6 +375,8 @@ export class Inventory {
   /** a slot shown as `stack` until the server sends it, with no request: an edit the server answers otherwise */
   predictSlot (ref: SlotRef, stack: Stack | undefined): void {
     this.set(this.keyOf(ref), stack)
+    // the vanilla client tells what it holds as it predicts it
+    this.equipmentChanged = true
   }
 
   /** the slot of `window` that shows bot.inventory's slot `inventorySlot`, if it shows it */

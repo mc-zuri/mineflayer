@@ -109,6 +109,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.toss(itemType, metadata, count)`, `bot.tossStack(item)`: as Java's, by clicks (see items below).
 - `bot.creative` (`setInventorySlot(slot, item)`, `clearSlot(slot)`, `clearInventory()`): the creative inventory's
   items, by item stack requests (see items below).
+- `bot.writeBook(slot, pages)`, `bot.signBook(slot, pages, author, title)`: as Java's, by book_edit (see items below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1976,6 +1977,27 @@ the cursor's place in the hand-back.
   item picked up by a transaction alone (with take_item_entity), and some new stack ids of an item held alone too; a
   command's change (`/give`, `/clear`), an item eaten (item_release) or a screen's item handed back come with
   inventory_content or inventory_slot of the same state, in every recording.
+- **`bot.writeBook(slot, pages)`** is Java's: a writable book of `bot.inventory`'s slots 0 – 44 (Java's
+  `AssertionError`s for another slot or no book) is moved to the hotbar's first slot and back after (`moveSlotItem`, on
+  the screen open, else the inventory screen opened and closed again), its hotbar slot selected and the selection given
+  back; the selection is told to the server a tick before the edits, as the vanilla client edits the book it holds. The
+  pages are written as the vanilla client's book screen writes them, by book_edit, an edit at a time, each once the
+  server showed the one before: the first page that differs replaced (an empty page past the book's end is left to a
+  later page's replace, the server adding the pages before it empty), then the pages past `pages` deleted from the last;
+  a book with the pages already sends nothing. A book without pages (one given by a command) is first used as the
+  vanilla client uses it to open its screen (an item use in the air, the book predicted with an empty page list, told
+  as held a tick before the edits): a server edits no book without pages, and answers the use with nothing (the
+  Bedrock Dedicated Servers 1.19.80, 1.21.30, 1.21.120 and 1.26.61 left the edits of a book given by `/give`
+  unanswered until it was used). Each edit follows the legacy inventory transaction the vanilla client
+  sends with it (the slot's book as the edit leaves it, the book given to the creative inventory and the edited one
+  taken from it), which the server refuses, answering with the book as it was (inventory_content), then with it edited,
+  with a new stack id (an inventory transaction): the bot shows the edited book at once, telling it as held (as the
+  vanilla client does), and resolves once the server shows it so with a new stack id; after 400 ticks (Java's 20 s)
+  without, it rejects. Java sends the whole book at once, and resolves on any slot update with pages.
+- **`bot.signBook(slot, pages, author, title)`** is Java's (typed on `Bot` too, which Java's typings left out):
+  `writeBook`'s, then the book signed by book_edit with the title, the author given and the player's xuid from the
+  player list (none unlisted, as the bot plays offline), after the vanilla client's transaction, numbered and naming
+  the slot; it resolves once the server shows a written book.
 
 Recorded and replayed by the tests: the selection of an empty slot, then of one of dirt, on every build, in groups by
 how the items and the interact are written and where the tick tells them (up to 1.19.0 after its auth input, from
@@ -2002,6 +2024,17 @@ for byte, on every build, in groups by how the transaction is written (the actio
 1.16.210, windows by name and Items 1.16.220 – 1.26.20, ItemV4s and windows by number after their presence 1.26.30 –
 1.26.45, the window an option from 1.26.51). Recorded too: a golden apple eaten (item_release, 1.26.60), the offhand
 cleared and an item of the grid put in the hotbar (recorded on 1.26.51, played on 1.26.60).
+
+Recorded and replayed by the tests too: a writable book written on its screen by the vanilla client (a first page, an
+empty third page, the fifth page deleted), then signed, played by `writeBook` and `signBook` byte for byte (each edit's
+transaction and book_edit, the book told as held) with the server's answers as recorded, on 1.26.20 and 1.26.51 – 1.26.60,
+the builds recorded writing a book (1.26.51 sends the same bytes as 1.26.60 but for the signature's legacy id). Every
+other version sends the same edits and transactions, written by its codec, in groups by how book_edit names the slot
+(`slot`, then from 1.26.0 `inventory_slot` first) and how the transaction is written (as the server's above; the
+player's container in a signature's legacy transaction 28 up to 1.19.40, 29 from 1.19.50). The use of a book given
+without pages before its first page is played byte for byte on the same builds; every other version sends it written by
+its codec, with the fields of the version's use (the trigger and the failed prediction from 1.21.20, the cooldown from
+1.26.10, the hand from 1.26.51). No book_edit before 1.26.20 is recorded.
 
 ## Tests
 
