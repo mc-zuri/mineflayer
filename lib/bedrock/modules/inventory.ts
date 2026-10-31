@@ -13,6 +13,7 @@ import { INVENTORY_LAYOUT, INVENTORY_SCREEN } from '../screens/inventory.ts'
 import { WORKBENCH_SCREEN } from '../screens/workbench.ts'
 import { clickMoves, defaultShiftTargets, HOTBAR_AND_INVENTORY, isSupportedClick, placesFor } from './clicks.ts'
 import type { ClickedSlots, WindowClick } from './clicks.ts'
+import { defaultAccepts } from './clicks.ts'
 import { consumeAction, destroyAction, dropAction, heldItemOf, itemOf, moveAction, readResponses, readStack, sameItem, sameKind, slotInfo, stackRequest, swapAction, withCount } from './items.ts'
 import type { RequestText, ResponseSlot, SlotRef, Stack, StackRequest, StackResponse } from './items.ts'
 import { OUTPUT, PLAYER_SLOTS, Screens } from './screens.ts'
@@ -252,6 +253,8 @@ export class Inventory {
   private readonly clickModes = new Map<number, ClickMode>()
   /** bot.inventory's slots, by the slot each shows */
   private readonly inventoryKeys: readonly Key[]
+  /** bot.inventory's slots, as requests name them */
+  private readonly inventoryView = viewOf(INVENTORY_LAYOUT)
 
   constructor (bot: BedrockBotInternal, settings: InventorySettings) {
     this.bot = bot
@@ -380,6 +383,13 @@ export class Inventory {
     const keys = window === this.window ? this.inventoryKeys : window === this.screen?.window ? this.screen.keys : []
     const slot = keys.findIndex(shown => shown === key)
     return slot < 0 ? undefined : slot
+  }
+
+  /** false where the vanilla client would not put what bot.inventory's slot `from` holds in its slot `to`: an armor slot takes only what is worn there, the offhand its items */
+  takes (from: number, to: number): boolean {
+    const [source, destination] = [this.inventoryView[from], this.inventoryView[to]]
+    const stack = source === undefined ? undefined : this.stackAt(source)
+    return stack === undefined || destination === undefined || defaultAccepts(destination, stack, this.draft())
   }
 
   /** a slot of the player's windows, the ui's or the open screen's own, as inventory_slot sends it; another window's is counted */

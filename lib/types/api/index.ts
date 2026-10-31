@@ -254,6 +254,12 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   setQuickBarSlot: (slot: number) => void
   /** Java's: bot.inventory's first hotbar slot, 36 */
   QUICK_BAR_START: number
+  /** Java's slot of a destination: the hand's hotbar slot, the armor 5 – 8, the offhand 45; an AssertionError for another */
+  getEquipmentDestSlot: (destination: string) => number
+  /** Java's: a hotbar item selected, another moved to the hotbar (an empty slot, else the next in turn) and selected, or put on by clicks (moveSlotItem) on the screen open or the inventory's; rejects, sending nothing, an item the slot does not take */
+  equip: (item: Item | number, destination: EquipmentDestination | null) => Promise<void>
+  /** Java's: the hand by selecting an empty hotbar slot, else moving its stack to the inventory (dropping it with no room); the armor or the offhand by putAway */
+  unequip: (destination: EquipmentDestination | null) => Promise<void>
   /** opens the inventory screen (its 2 × 2 crafting grid), as the vanilla client does: resolves once the server opened it */
   openInventory: () => Promise<Window<StorageEvents>>
   /** gives back what the screen's definition says (the cursor, a grid, a station's inputs; dropping what has no room), closes the screen, and resolves once the server closed it */

@@ -1,6 +1,9 @@
 import assert from 'assert'
+import type { Item } from 'prismarine-item'
 import { isBedrockVersionAtLeast, latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
-import type { BedrockVersion } from '../../lib/types/api/index.ts'
+import type { SlotRef } from '../../lib/bedrock/modules/items.ts'
+import type { BedrockBot, BedrockVersion } from '../../lib/types/api/index.ts'
+import type { BedrockServerboundPackets } from '../../lib/types/protocol/bedrock-client.ts'
 import { bedrockCodec } from './common/codec.ts'
 import { ServerInventory } from './common/inventory.ts'
 import type { Given } from './common/inventory.ts'
@@ -72,6 +75,217 @@ const HOTBAR: readonly RecordedHotbar[] = [
   }
 ]
 
+/** recorded in the reduced_slots scenario (case slots.inventory_screen.armor_items.0): an iron helmet given in hotbar slot 0 taken to the cursor on the inventory screen, then put on the head */
+interface RecordedArmor {
+  from: BedrockVersion
+  to: BedrockVersion
+  firstRequest: number
+  stackId: number
+  take: string
+  taken: string
+  place: string
+  placed: string
+}
+
+const ARMOR: readonly RecordedArmor[] = [
+  {
+    // recorded on 1.16.201.2
+    from: 'bedrock_1.16.201',
+    to: 'bedrock_1.16.201',
+    firstRequest: -949,
+    stackId: 648,
+    take: '930101e90e0100011b00900a3a000000',
+    taken: '94010100e90e021b0100000000003a01000001900a00',
+    place: '930101ed0e0101013a00900a06000000',
+    placed: '94010100ed0e023a0100000000000601000001900a00'
+  },
+  {
+    // recorded on 1.16.220.2
+    from: 'bedrock_1.16.210',
+    to: 'bedrock_1.19.21',
+    firstRequest: -777,
+    stackId: 529,
+    take: '930101910c0100011b00a2083a000000',
+    taken: '94010100910c021b010000000000003a01000001a2080000',
+    place: '930101950c0101013a00a20806000000',
+    placed: '94010100950c023a010000000000000601000001a2080000'
+  },
+  {
+    // recorded on 1.19.30.4
+    from: 'bedrock_1.19.30',
+    to: 'bedrock_1.19.40',
+    firstRequest: -3165,
+    stackId: 2505,
+    take: '930101b9310100011b0092273a000000ffffffff',
+    taken: '94010100b931021b010000000000003a0100000192270000',
+    place: '930101bd310101013a00922706000000ffffffff',
+    placed: '94010100bd31023a01000000000000060100000192270000'
+  },
+  {
+    // recorded on 1.19.50.2
+    from: 'bedrock_1.19.50',
+    to: 'bedrock_1.21.2',
+    firstRequest: -3,
+    stackId: 2,
+    take: '930101050100011c00043b000000ffffffff',
+    taken: '9401010005021c010000000000003b01000001040000',
+    place: '930101090101013b000406000000ffffffff',
+    placed: '9401010009023b010000000000000601000001040000'
+  },
+  {
+    // recorded on 1.21.20.3
+    from: 'bedrock_1.21.20',
+    to: 'bedrock_1.21.20',
+    firstRequest: -2299,
+    stackId: 2148,
+    take: '930101f5230100011c0000000000c8213b00000000000000ffffffff',
+    taken: '94010100f523021c00000000010000000000003b0000000001000001c8210000',
+    place: '930101f9230101013b0000000000c8210600000000000000ffffffff',
+    placed: '94010100f923023b0000000001000000000000060000000001000001c8210000'
+  },
+  {
+    // recorded on 1.21.30.3
+    from: 'bedrock_1.21.30',
+    to: 'bedrock_1.21.42',
+    firstRequest: -2299,
+    stackId: 2148,
+    take: '930101f5230100011c0000c8213b00000000ffffffff',
+    taken: '94010100f523021c00010000000000003b0001000001c8210000',
+    place: '930101f9230101013b0000c8210600000000ffffffff',
+    placed: '94010100f923023b0001000000000000060001000001c8210000'
+  },
+  {
+    // recorded on 1.21.50.7
+    from: 'bedrock_1.21.50',
+    to: 'bedrock_1.26.30',
+    firstRequest: -2343,
+    stackId: 2201,
+    take: '930101cd240100011c0000b2223b00000000ffffffff',
+    taken: '94010100cd24021c0001000000000000003b0001000001b222000000',
+    place: '930101d1240101013b0000b2220600000000ffffffff',
+    placed: '94010100d124023b000100000000000000060001000001b222000000'
+  },
+  {
+    // recorded on 1.26.40.5
+    from: 'bedrock_1.26.40',
+    to: 'bedrock_1.26.45',
+    firstRequest: -2431,
+    stackId: 2295,
+    take: '930101fd25010000011c0000f70800003b00000000000000ffffffff',
+    taken: '94010100fd250101021c000100000001000000003b00010000010101ee23000000',
+    place: '9301018126010101013b0000f70800000600000000000000ffffffff',
+    placed: '9401010081260101023b000100000001000000000600010000010101ee23000000'
+  },
+  {
+    // recorded on 1.26.51.1
+    from: 'bedrock_1.26.51',
+    to: latestSupportedBedrockVersion,
+    firstRequest: -2297,
+    stackId: 2163,
+    take: '930101f123010000011c0000730800003b00000000000000ffffffff',
+    taken: '94010100f12301021c0001000000000000003b000100000101e621000000',
+    place: '930101f523010101013b0000730800000600000000000000ffffffff',
+    placed: '94010100f52301023b00010000000000000006000100000101e621000000'
+  }
+]
+
+type SentRequest = BedrockServerboundPackets['item_stack_request']['requests'][number]
+type SentSlot = NonNullable<SentRequest['actions'][number]['source']>
+
+function refOf (info: SentSlot): SlotRef {
+  const type = info.slot_type
+  const container = typeof type === 'object' ? type.container_id : type
+  assert.ok(typeof container === 'string' && info.slot !== undefined)
+  return { container, slot: info.slot }
+}
+
+function nameOf (info: SentSlot): string {
+  const { container, slot } = refOf(info)
+  return `${container}:${slot}`
+}
+
+/** the item stack requests the bot sent since the last call, as written */
+function writtenSince (server: FakeBedrockClient): () => string[] {
+  let seen = server.sentOf('item_stack_request').length
+  return () => {
+    const all = server.sentOf('item_stack_request')
+    const fresh = all.slice(seen)
+    seen = all.length
+    return fresh.map(params => server.codec.serializer.createPacketBuffer({ name: 'item_stack_request', params }).toString('hex'))
+  }
+}
+
+/** each request the bot sent since the last call: its actions' types, counts and slots */
+function requestsSince (server: FakeBedrockClient): () => string[] {
+  let seen = server.sentOf('item_stack_request').length
+  return () => {
+    const sent = server.sentOf('item_stack_request')
+    const fresh = sent.slice(seen).flatMap(({ requests }) => requests)
+    seen = sent.length
+    return fresh.map(({ actions }) => actions.map(({ type_id: type, count, source, destination }) =>
+      [String(type), count, source === undefined ? undefined : nameOf(source), destination === undefined ? undefined : `→ ${nameOf(destination)}`].filter(part => part !== undefined).join(' ')).join(', '))
+  }
+}
+
+interface ServedBot extends TestBot {
+  inventory: ServerInventory
+  idOf: (name: string) => number
+  /** steps ticks until `operation` settles, the server answering after each */
+  served: <Result>(operation: Promise<Result>) => Promise<Result>
+}
+
+/** joined on the latest version; the server takes each request as the bot predicts it, opens the inventory screen when asked, and answers each close */
+async function servedBot (): Promise<ServedBot> {
+  const testBot = await bedrockTestBot(bedrockCodec(latestSupportedBedrockVersion), { screenAnimations: false })
+  const { server, driver, internal } = testBot
+  await new ServerWorld(server).join(testBot, { game: { runtime_entity_id: 1n } })
+  const inventory = new ServerInventory(server)
+  let [answered, opened, closed, nextStackId] = [0, 0, 0, 500]
+  const answer = (): void => {
+    const requests = server.sentOf('item_stack_request').flatMap(({ requests }) => requests)
+    for (const { request_id: id, actions } of requests.slice(answered)) {
+      const slots = new Map(actions.flatMap(({ source, destination }) => [source, destination]).filter(info => info !== undefined).map(info => [nameOf(info), refOf(info)]))
+      inventory.respond(id, [...slots.values()].map(ref => {
+        const stack = internal._inventory.stackAt(ref)
+        return { ...ref, count: stack?.count ?? 0, stackId: stack === undefined ? 0 : stack.stackId > 0 ? stack.stackId : nextStackId++ }
+      }))
+    }
+    answered = requests.length
+    const asked = server.sentOf('interact').filter(({ action_id: action }) => action === 'open_inventory')
+    asked.slice(opened).forEach(() => { openScreen(server, 'inventory') })
+    opened = asked.length
+    const closes = server.sentOf('container_close')
+    for (const { window_id: id } of closes.slice(closed)) server.send('container_close', { window_id: id, window_type: 'none', server: false })
+    closed = closes.length
+  }
+  const served = async <Result>(operation: Promise<Result>): Promise<Result> => {
+    let done = false
+    operation.then(() => { done = true }, () => { done = true })
+    const settled = (): boolean => done
+    for (let tick = 0; tick < 300 && !settled(); tick++) {
+      await driver.tick()
+      answer()
+    }
+    return await operation
+  }
+  return { ...testBot, inventory, idOf: name => testBot.bot.registry.itemsByName[name]?.id ?? 0, served }
+}
+
+function openScreen (server: FakeBedrockClient, type: 'inventory' | 'workbench'): void {
+  server.send('container_open', { window_id: 2, window_type: type, coordinates: { x: 0, y: 0, z: 0 }, runtime_entity_id: -1n })
+}
+
+function itemAt (bot: BedrockBot, slot: number): Item {
+  const item = bot.inventory.slots[slot]
+  assert.ok(item != null)
+  return item
+}
+
+/** the names of `slots` of bot.inventory, null where empty */
+function namesOf (bot: BedrockBot, slots: readonly number[]): Array<string | null> {
+  return slots.map(slot => bot.inventory.slots[slot]?.name ?? null)
+}
+
 function atLeast (version: BedrockVersion, since: BedrockVersion): boolean {
   return isBedrockVersionAtLeast(version, since)
 }
@@ -126,6 +340,35 @@ describe('bedrock items', () => {
           assert.deepStrictEqual([bot.quickBarSlot, bot.heldItem?.count], [0, 2])
           await driver.tick()
           assert.deepStrictEqual([held, lastTick(server, tick())], [[undefined, bot.heldItem?.name], placed([recorded.interact, recorded.dirtSlot0])])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  for (const recorded of ARMOR) {
+    describe(`equipping as the vanilla client puts armor on (${recorded.from.slice(8)} – ${recorded.to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(recorded.from, recorded.to)) {
+        it(`bedrock ${version}: takes the helmet to the cursor, then puts it on the head, each click once the server took the one before`, async () => {
+          const { bot, internal, server, driver, inventory } = await holding(version, null)
+          const errors: string[] = []
+          bot.on('error', error => { errors.push(error.message) })
+          inventory.slot('inventory', 0, { id: bot.registry.itemsByName['iron_helmet']?.id ?? 0, count: 1, stackId: recorded.stackId })
+          openScreen(server, 'inventory')
+          await driver.tick()
+          internal._core.requestIds.continueProcess(recorded.firstRequest)
+          const requests = writtenSince(server)
+
+          const equip = bot.equip(itemAt(bot, 36), 'head')
+          await driver.tick()
+          assert.deepStrictEqual(requests(), [recorded.take])
+          server.receive(Buffer.from(recorded.taken, 'hex'))
+          await driver.ticks(2)
+          assert.deepStrictEqual(requests(), [recorded.place])
+          server.receive(Buffer.from(recorded.placed, 'hex'))
+          await driver.tick()
+          await equip
+          assert.deepStrictEqual([namesOf(bot, [5, 36]), bot.inventory.slots[5]?.stackId, bot.currentWindow, errors], [['iron_helmet', null], recorded.stackId, bot.inventory, []])
           bot.end()
         })
       }
@@ -219,6 +462,169 @@ describe('bedrock items', () => {
       inventory.slot('inventory', 8, dirt)
       await driver.tick()
       assert.deepStrictEqual(sent(), [])
+      bot.end()
+    })
+  })
+
+  describe(`equip and unequip, alike on every version: (on ${latestSupportedBedrockVersion})`, () => {
+    it('puts armor and the offhand\'s item on by clicks on the inventory screen it opens and closes; bot.entity.equipment is Java\'s', async () => {
+      const testBot = await servedBot()
+      const { bot, server, inventory, idOf, served } = testBot
+      inventory.slot('inventory', 0, { id: idOf('iron_helmet'), count: 1, stackId: 7 })
+      inventory.slot('inventory', 9, { id: idOf('shield'), count: 1, stackId: 8 })
+      inventory.slot('inventory', 1, { id: idOf('iron_boots'), count: 1, stackId: 9 })
+      inventory.slot('inventory', 2, { id: idOf('iron_chestplate'), count: 1, stackId: 10 })
+      await testBot.driver.tick()
+      const requests = requestsSince(server)
+      await served(bot.equip(itemAt(bot, 36), 'head'))
+      await served(bot.equip(idOf('shield'), 'off-hand'))
+      assert.deepStrictEqual([requests(), server.sentOf('interact').filter(({ action_id: action }) => action === 'open_inventory').length, server.sentOf('container_close').length, bot.currentWindow], [[
+        'take 1 hotbar:0 → cursor:0', 'place 1 cursor:0 → armor:0',
+        'take 1 inventory:9 → cursor:0', 'place 1 cursor:0 → offhand:1'
+      ], 2, 2, null])
+      await served(bot.openInventory())
+      await served(bot.equip(idOf('iron_boots'), 'feet'))
+      await served(bot.equip(idOf('iron_chestplate'), 'torso'))
+      // the slot it is in already: nothing
+      await served(bot.equip(itemAt(bot, 8), 'feet'))
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, bot.currentWindow], [[
+        'take 1 hotbar:1 → cursor:0', 'place 1 cursor:0 → armor:3', 'take 1 hotbar:2 → cursor:0', 'place 1 cursor:0 → armor:1'
+      ], 2, bot.inventory])
+      bot.setQuickBarSlot(3)
+      inventory.slot('inventory', 3, { id: idOf('stone'), count: 5, stackId: 11 })
+      await testBot.driver.tick()
+      assert.deepStrictEqual(bot.entity.equipment.map(item => item?.name ?? null), ['stone', 'shield', 'iron_boots', null, 'iron_chestplate', 'iron_helmet'])
+      bot.end()
+    })
+
+    it('rejects, sending nothing, an item the slot does not take, as the vanilla client sends nothing for such a click', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot()
+      inventory.slot('inventory', 0, { id: idOf('dirt'), count: 3, stackId: 7 })
+      inventory.slot('inventory', 1, { id: idOf('egg'), count: 3, stackId: 8 })
+      inventory.slot('inventory', 2, { id: idOf('iron_helmet'), count: 1, stackId: 9 })
+      await driver.tick()
+      const sent = sentSince(server)
+      await assert.rejects(served(bot.equip(idOf('dirt'), 'head')), { message: 'equip: dirt is not worn on head' })
+      await assert.rejects(served(bot.equip(idOf('egg'), 'off-hand')), { message: 'equip: egg is not worn on off-hand' })
+      await assert.rejects(served(bot.equip(idOf('iron_helmet'), 'feet')), { message: 'equip: iron_helmet is not worn on feet' })
+      assert.deepStrictEqual(sent(), [])
+      bot.end()
+    })
+
+    it('equips the hand by selecting a hotbar item, else by moving the item to the first empty hotbar slot, else to the next in turn, and selecting it', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot()
+      const stone = { id: idOf('stone'), count: 64, stackId: 20 }
+      inventory.content('inventory', [stone, null, ...Array<Given>(7).fill(stone), { id: idOf('dirt'), count: 3, stackId: 7 }, ...Array<Given | null>(26).fill(null)])
+      inventory.slot('inventory', 2, { id: idOf('egg'), count: 3, stackId: 8 })
+      inventory.slot('inventory', 11, { id: idOf('oak_planks'), count: 10, stackId: 9, metadata: 1 })
+      inventory.slot('offhand', 0, { id: idOf('arrow'), count: 5, stackId: 10 })
+      await driver.tick()
+      const requests = requestsSince(server)
+      await served(bot.equip(idOf('egg'), null))
+      assert.deepStrictEqual([bot.quickBarSlot, bot.heldItem?.name, requests()], [2, 'egg', []])
+      // the hand's item: nothing
+      await served(bot.equip(itemAt(bot, 38), 'hand'))
+      await served(bot.equip(itemAt(bot, 45), 'hand'))
+      assert.deepStrictEqual([bot.quickBarSlot, bot.heldItem?.name, requests()], [1, 'arrow', ['take 5 offhand:1 → cursor:0', 'place 5 cursor:0 → hotbar:1']])
+      await served(bot.equip(itemAt(bot, 36), 'hand'))
+      assert.deepStrictEqual([bot.quickBarSlot, requests()], [0, []])
+      await served(bot.equip(idOf('dirt'), 'hand'))
+      await served(bot.equip(itemAt(bot, 11), 'hand'))
+      assert.deepStrictEqual([bot.quickBarSlot, bot.heldItem?.metadata, namesOf(bot, [36, 9, 11]), requests()], [1, 1, ['dirt', 'stone', 'arrow'], [
+        'take 3 inventory:9 → cursor:0', 'swap cursor:0 → hotbar:0', 'place 64 cursor:0 → inventory:9',
+        'take 10 inventory:11 → cursor:0', 'swap cursor:0 → hotbar:1', 'place 5 cursor:0 → inventory:11'
+      ]])
+      bot.end()
+    })
+
+    it('goes round the hotbar in Java\'s turn when no hotbar slot is empty', async () => {
+      const { bot, inventory, idOf, served, driver } = await servedBot()
+      const dirt = { id: idOf('dirt'), count: 1, stackId: 7 }
+      inventory.content('inventory', [...Array<Given>(9).fill({ id: idOf('stone'), count: 64, stackId: 20 }), ...Array<Given>(10).fill(dirt), ...Array<Given | null>(17).fill(null)])
+      await driver.tick()
+      const selected: number[] = []
+      for (let slot = 9; slot < 19; slot++) {
+        await served(bot.equip(itemAt(bot, slot), 'hand'))
+        selected.push(bot.quickBarSlot)
+      }
+      assert.deepStrictEqual(selected, [0, 1, 2, 3, 4, 5, 6, 7, 8, 0])
+      bot.end()
+    })
+
+    it('clicks bot.inventory\'s slots where the screen open shows them, rejecting one it does not show', async () => {
+      const testBot = await servedBot()
+      const { bot, server, inventory, idOf, served, driver } = testBot
+      inventory.slot('inventory', 9, { id: idOf('dirt'), count: 3, stackId: 7 })
+      inventory.slot('inventory', 1, { id: idOf('iron_boots'), count: 1, stackId: 8 })
+      inventory.slot('armor', 0, { id: idOf('iron_helmet'), count: 1, stackId: 9 })
+      openScreen(server, 'workbench')
+      await driver.tick()
+      const requests = requestsSince(server)
+      await served(bot.equip(idOf('dirt'), 'hand'))
+      assert.deepStrictEqual([bot.quickBarSlot, requests(), bot.currentWindow?.slots[37]?.name], [0, ['take 3 inventory:9 → cursor:0', 'place 3 cursor:0 → hotbar:0'], 'dirt'])
+      await assert.rejects(served(bot.equip(idOf('iron_boots'), 'feet')), { message: 'equip: the minecraft:crafting_table window open shows no slot 8 of the inventory' })
+      await assert.rejects(served(bot.equip(itemAt(bot, 5), 'hand')), { message: 'equip: the minecraft:crafting_table window open shows no slot 5 of the inventory' })
+      await assert.rejects(served(bot.unequip('head')), { message: 'unequip: the minecraft:crafting_table window open shows no slot 5 of the inventory' })
+      assert.deepStrictEqual([requests(), bot.quickBarSlot], [[], 0])
+      bot.end()
+    })
+
+    it('unequips the hand by selecting an empty hotbar slot, else by moving its stack to the inventory, else by dropping it', async () => {
+      const { bot, server, inventory, idOf, served, driver } = await servedBot()
+      const stone = { id: idOf('stone'), count: 64, stackId: 20 }
+      // the last hotbar slot empty
+      inventory.content('inventory', [...Array<Given>(8).fill(stone), null, ...Array<Given>(27).fill(stone)])
+      await driver.tick()
+      const requests = requestsSince(server)
+      await served(bot.unequip('hand'))
+      assert.deepStrictEqual([bot.quickBarSlot, bot.heldItem, requests()], [8, null, []])
+      inventory.slot('inventory', 8, stone)
+      inventory.slot('inventory', 20, null)
+      await driver.tick()
+      await served(bot.unequip('hand'))
+      inventory.slot('inventory', 8, stone)
+      await driver.tick()
+      await served(bot.unequip('hand'))
+      assert.deepStrictEqual([bot.quickBarSlot, bot.heldItem, requests(), server.sentOf('animate').length, server.sentOf('container_close').length], [8, null, [
+        'take 64 hotbar:8 → cursor:0', 'place 64 cursor:0 → inventory:20',
+        'take 64 hotbar:8 → cursor:0', 'drop 64 cursor:0'
+      ], 1, 2])
+      bot.end()
+    })
+
+    it('unequips the armor and the offhand by putAway: a shift click to the hotbar and inventory, on the inventory screen open or the one it opens', async () => {
+      const { bot, server, inventory, idOf, served } = await servedBot()
+      inventory.slot('armor', 3, { id: idOf('iron_boots'), count: 1, stackId: 7 })
+      inventory.slot('offhand', 0, { id: idOf('shield'), count: 1, stackId: 8 })
+      inventory.slot('inventory', 0, { id: idOf('dirt'), count: 3, stackId: 9 })
+      const requests = requestsSince(server)
+      await served(bot.unequip('feet'))
+      await served(bot.openInventory())
+      await served(bot.unequip('off-hand'))
+      assert.deepStrictEqual([requests(), server.sentOf('container_close').length, namesOf(bot, [8, 45, 37, 38]), bot.quickBarSlot], [
+        ['place 1 armor:3 → hotbar_and_inventory:1', 'place 1 offhand:1 → hotbar_and_inventory:2'], 1, [null, null, 'iron_boots', 'shield'], 0
+      ])
+      bot.end()
+    })
+
+    it('rejects as Java an item that is none, an item the inventory has not, and a destination that is none', async () => {
+      const { bot, idOf, served } = await servedBot()
+      const invalid = { message: 'Invalid item object in equip (item is null or typeof item is not object)' }
+      await assert.rejects(served(bot.equip(null as never, 'hand')), invalid)
+      await assert.rejects(served(bot.equip(idOf('dirt'), 'hand')), invalid)
+      await assert.rejects(served(bot.unequip(null)), { name: 'AssertionError', message: 'invalid destination: null' })
+      assert.throws(() => bot.getEquipmentDestSlot('nose'), { name: 'AssertionError', message: 'invalid destination: nose' })
+      bot.setQuickBarSlot(6)
+      assert.deepStrictEqual(['hand', 'head', 'torso', 'legs', 'feet', 'off-hand'].map(bot.getEquipmentDestSlot), [42, 5, 6, 7, 8, 45])
+      bot.end()
+    })
+
+    it('tells whether a slot takes what another holds: any slot but the armor and the offhand, and a slot the inventory has not', async () => {
+      const { bot, internal, inventory, idOf, driver } = await servedBot()
+      inventory.slot('inventory', 0, { id: idOf('iron_helmet'), count: 1, stackId: 7 })
+      await driver.tick()
+      const takes = internal._inventory
+      assert.deepStrictEqual([takes.takes(36, 5), takes.takes(36, 6), takes.takes(36, 9), takes.takes(36, 99), takes.takes(99, 6), takes.takes(37, 6)], [true, false, true, true, true, true])
       bot.end()
     })
   })

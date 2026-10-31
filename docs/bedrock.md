@@ -104,6 +104,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.bedrock.openGrindstone(block)` (Bedrock's): the grindstone, and its window's grind (see the grindstone below).
 - `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
 - `bot.setQuickBarSlot(slot)`, `bot.QUICK_BAR_START`: selecting a hotbar slot (see items below).
+- `bot.equip(item, destination)`, `bot.unequip(destination)`, `bot.getEquipmentDestSlot(destination)`,
+  `bot.entity.equipment`: as Java's, by clicks (see items below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1909,10 +1911,35 @@ the cursor's place in the hand-back.
   an item alike the one held before (or both empty) is told by `mob_equipment` alone, the slot being the server's
   selection: no recording moves between alike slots. The server answers nothing.
 - **`bot.QUICK_BAR_START`** is Java's 36, `bot.inventory`'s first hotbar slot.
+- **`bot.equip(item, destination)`** is Java's: `item` an `Item` of `bot.inventory`, or an item id, found as Java finds
+  it (`findInventoryItem`); `destination` the hand for null. An item already there does nothing; no item rejects with
+  Java's error. To the hand, an item of the hotbar is selected (`setQuickBarSlot`); another goes to the first empty
+  hotbar slot, else to the next of Java's turns over the hotbar (whose item goes where it came from), which is
+  selected first, by `moveSlotItem`'s clicks. To an armor slot or the offhand, it goes by `moveSlotItem` too: a take to
+  the cursor, then a place, each once the server took the one before, as recorded on every build putting an iron
+  helmet on the head (and a shield in the offhand, see the clicks above). It rejects, sending nothing, an item the slot
+  does not take (`equip: dirt is not worn on head`; the clicks' rule: the armor where it is worn, the offhand's items),
+  as the vanilla client sends nothing for that click: Java sends its clicks and resolves after the server's refusal,
+  so `equip(dirt, 'off-hand')` of Java's examples rejects on Bedrock.
+- **`bot.unequip(destination)`** is Java's: the hand selects an empty hotbar slot, else moves its stack to the first
+  empty slot of the inventory, else drops it (Java's `tossStack` drops it too, and closes the window open); the armor
+  and the offhand are put away (`putAway`: a shift click, to the hotbar and the inventory). `null` throws Java's
+  `AssertionError`.
+- Both click on the screen open, in its slots that show `bot.inventory`'s (Java clicks the inventory's numbers in any
+  window), and reject a slot it does not show (`equip: the minecraft:crafting_table window open shows no slot 5 of the
+  inventory`: the armor and the offhand are on the inventory screen only; Java asserts no window is open to unequip
+  them); with none open, on the inventory screen, opened and closed again. A selection is told in the next tick,
+  which may come while the screen is open: not recorded.
+- **`bot.getEquipmentDestSlot(destination)`** is Java's: the hand's hotbar slot, `head` 5, `torso` 6, `legs` 7, `feet`
+  8 and `off-hand` 45 (every Bedrock version has an offhand); an `AssertionError` for another. **`bot.entity.equipment`**
+  is Java's: the held item, the offhand's, then the feet's, the legs', the torso's and the head's.
 
 Recorded and replayed by the tests: the selection of an empty slot, then of one of dirt, on every build, in groups by
 how the items and the interact are written and where the tick tells them (up to 1.19.0 after its auth input, from
 1.19.10 before it).
+
+Recorded and replayed by the tests too: an iron helmet put on the head from hotbar slot 0 on the inventory screen, played
+by `equip` on every build, byte for byte, in groups by how requests are written.
 
 ## Tests
 
