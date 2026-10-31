@@ -292,6 +292,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   openBrewingStand: (brewingStand: Block) => Promise<BedrockBrewingStand>
   /** Bedrock's (Java has no beacon helper): the beacon screen's confirm, paying with its payment slot's item, or one of the inventory's put there, for the primary effect ('speed', 'haste', 'resistance', 'jump_boost' or 'strength'); with no beacon open the one given is opened and closed */
   setBeaconEffects: (primary: string, secondary?: string | null, beacon?: Block | null) => Promise<void>
+  /** openBlock, resolving with the furnace's, blast furnace's or smoker's window; rejects for another screen, which stays open */
+  openFurnace: (furnace: Block) => Promise<Furnace>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */

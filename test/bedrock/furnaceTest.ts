@@ -1,12 +1,13 @@
 import assert from 'assert'
 import type { Block } from 'prismarine-block'
+import type { Item } from 'prismarine-item'
 import type { Window } from 'prismarine-windows'
 import { Vec3 } from 'vec3'
-import type { ContainerName } from '../../lib/bedrock/modules/items.ts'
+import type { ContainerName, SlotRef } from '../../lib/bedrock/modules/items.ts'
 import { isFuel } from '../../lib/bedrock/screens/furnace.ts'
 import type { FurnaceType } from '../../lib/bedrock/screens/furnace.ts'
 import { isBedrockVersionAtLeast, latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
-import type { BedrockBot, BedrockVersion } from '../../lib/types/api/index.ts'
+import type { BedrockBot, BedrockVersion, Furnace } from '../../lib/types/api/index.ts'
 import type { BedrockServerboundPackets } from '../../lib/types/protocol/bedrock-client.ts'
 import { bedrockCodec } from './common/codec.ts'
 import { ServerInventory } from './common/inventory.ts'
@@ -17,7 +18,7 @@ import { ServerWorld } from './common/world.ts'
 import type { BlockAt } from './common/world.ts'
 
 // The vanilla client's recorded clicks on a furnace, a blast furnace and a smoker against Bedrock Dedicated Server: the
-// bot must send its requests and closes, byte for byte.
+// bot must send its requests and closes, byte for byte. Then Java's Furnace members, from the recorded properties.
 
 const INGREDIENTS: Readonly<Record<FurnaceType, ContainerName>> = { furnace: 'furnace_ingredient', blast_furnace: 'blast_furnace_ingredient', smoker: 'smoker_ingredient' }
 
@@ -288,6 +289,81 @@ const RECORDED_CLICKS: readonly RecordedClick[] = [
   { name: 'a shift right click moves the output to the hotbar or inventory', screen: 'furnace', given: [output('iron_ingot', 64, 974)], firstRequest: -3797, click: [2, 1, 1], request: '930101a93b010101401a0002ce0300000c00000000000000ffffffff' },
   { name: 'a shift click moves the fuel to the hotbar or inventory', screen: 'furnace', given: [fuel('oak_planks', 64, 950)], firstRequest: -3731, click: [1, 0, 1], request: '930101a53a01010140180001b60300000c00000000000000ffffffff' }
 ]
+
+type SentRequest = BedrockServerboundPackets['item_stack_request']['requests'][number]
+type SentSlot = NonNullable<SentRequest['actions'][number]['source']>
+
+function refOf (info: SentSlot): SlotRef {
+  const type = info.slot_type
+  const container = typeof type === 'object' ? type.container_id : type
+  assert.ok(typeof container === 'string' && info.slot !== undefined)
+  return { container, slot: info.slot }
+}
+
+/** each request the bot sent since the last call: its actions' types, counts and slots */
+function movesSince (server: FakeBedrockClient): () => string[] {
+  let seen = server.sentOf('item_stack_request').length
+  return () => {
+    const sent = server.sentOf('item_stack_request')
+    const fresh = sent.slice(seen).flatMap(({ requests }) => requests)
+    seen = sent.length
+    const name = (info: SentSlot): string => `${refOf(info).container}:${refOf(info).slot}`
+    return fresh.map(({ actions }) => actions.map(({ type_id: type, count, source, destination }) =>
+      [String(type), count, source === undefined ? undefined : name(source), destination === undefined ? undefined : `→ ${name(destination)}`].filter(part => part !== undefined).join(' ')).join(', '))
+  }
+}
+
+/** steps ticks until `operation` settles, the server taking each request as the bot predicts it and answering each close */
+async function served<Result> ({ server, driver, internal, inventory }: FurnaceBot, operation: Promise<Result>): Promise<Result> {
+  let done = false
+  operation.then(() => { done = true }, () => { done = true })
+  // set by the operation, which the ticks settle
+  const settled = (): boolean => done
+  const sentRequests = (): SentRequest[] => server.sentOf('item_stack_request').flatMap(({ requests }) => requests)
+  let [answered, closed, nextStackId] = [sentRequests().length, server.sentOf('container_close').length, 500]
+  for (let tick = 0; tick < 300 && !settled(); tick++) {
+    await driver.tick()
+    const requests = sentRequests()
+    for (const { request_id: id, actions } of requests.slice(answered)) {
+      const refs = new Map(actions.flatMap(({ source, destination }) => [source, destination]).filter(info => info !== undefined).map(info => [JSON.stringify(refOf(info)), refOf(info)]))
+      inventory.respond(id, [...refs.values()].map(ref => {
+        const stack = internal._inventory.stackAt(ref)
+        // a stack the request made gets a stack id of its own
+        return { ...ref, count: stack?.count ?? 0, stackId: stack === undefined ? 0 : stack.stackId > 0 ? stack.stackId : nextStackId++ }
+      }))
+    }
+    answered = requests.length
+    const closes = server.sentOf('container_close')
+    for (const { window_id: id } of closes.slice(closed)) server.send('container_close', { window_id: id, window_type: 'none', server: false })
+    closed = closes.length
+  }
+  return await operation
+}
+
+function asFurnace (window: Window | null): Furnace {
+  assert.ok(window !== null && isFurnace(window))
+  return window
+}
+
+function isFurnace (window: Window): window is Furnace {
+  return 'takeOutput' in window && 'putFuel' in window && 'fuel' in window
+}
+
+const FIELDS: readonly string[] = ['totalFuel', 'fuel', 'totalFuelSeconds', 'fuelSeconds', 'totalProgress', 'progress', 'totalProgressSeconds', 'progressSeconds']
+
+/** Java's fields (typed: fuel and progress), rounded where the division is inexact */
+function fieldsOf (furnace: Furnace): Record<string, number> {
+  return Object.fromEntries(Object.entries(furnace).filter(([name]) => FIELDS.includes(name))
+    .map(([name, value]) => [name, typeof value === 'number' ? Math.round(value * 1e6) / 1e6 : NaN]))
+}
+
+function nameAndCount (item: Item | null | undefined): [string, number] | null {
+  return item === null || item === undefined ? null : [item.name, item.count]
+}
+
+function setData (inventory: ServerInventory, id: number, properties: ReadonlyArray<readonly [number, number]>): void {
+  for (const [property, value] of properties) inventory.setData(id, property, value)
+}
 
 describe('bedrock furnaces', () => {
   for (const group of GROUPS) {
@@ -575,6 +651,121 @@ describe('bedrock furnaces', () => {
       const fuels = ['coal', 'charcoal', 'lava_bucket', 'planks', 'log2', 'oak_planks', 'pale_oak_slab', 'spruce_hanging_sign', 'stripped_cherry_wood', 'silver_wool', 'light_gray_carpet', 'wooden_sword']
       const others = ['crimson_planks', 'warped_stem', 'egg', 'iron_sword', 'oak', 'stripped_oak_planks', 'red_wool_slab', undefined]
       assert.deepStrictEqual([fuels.filter(name => !isFuel(name)), others.filter(name => isFuel(name))], [[], []])
+    })
+  })
+
+  describe(`Java's furnace, alike on every version: (on ${latestSupportedBedrockVersion})`, () => {
+    const version = latestSupportedBedrockVersion
+    const FURNACE_AT = Object.freeze({ x: 2, y: 12, z: 0 })
+    const TABLE_AT = Object.freeze({ x: 0, y: 12, z: 2 })
+
+    it('has the properties sent before the opening when shown, and updates them at each of its own while it is open, as recorded', async () => {
+      const { bot, server, driver, inventory, errors } = await joined(version)
+      // 1.26.60.5 cooking_00: a furnace opened lit (window 4); a smoker opened cold (window 2), lit with coal, its potato cooked
+      setData(inventory, 4, [[0, 0], [1, 1331], [2, 1600], [3, 0]])
+      const shown: Array<Record<string, number>> = []
+      bot.on('windowOpen', window => { shown.push(fieldsOf(asFurnace(window))) })
+      openFurnace(server, 4, 'furnace')
+      await driver.tick()
+      assert.deepStrictEqual(shown, [{ totalFuel: 1600, fuel: 0.831875, totalFuelSeconds: 80, fuelSeconds: 66.55, totalProgress: 200, progress: 0, totalProgressSeconds: 10, progressSeconds: 10 }])
+      server.send('container_close', { window_id: 4, window_type: 'furnace', server: true })
+      setData(inventory, 2, [[0, 0], [1, 0], [2, 0], [3, 0]])
+      openFurnace(server, 2, 'smoker')
+      await driver.tick()
+      const smoker = asFurnace(bot.currentWindow)
+      const updates: Array<Record<string, number>> = []
+      smoker.on('update', () => { updates.push(fieldsOf(smoker)) })
+      // another window's is not the smoker's
+      inventory.setData(5, 0, 7)
+      setData(inventory, 2, [[0, 1], [1, 800], [2, 800], [0, 99], [1, 701], [3, 0]])
+      await driver.tick()
+      const cooking = (totalFuel: number, fuel: number, fuelSeconds: number, progress: number, progressSeconds: number): Record<string, number> =>
+        ({ totalFuel, fuel, totalFuelSeconds: totalFuel / 20, fuelSeconds, totalProgress: 100, progress, totalProgressSeconds: 5, progressSeconds })
+      // a fuel whose whole is not known yet has none left
+      assert.deepStrictEqual(updates, [cooking(0, 0, 0, 0.01, 4.95), cooking(0, 0, 0, 0.01, 4.95), cooking(800, 1, 40, 0.01, 4.95), cooking(800, 1, 40, 0.99, 0.05), cooking(800, 0.87625, 35.05, 0.99, 0.05), cooking(800, 0.87625, 35.05, 0.99, 0.05)])
+      server.send('container_close', { window_id: 2, window_type: 'smoker', server: true })
+      inventory.setData(2, 1, 700)
+      await driver.tick()
+      assert.deepStrictEqual([updates.length, smoker.fuel, bot.currentWindow, errors], [6, 0.87625, null, []])
+      bot.end()
+    })
+
+    it('counts a property the server did not send as 0, and a blast furnace\'s cook as 100 ticks', async () => {
+      const { bot, server, driver, errors } = await joined(version)
+      openFurnace(server, 7, 'blast_furnace')
+      await driver.tick()
+      assert.deepStrictEqual([fieldsOf(asFurnace(bot.currentWindow)), errors], [{ totalFuel: 0, fuel: 0, totalFuelSeconds: 0, fuelSeconds: 0, totalProgress: 100, progress: 0, totalProgressSeconds: 5, progressSeconds: 5 }, []])
+      bot.end()
+    })
+
+    it('opens a furnace, a blast furnace and a smoker with openFurnace, and rejects another screen, which stays open', async () => {
+      const at: ReadonlyArray<readonly [FurnaceType, { x: number, y: number, z: number }]> = [['furnace', FURNACE_AT], ['blast_furnace', { x: -2, y: 12, z: 0 }], ['smoker', { x: 0, y: 12, z: -2 }]]
+      const furnaceBot = await joined(version, { blocks: [...at.map(([type, { x, y, z }]): BlockAt => [x, y, z, type]), [TABLE_AT.x, TABLE_AT.y, TABLE_AT.z, 'crafting_table']] })
+      const { bot, server, driver, inventory, errors } = furnaceBot
+      const blockAt = ({ x, y, z }: { x: number, y: number, z: number }): Block => {
+        const block = bot.blockAt(new Vec3(x, y, z))
+        assert.ok(block !== null)
+        return block
+      }
+      for (const [index, [type, coordinates]] of at.entries()) {
+        const opening = bot.openFurnace(blockAt(coordinates))
+        await driver.ticks(4)
+        // the values recorded of a blast furnace (1.26.60.5 cooking_00, window 7)
+        setData(inventory, 7 + index, [[0, 0], [1, 631], [2, 800], [3, 0]])
+        server.send('container_open', { window_id: 7 + index, window_type: type, coordinates, runtime_entity_id: -1n })
+        const furnace = await served(furnaceBot, opening)
+        assert.deepStrictEqual([furnace === bot.currentWindow, furnace.type, furnace.fuel, furnace.progress], [true, `minecraft:${type}`, 0.78875, 0])
+        await served(furnaceBot, furnace.close())
+      }
+
+      const refused = bot.openFurnace(blockAt(TABLE_AT))
+      await driver.ticks(4)
+      server.send('container_open', { window_id: 10, window_type: 'workbench', coordinates: TABLE_AT, runtime_entity_id: -1n })
+      await assert.rejects(served(furnaceBot, refused), { message: 'This is not a furnace-like window' })
+      assert.deepStrictEqual([bot.currentWindow?.type, errors], ['minecraft:crafting_table', []])
+      bot.end()
+    })
+
+    it('puts and takes with Java\'s clicks: from and to the inventory part, a fuel only in the fuel slot, the output to the cursor first', async () => {
+      const furnaceBot = await joined(version)
+      const { bot, server, driver, inventory, errors } = furnaceBot
+      const [coal, beef, cooked, egg] = [idOf(bot, 'coal'), idOf(bot, 'beef'), idOf(bot, 'cooked_beef'), idOf(bot, 'egg')]
+      inventory.slot('inventory', 0, { id: coal, count: 2, stackId: 10 })
+      inventory.slot('inventory', 8, { id: coal, count: 1, stackId: 11 })
+      inventory.slot('inventory', 4, { id: beef, count: 1, stackId: 12 })
+      openFurnace(server, 3, 'smoker')
+      await driver.tick()
+      const smoker = asFurnace(bot.currentWindow)
+      const moves = movesSince(server)
+
+      await served(furnaceBot, smoker.putFuel(coal, null, 2))
+      assert.deepStrictEqual([moves(), nameAndCount(smoker.fuelItem())], [['take 2 hotbar:0 → cursor:0', 'place 2 cursor:0 → furnace_fuel:1'], ['coal', 2]])
+      // from the inventory part only, into the input only, though the fuel slot holds coal
+      await served(furnaceBot, smoker.putInput(coal, null, 1))
+      assert.deepStrictEqual([moves(), nameAndCount(smoker.inputItem())], [['take 1 hotbar:8 → cursor:0', 'place 1 cursor:0 → smoker_ingredient:0'], ['coal', 1]])
+      await assert.rejects(served(furnaceBot, smoker.putFuel(egg, null, 1)), { message: 'putFuel: egg is not a fuel' })
+      await assert.rejects(served(furnaceBot, smoker.putFuel(100_000, null, 1)), { name: 'AssertionError', message: 'Invalid itemType' })
+      assert.deepStrictEqual(moves(), [])
+
+      const fuel = await served(furnaceBot, smoker.takeFuel())
+      const input = await served(furnaceBot, smoker.takeInput())
+      assert.deepStrictEqual([moves(), nameAndCount(fuel), nameAndCount(input)], [['place 2 furnace_fuel:1 → hotbar_and_inventory:0', 'place 1 smoker_ingredient:0 → hotbar_and_inventory:0'], ['coal', 2], ['coal', 1]])
+      await assert.rejects(served(furnaceBot, smoker.takeInput()), { name: 'AssertionError', message: 'takeInput: slot 0 of the minecraft:smoker window is empty' })
+      inventory.slot(3, 2, { id: cooked, count: 1, stackId: 13 })
+      await driver.tick()
+      assert.deepStrictEqual(nameAndCount(smoker.outputItem()), ['cooked_beef', 1])
+      const output = await served(furnaceBot, smoker.takeOutput())
+      // Java's first empty slot of the inventory part
+      assert.deepStrictEqual([moves(), nameAndCount(output), nameAndCount(smoker.slots[3]), smoker.outputItem()], [['take 1 furnace_output:2 → cursor:0', 'place 1 cursor:0 → inventory:9'], ['cooked_beef', 1], ['cooked_beef', 1], null])
+
+      await served(furnaceBot, smoker.close())
+      const members: ReadonlyArray<[string, () => Promise<void>]> = [
+        ['takeInput', async () => { await smoker.takeInput() }], ['takeFuel', async () => { await smoker.takeFuel() }], ['takeOutput', async () => { await smoker.takeOutput() }],
+        ['putInput', async () => { await smoker.putInput(beef, null, 1) }], ['putFuel', async () => { await smoker.putFuel(coal, null, 1) }]
+      ]
+      for (const [member, call] of members) await assert.rejects(call(), { message: `${member} needs the minecraft:smoker window open` })
+      assert.deepStrictEqual([moves(), errors], [[], []])
+      bot.end()
     })
   })
 })

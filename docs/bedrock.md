@@ -95,6 +95,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   crafting_data sends, and crafting them (see crafting below).
 - `bot.openVillager(villager)`, `bot.trade(villager, tradeIndex, times)`: the trading screen of a villager or a
   wandering trader, its trades, and trading by its result's clicks (see trading below).
+- `bot.openFurnace(furnaceBlock)`: a furnace's, a blast furnace's or a smoker's screen, Java's `Furnace` (see furnaces
+  below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1452,6 +1454,32 @@ three screens. Not recorded, so as the bot does it: a shift click of an item tha
 fuel slot), into a slot holding another item or full (nothing), a take from the output onto a cursor with room for part
 of it (what fits), a hotbar key with an item on the cursor over a furnace's slot (nothing). The fuels besides coal, oak
 planks and a wooden sword (accepted) and an egg (refused) are the game's table, not recorded.
+
+`bot.openFurnace(furnaceBlock)` is `bot.openBlock(furnaceBlock)` resolving with the window, Java's `Furnace`; another
+screen rejects with Java's `This is not a furnace-like window` and stays open. Every furnace screen's window has the
+`Furnace` members from its `windowOpen`, however it was opened:
+
+- **`furnace.fuel`, `furnace.progress`**, and Java's untyped `totalFuel`, `totalFuelSeconds`, `fuelSeconds`,
+  `totalProgress`, `totalProgressSeconds`, `progressSeconds` (the time left), come from container_set_data, which the
+  server sends before the screen opens (so they are known at `windowOpen`) and then at each change, every tick while it
+  burns: property 1 is the fuel's ticks left and 2 its whole (`fuel` is 1 over 2, 0 while 2 is), 0 the cook's ticks.
+  No packet tells the cook time: it is the block's, 200 ticks for a furnace and 100 for a blast furnace or a smoker, as
+  every recorded cook ended at 199 or 99. Property 3 (the stored experience) was 0 on every recorded opening and is
+  not shown. A property the server has not sent counts as 0 (Java's fields are null until the first one comes, which a
+  Java server sends before the bot listens). The window's `update` comes after each property of the open screen, in the
+  packet pass; none comes after `windowClose`, though the server goes on sending them until its close.
+- **`inputItem()`, `fuelItem()`, `outputItem()`** are its slots 0, 1 and 2.
+- **`putInput(itemType, metadata, count)`, `putFuel(…)`** are Java's: `bot.transfer` from the window's inventory part
+  into slot 0 or 1. `putFuel` rejects an item that does not burn (`putFuel: egg is not a fuel`) before clicking: the
+  vanilla client sends nothing for one, and the transfer would put it back.
+- **`takeInput()`, `takeFuel()`, `takeOutput()`** are Java's: `bot.putAway` of slot 0, 1 or 2 (a shift click; the
+  output to the cursor, then into the inventory part's first stack of it with room or first empty slot), resolving with
+  the item as it was. An empty slot rejects with an `AssertionError`, as Java's.
+- The members reject while their window is not the screen open (`takeOutput needs the minecraft:smoker window open`):
+  Java's click whatever window is open. `furnace.close()` and the `close` event are every window's (see window members).
+
+As recorded in cooking_00 on 1.26.60 (the properties of a furnace opened lit and of a smoker's cook); `furnaceTest`
+plays them, and Java's members against a server taking the bot's requests as it predicts them.
 
 ## Tests
 
