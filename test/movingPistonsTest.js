@@ -44,4 +44,19 @@ describe('moving pistons', function () {
     const Block = require('prismarine-block')(registry)
     assert.deepStrictEqual(placed.map(([pos, stateId]) => [pos, Block.fromStateId(stateId, 0).name, Block.fromStateId(stateId, 0).getProperties().facing]), [[[0, 101, 2707], 'piston_head', 'east']])
   })
+
+  // getCollisionRelatedBlockState: a retracting base collides as the head, short past a quarter from 1.16 (1.16
+  // PistonBlockEntity.java:92-100); 1.13 - 1.15 set no SHORT, the long arm reaching -0.25 (1.15 :90-97)
+  it('collides a retracting base as the short head past a quarter only from 1.16', function () {
+    const armStarts = (version) => {
+      const pistons = createMovingPistons(require('prismarine-registry')(version))
+      pistons.trigger('piston', [-1, 101, 2707], 1, 5)
+      const seen = []
+      for (let i = 0; i < 2; i++) pistons.tick((piston) => seen.push(Math.min(...piston.shapes.map(([minX]) => minX))))
+      return seen
+    }
+    assert.deepStrictEqual(armStarts('1.13.2'), [-0.25, -0.25])
+    assert.deepStrictEqual(armStarts('1.15.2'), [-0.25, -0.25])
+    assert.deepStrictEqual(armStarts('1.16.5'), [-0.25, 0])
+  })
 })

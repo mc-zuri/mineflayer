@@ -987,6 +987,65 @@ for (const supportedVersion of mineflayer.testedVersions) {
         }
       })
 
+      it('a moving piston goes on through the ticks the bot is not simulated (ClientLevel.tickBlockEntities)', async function () {
+        if (!require('minecraft-data')(supportedVersion).blocksByName.observer) return this.skip() // 1.11+
+        const { manual, client, runTicks } = await standingManualBot()
+        try {
+          client.write('block_change', { location: { x: 0, y: pos.y, z: pos.z }, type: manual.registry.blocksByName.gold_block.defaultState ?? goldId << 4 })
+          const answer = once(client, teleportAnswer)
+          client.write('position', {
+            x: 0.5,
+            y: pos.y + 1,
+            z: 1.5,
+            pitch: 0,
+            yaw: 0,
+            flags: manual.supportFeature('positionPacketHasBitflags') ? { x: false, y: false, z: false, yaw: false, pitch: false } : 0,
+            teleportId: 2
+          })
+          await answer
+          runTicks(1)
+          const event = once(manual._client, 'block_action')
+          client.write('block_action', { location: { x: -1, y: pos.y + 1, z: pos.z }, byte1: 0, byte2: 5, blockId: manual.registry.blocksByName.piston.id })
+          await event
+          // two client ticks the bot's physics is off: the head moves 0.5F each and ends, pushing no one
+          manual.physicsEnabled = false
+          runTicks(2)
+          manual.physicsEnabled = true
+          // the head has reached its end: from 1.11 the tick that ends it pushes nothing
+          runTicks(1)
+          assert.strictEqual(manual.entity.position.x, 0.5)
+        } finally {
+          manual.end()
+        }
+      })
+
+      it('a moving piston ticks after the keys on a tick the 1.21.4+ bot waits for the level (Minecraft.tick: handleKeybinds, then tickBlockEntities)', async function () {
+        if (version['<']('1.21.4')) return this.skip()
+        let loaded = true
+        const { manual, client, runTicks } = await standingManualBot({ levelLoaded: () => loaded })
+        try {
+          // a respawn the bot waits for the level after: its ticks are only the keys and the block entities
+          loaded = false
+          const loadStarts = once(manual._client, 'game_state_change')
+          client.write('respawn', respawnPacket())
+          await loadStarts
+          await teleport(manual, client)
+          const event = once(manual._client, 'block_action')
+          client.write('block_action', { location: { x: -1, y: pos.y + 1, z: pos.z }, byte1: 0, byte2: 5, blockId: manual.registry.blocksByName.piston.id })
+          await event
+          const head = vec3(0, pos.y + 1, pos.z)
+          const seen = []
+          manual.on('clientTickWithoutPlayer', () => seen.push(manual.blockAt(head)?.name))
+          runTicks(3)
+          // the head goes 0.5F a tick and ends on the third, setting its block after the keys of that tick saw the cell
+          // (1.21.11 Minecraft.java:1794, 1805-1807)
+          assert.deepStrictEqual(seen, ['air', 'air', 'air'])
+          assert.strictEqual(manual.blockAt(head).name, 'piston_head')
+        } finally {
+          manual.end()
+        }
+      })
+
       it('a teleport keeps the motion by its delta flags and adds its deltas, 1.21.2+ (PositionMoveRotation.calculateAbsolute)', async function () {
         if (!require('minecraft-data')(supportedVersion).isNewerOrEqualTo('1.21.2')) return this.skip()
         const { manual, client, runTicks } = await standingManualBot()
