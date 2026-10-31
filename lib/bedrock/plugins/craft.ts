@@ -3,12 +3,13 @@ import type { Window } from 'prismarine-windows'
 import type { FrameContext } from '../core/types.ts'
 import { HOTBAR_AND_INVENTORY, placesFor } from '../modules/clicks.ts'
 import type { ClickedSlots, WindowClick } from '../modules/clicks.ts'
-import { GRIDS } from '../modules/inventory.ts'
-import type { Draft, Move, ScreenType } from '../modules/inventory.ts'
+import type { Draft, Move } from '../modules/inventory.ts'
 import { craftRecipeAction, craftRecipeAutoAction, createAction, resultsAction, sameItem, withCount } from '../modules/items.ts'
 import type { SlotRef, Stack } from '../modules/items.ts'
 import { draw, drawSome, gridCells, Ingredients, matchGrid, nbtOf, RecipeBook, withNbt, writtenResult } from '../modules/recipes.ts'
 import type { CraftingRecipe, Drawn, GridUse, Ingredient } from '../modules/recipes.ts'
+import { INVENTORY_GRID } from '../screens/inventory.ts'
+import { TABLE_GRID } from '../screens/workbench.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
 import type { BedrockRecipe, BedrockVersion } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
@@ -18,6 +19,9 @@ const OWNER = 'craft'
 const OUTPUT: SlotRef = Object.freeze({ container: 'creative_output', slot: 50 })
 const CURSOR: SlotRef = Object.freeze({ container: 'cursor', slot: 0 })
 const OFFHAND: SlotRef = Object.freeze({ container: 'offhand', slot: 1 })
+/** the screens that craft in a grid */
+type ScreenType = 'inventory' | 'workbench'
+const GRIDS: Readonly<Record<ScreenType, readonly SlotRef[]>> = Object.freeze({ inventory: INVENTORY_GRID, workbench: TABLE_GRID })
 const GRID_WIDTHS: Readonly<Record<ScreenType, number>> = Object.freeze({ inventory: 2, workbench: 3 })
 // a grid slot holds a stack of an ingredient
 const MOST_TIMES = 64
@@ -135,7 +139,7 @@ export default function inject (bot: BedrockBotInternal): void {
     await core.call(ctx => select(ctx, found, all))
   }
 
-  inventory.outputClick = async (ctx, click, screen) => { await outputClick(ctx, click, screen) }
+  for (const screen of ['inventory', 'workbench'] as const) inventory.screens.extend(screen, { output: async (ctx, click) => { await outputClick(ctx, click, screen) } })
 
   function lacking ({ recipe }: CraftingRecipe, times: number): string {
     return `the inventory has not the ingredients to craft ${recipe.id} ${times} times`
@@ -154,7 +158,7 @@ export default function inject (bot: BedrockBotInternal): void {
 
   function screenOf ({ recipe }: CraftingRecipe): ScreenType {
     const type = inventory.screenType
-    if (type === undefined) throw new Error(`${recipe.id} needs an open crafting screen`)
+    if (type !== 'inventory' && type !== 'workbench') throw new Error(`${recipe.id} needs an open crafting screen`)
     if (type === 'inventory' && recipe.requiresTable) throw new Error(`${recipe.id} does not fit the inventory's grid`)
     return type
   }

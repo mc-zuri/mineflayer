@@ -1,3 +1,5 @@
+import { EventEmitter } from 'events'
+import type { Window } from 'prismarine-windows'
 import type TypedEmitter from 'typed-emitter'
 import type { Arguments } from 'typed-emitter'
 import type { BedrockBotEvents } from '../../types/api/index.ts'
@@ -27,6 +29,8 @@ interface Handler {
 }
 
 interface PacketStats { handled: number, threw: number, unhandled: number }
+
+type Listener = Parameters<typeof Reflect.apply>[0]
 
 const INERT_OUTBOX: OutboxWriter = Object.freeze({ queue: () => {} })
 
@@ -194,9 +198,15 @@ export class BedrockCore {
 
   /** an event whose name and arguments the user chose (a deprecated chat pattern's), emitted as emit does */
   emitNamed<Arg> (emitter: TypedEmitter<BedrockBotEvents>, name: string, args: readonly Arg[]): void {
-    if (this.replaying) return
     // the emitter keeps the listeners of any name
-    for (const listener of emitter.rawListeners(name as keyof BedrockBotEvents)) this.guard('a listener', () => { Reflect.apply(listener, emitter, args) })
+    this.callListeners(emitter, emitter.rawListeners(name as keyof BedrockBotEvents), args)
+  }
+
+  /** a window's own event (a furnace's update), emitted as emit does */
+  emitWindow<Arg> (window: Window, name: string, args: readonly Arg[]): void {
+    // prismarine-windows types a window with no events of its own: an EventEmitter, it keeps the listeners of any name
+    const listeners: readonly Listener[] = Reflect.apply(EventEmitter.prototype.rawListeners, window, [name])
+    this.callListeners(window, listeners, args)
   }
 
   /** an unrecoverable error: the connection closes, and every wait rejects */
@@ -336,6 +346,12 @@ export class BedrockCore {
       this.stats.packets.set(name, stats)
     }
     return stats
+  }
+
+  /** each apart, so that one throwing is reported and the others still hear it; none while replaying */
+  private callListeners<Arg> (emitter: object, listeners: readonly Listener[], args: readonly Arg[]): void {
+    if (this.replaying) return
+    for (const listener of listeners) this.guard('a listener', () => { Reflect.apply(listener, emitter, args) })
   }
 
   /** runs `run`, reporting what it throws; whether it returned */

@@ -22,18 +22,40 @@ export interface Stack {
   readonly wire: ReadItem | ReadItemV4
 }
 
-export type ContainerName = 'hotbar_and_inventory' | 'hotbar' | 'inventory' | 'armor' | 'offhand' | 'cursor' | 'crafting_input' | 'creative_output'
+/** every container a request names, of every version: the codec writes the names, which 1.19.50 renumbered */
+export type ContainerName = Exclude<MCProtocol.Bedrock.Write.Types.ContainerSlotType, number>
 
 export interface SlotRef {
   readonly container: ContainerName
   readonly slot: number
 }
 
-export type ActionType = 'take' | 'place' | 'swap' | 'drop' | 'consume' | 'create' | 'craft_recipe' | 'craft_recipe_auto' | 'results_deprecated'
+export type ActionType = 'take' | 'place' | 'swap' | 'drop' | 'destroy' | 'consume' | 'create' | 'lab_table_combine' | 'beacon_payment' | 'mine_block' |
+  'craft_recipe' | 'craft_recipe_auto' | 'craft_creative' | 'optional' | 'craft_grindstone_request' | 'craft_loom_request' | 'non_implemented' | 'results_deprecated'
 
+/** the types as 1.18.11 – 1.26.30 numbered them, which 1.26.40 writes again after the type */
 const LEGACY_TYPE_IDS: Readonly<Record<ActionType, number>> = Object.freeze({
-  take: 0, place: 1, swap: 2, drop: 3, consume: 5, create: 6, craft_recipe: 12, craft_recipe_auto: 13, results_deprecated: 19
+  take: 0,
+  place: 1,
+  swap: 2,
+  drop: 3,
+  destroy: 4,
+  consume: 5,
+  create: 6,
+  lab_table_combine: 9,
+  beacon_payment: 10,
+  mine_block: 11,
+  craft_recipe: 12,
+  craft_recipe_auto: 13,
+  craft_creative: 14,
+  optional: 15,
+  craft_grindstone_request: 16,
+  craft_loom_request: 17,
+  non_implemented: 18,
+  results_deprecated: 19
 })
+// 1.26.60's craft_reserved comes before these
+const RESERVED_BEFORE = LEGACY_TYPE_IDS.non_implemented
 
 /** Mojang's names: the protocol names only ok and error */
 const STACK_RESULTS = Object.freeze([
@@ -129,37 +151,42 @@ export function slotInfo (version: BedrockVersion, { container, slot }: SlotRef,
   return { slot_type: { container_id: container }, slot, stack_id: stackId }
 }
 
-// from 1.26.40 the type is written again, as a byte: 1.26.60's craft_reserved comes before results_deprecated
-function action (version: BedrockVersion, type: ActionType, fields: Omit<StackAction, 'type_id'>): StackAction {
+/** an action of a request, each screen's own among them: from 1.26.40 its type is written again, as a byte */
+export function stackAction (version: BedrockVersion, type: ActionType, fields: Omit<StackAction, 'type_id'>): StackAction {
   if (!isBedrockVersionAtLeast(version, 'bedrock_1.26.40')) return { type_id: type, ...fields }
-  const reserved = type === 'results_deprecated' && isBedrockVersionAtLeast(version, 'bedrock_1.26.60') ? 1 : 0
-  return { type_id: type, legacy_type_id: LEGACY_TYPE_IDS[type] + reserved, ...fields }
+  const legacy = LEGACY_TYPE_IDS[type]
+  const reserved = legacy >= RESERVED_BEFORE && isBedrockVersionAtLeast(version, 'bedrock_1.26.60') ? 1 : 0
+  return { type_id: type, legacy_type_id: legacy + reserved, ...fields }
 }
 
 export function moveAction (version: BedrockVersion, type: 'take' | 'place', count: number, source: SlotInfo, destination: SlotInfo): StackAction {
-  return action(version, type, { count, source, destination })
+  return stackAction(version, type, { count, source, destination })
 }
 
 export function swapAction (version: BedrockVersion, source: SlotInfo, destination: SlotInfo): StackAction {
-  return action(version, 'swap', { source, destination })
+  return stackAction(version, 'swap', { source, destination })
 }
 
 export function dropAction (version: BedrockVersion, count: number, source: SlotInfo): StackAction {
-  return action(version, 'drop', { count, source, randomly: false })
+  return stackAction(version, 'drop', { count, source, randomly: false })
+}
+
+export function destroyAction (version: BedrockVersion, count: number, source: SlotInfo): StackAction {
+  return stackAction(version, 'destroy', { count, source })
 }
 
 export function consumeAction (version: BedrockVersion, count: number, source: SlotInfo): StackAction {
-  return action(version, 'consume', { count, source })
+  return stackAction(version, 'consume', { count, source })
 }
 
 export function createAction (version: BedrockVersion, index: number): StackAction {
-  return action(version, 'create', { result_slot_id: index })
+  return stackAction(version, 'create', { result_slot_id: index })
 }
 
 // the times from 1.21.20
 export function craftRecipeAction (version: BedrockVersion, networkId: number, times: number): StackAction {
-  if (!isBedrockVersionAtLeast(version, 'bedrock_1.21.20')) return action(version, 'craft_recipe', { recipe_network_id: networkId })
-  return action(version, 'craft_recipe', { recipe_network_id: networkId, times_crafted: times })
+  if (!isBedrockVersionAtLeast(version, 'bedrock_1.21.20')) return stackAction(version, 'craft_recipe', { recipe_network_id: networkId })
+  return stackAction(version, 'craft_recipe', { recipe_network_id: networkId, times_crafted: times })
 }
 
 type AutoIngredients = NonNullable<StackAction['ingredients']>
@@ -170,10 +197,10 @@ export function craftRecipeAutoAction (version: BedrockVersion, networkId: numbe
   // each of the version's kind
   const ingredients = written as AutoIngredients
   const atLeast = (since: BedrockVersion): boolean => isBedrockVersionAtLeast(version, since)
-  if (!atLeast('bedrock_1.17.10')) return action(version, 'craft_recipe_auto', { recipe_network_id: networkId })
-  if (!atLeast('bedrock_1.19.40')) return action(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted: times })
-  if (!atLeast('bedrock_1.21.20') || atLeast('bedrock_1.26.40')) return action(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted: times, ingredients })
-  return action(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted_2: times, times_crafted: times, ingredients })
+  if (!atLeast('bedrock_1.17.10')) return stackAction(version, 'craft_recipe_auto', { recipe_network_id: networkId })
+  if (!atLeast('bedrock_1.19.40')) return stackAction(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted: times })
+  if (!atLeast('bedrock_1.21.20') || atLeast('bedrock_1.26.40')) return stackAction(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted: times, ingredients })
+  return stackAction(version, 'craft_recipe_auto', { recipe_network_id: networkId, times_crafted_2: times, times_crafted: times, ingredients })
 }
 
 type ResultItems = NonNullable<StackAction['result_items']>
@@ -181,12 +208,18 @@ export type ResultItem = ResultItems[number]
 
 export function resultsAction (version: BedrockVersion, items: ResultItem[], times: number): StackAction {
   // each of the version's kind
-  return action(version, 'results_deprecated', { result_items: items as ResultItems, times_crafted: times })
+  return stackAction(version, 'results_deprecated', { result_items: items as ResultItems, times_crafted: times })
 }
 
-export function stackRequest (version: BedrockVersion, requestId: number, actions: StackAction[]): StackRequest {
-  if (!isBedrockVersionAtLeast(version, 'bedrock_1.19.30')) return { request_id: requestId, actions, custom_names: [] }
-  return { request_id: requestId, actions, custom_names: [], cause: -1 }
+/** what a request tells besides its actions: the names an anvil gives, and from 1.19.30 why (-1: no text) */
+export interface RequestText {
+  readonly customNames?: readonly string[]
+  readonly cause?: NonNullable<StackRequest['cause']>
+}
+
+export function stackRequest (version: BedrockVersion, requestId: number, actions: StackAction[], { customNames = [], cause = -1 }: RequestText = {}): StackRequest {
+  const request = { request_id: requestId, actions, custom_names: [...customNames] }
+  return isBedrockVersionAtLeast(version, 'bedrock_1.19.30') ? { ...request, cause } : request
 }
 
 export interface ResponseSlot {
@@ -194,6 +227,9 @@ export interface ResponseSlot {
   readonly slot: number
   readonly count: number
   readonly stackId: number
+  /** an anvil's or a grindstone's result, as the server made it: its name ('' none), its damage */
+  readonly customName: string
+  readonly durabilityCorrection: number
 }
 
 export interface StackResponse {
@@ -209,7 +245,9 @@ export function readResponses (responses: ReadResponses): StackResponse[] {
     const code = status === 'ok' ? 0 : status === 'error' ? 1 : Number(status)
     const slots = (response.containers ?? []).flatMap(({ container_id: containerId, slot_type: slotType, slots }) => {
       const container = String(typeof slotType === 'object' ? slotType.container_id : slotType ?? containerId)
-      return slots.map(({ slot, count, item_stack_id: stackId }) => ({ container, slot, count, stackId: stackId ?? 0 }))
+      return slots.map(({ slot, count, item_stack_id: stackId, custom_name: customName, durability_correction: durability }) => ({
+        container, slot, count, stackId: stackId ?? 0, customName, durabilityCorrection: durability ?? 0
+      }))
     })
     return { requestId: response.request_id, ok: code === 0, status: STACK_RESULTS[code] ?? `status ${code}`, slots }
   })

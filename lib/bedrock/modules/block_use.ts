@@ -155,8 +155,6 @@ export class BlockUse {
   private runtimeId: bigint | undefined
   /** the use going on, until its key's release */
   private pressed: Use | undefined
-  private opened = 0
-  private openedType = ''
 
   constructor (bot: BedrockBotInternal, player: LocalPlayer, inventory: Inventory) {
     this.bot = bot
@@ -168,20 +166,17 @@ export class BlockUse {
     this.bot.activateBlock = async (block, direction, cursorPos) => { await this.use(core, block, { direction, cursorPos }) }
     this.bot.openBlock = async (block, direction, cursorPos) => await this.open(core, block, { direction, cursorPos })
     core.observe(OWNER, 'start_game', packet => { this.runtimeId = packet.runtime_entity_id })
-    core.observe(OWNER, 'container_open', packet => {
-      this.opened++
-      this.openedType = String(packet.window_type)
-    })
     core.system(OWNER, { name: 'use.end', place: { after: 'input.cook' }, gate: 'present', replay: false, run: ({ tick, outbox }) => { this.end(tick, outbox) } })
   }
 
-  /** the use, resolving with the screen the server opened */
+  /** the use, resolving with the screen the server opened, once shown: at its opening, or at its window's first content */
   async open (core: BedrockCore, block: Block, options: UseOptions = {}): Promise<Window> {
-    const opened = this.opened
-    const shown = core.waits.until(() => this.opened > opened, OPEN_TICKS, `the server did not open the ${block.name} in ${OPEN_TICKS} ticks`)
+    const { inventory } = this
+    const openings = inventory.openings
+    const shown = core.waits.until(() => inventory.openings > openings, OPEN_TICKS, `the server did not open the ${block.name} in ${OPEN_TICKS} ticks`)
     await Promise.all([shown, this.use(core, block, options)])
     const window = this.bot.currentWindow
-    if (window === null) throw new Error(`the server opened a ${this.openedType} screen, which the bot does not show`)
+    if (window === null) throw new Error(`the server opened a ${String(inventory.lastOpened)} screen, which the bot does not show`)
     return window
   }
 

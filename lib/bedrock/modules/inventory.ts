@@ -8,11 +8,15 @@ import { isBedrockVersionAtLeast } from '../version.ts'
 import { swingArm } from './block_use.ts'
 import type { BedrockVersion, StorageEvents } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
-import type { BedrockClientboundPackets, BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
-import { clickMoves, HOTBAR_AND_INVENTORY, isSupportedClick, placesFor } from './clicks.ts'
+import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
+import { INVENTORY_LAYOUT, INVENTORY_SCREEN } from '../screens/inventory.ts'
+import { WORKBENCH_SCREEN } from '../screens/workbench.ts'
+import { clickMoves, defaultShiftTargets, HOTBAR_AND_INVENTORY, isSupportedClick, placesFor } from './clicks.ts'
 import type { ClickedSlots, WindowClick } from './clicks.ts'
-import { consumeAction, dropAction, heldItemOf, itemOf, moveAction, readResponses, readStack, sameItem, sameKind, slotInfo, stackRequest, swapAction, withCount } from './items.ts'
-import type { ContainerName, ResponseSlot, SlotRef, Stack, StackRequest, StackResponse } from './items.ts'
+import { consumeAction, destroyAction, dropAction, heldItemOf, itemOf, moveAction, readResponses, readStack, sameItem, sameKind, slotInfo, stackRequest, swapAction, withCount } from './items.ts'
+import type { RequestText, ResponseSlot, SlotRef, Stack, StackRequest, StackResponse } from './items.ts'
+import { OUTPUT, PLAYER_SLOTS, Screens } from './screens.ts'
+import type { Defined, OpenScreen, ScreenDefinition, ScreenHooks, ScreenLayout, ScreenOpening, WindowId, WindowType, WindowTypeName } from './screens.ts'
 
 type StackAction = StackRequest['actions'][number]
 
@@ -22,69 +26,39 @@ const RESPONSE_TICKS = 100
 // recorded: 124 to 144 ms after container_open
 const OPTIONS_DELAY: Ns = 120 * MS
 // recorded at 32 and 16 frames a second: about 228 to 241 ms and 386 to 398 ms
-const ANIMATIONS: Readonly<Record<ScreenType, Ns>> = Object.freeze({ inventory: 240 * MS, workbench: 390 * MS })
+const ANIMATIONS: Readonly<Record<ScreenDefinition['animation'], Ns>> = Object.freeze({ inventory: 240 * MS, workbench: 390 * MS, none: 0 })
 // what a component item without max_stack_size stacks to
 const DEFAULT_STACK_SIZE = 64
 const HOTBAR_START = 36
 const OFFHAND = 'offhand:1'
 const OUTSIDE = -999
 
-/** a slot of the bot's containers: `inventory:0` – `inventory:35`, `armor:0` – `armor:3`, `offhand:1`, `ui:<slot>` */
+/** a slot of the bot's containers: `inventory:0` – `inventory:35`, `armor:0` – `armor:3`, `offhand:1`, `ui:<slot>`, `open:<slot>` (the open screen's own window) */
 type Key = string
 
-export type ScreenType = 'inventory' | 'workbench'
-
-const STORES: Readonly<Record<ContainerName, string>> = Object.freeze({
-  hotbar_and_inventory: 'inventory',
-  hotbar: 'inventory',
-  inventory: 'inventory',
-  armor: 'armor',
-  offhand: 'offhand',
-  cursor: 'ui',
-  crafting_input: 'ui',
-  creative_output: 'ui'
-})
+type Where = readonly [store: string, first: number]
 
 // the offhand's one item is a request's slot 1
-const WINDOWS: Readonly<Record<string, readonly [store: string, first: number]>> = Object.freeze({
+const WINDOWS: Readonly<Record<string, Where>> = Object.freeze({
   inventory: Object.freeze(['inventory', 0] as const),
   armor: Object.freeze(['armor', 0] as const),
   offhand: Object.freeze(['offhand', 1] as const),
   ui: Object.freeze(['ui', 0] as const)
 })
+const OWN: Where = Object.freeze(['open', 0] as const)
 
-function keysOf (store: string, from: number, to: number): Key[] {
-  return Array.from({ length: to - from + 1 }, (_, index) => `${store}:${from + index}`)
+/** Java's window of a layout, by the slot each of its slots shows */
+function viewOf ({ slots, after = [] }: ScreenLayout): readonly SlotRef[] {
+  return [...slots, ...PLAYER_SLOTS, ...after]
 }
 
-/** Java's window layouts, by the slot each window slot shows */
-const INVENTORY_VIEW: readonly Key[] = Object.freeze(['ui:50', ...keysOf('ui', 28, 31), ...keysOf('armor', 0, 3), ...keysOf('inventory', 9, 35), ...keysOf('inventory', 0, 8), OFFHAND])
-const CRAFTING_TABLE_VIEW: readonly Key[] = Object.freeze(['ui:50', ...keysOf('ui', 32, 40), ...keysOf('inventory', 9, 35), ...keysOf('inventory', 0, 8)])
-
-const CURSOR: SlotRef = Object.freeze({ container: 'cursor', slot: 0 })
-const OUTPUT_KEY = 'ui:50'
-const INVENTORY_GRID: readonly SlotRef[] = Object.freeze([28, 29, 30, 31].map(slot => Object.freeze({ container: 'crafting_input', slot })))
-const TABLE_GRID: readonly SlotRef[] = Object.freeze([32, 33, 34, 35, 36, 37, 38, 39, 40].map(slot => Object.freeze({ container: 'crafting_input', slot })))
-
-function keyOf ({ container, slot }: SlotRef): Key {
-  return `${STORES[container]}:${slot}`
+function ownsWindow ({ containers }: ScreenDefinition): boolean {
+  return Object.values(containers).includes('open')
 }
 
-/** a window slot as a click's request names it */
-function clickedRefOf (key: Key): SlotRef {
-  const [store, slotName] = key.split(':')
-  const slot = Number(slotName)
-  if (store === 'inventory') return { container: slot < 9 ? 'hotbar' : 'inventory', slot }
-  if (store === 'ui') return { container: slot === 50 ? 'creative_output' : 'crafting_input', slot }
-  return { container: store === 'armor' ? 'armor' : 'offhand', slot }
-}
-
-function isContainerName (name: string): name is ContainerName {
-  return Object.hasOwn(STORES, name)
-}
-
-function responseKeyOf ({ container, slot }: ResponseSlot): Key | undefined {
-  return isContainerName(container) ? keyOf({ container, slot }) : undefined
+/** a click on an output is its feature's to make */
+function isOutput (clicked: SlotRef | undefined, { mode }: WindowClick): boolean {
+  return clicked?.container === OUTPUT.container && mode !== 4
 }
 
 function changeOf (before: Stack | undefined, after: Stack | undefined): 'item' | 'other' | undefined {
@@ -93,9 +67,6 @@ function changeOf (before: Stack | undefined, after: Stack | undefined): 'item' 
   return sameItem(before, after) && before.count === after.count ? undefined : 'other'
 }
 
-/** the crafting grid of each screen, row by row */
-export const GRIDS: Readonly<Record<ScreenType, readonly SlotRef[]>> = Object.freeze({ inventory: INVENTORY_GRID, workbench: TABLE_GRID })
-
 /** the stack a move takes `count` of, and what it leaves */
 function takenFrom (count: number, from: SlotRef, source: Stack | undefined): [Stack, Stack | undefined] {
   if (source === undefined || source.count < count) throw new Error(`${from.container} ${from.slot} has not ${count} items`)
@@ -103,10 +74,10 @@ function takenFrom (count: number, from: SlotRef, source: Stack | undefined): [S
 }
 
 /** what a move leaves in the slots it changes, each as it was before any; a new stack is named by the request's id */
-function changesOf (move: Move, stackAt: (key: Key) => Stack | undefined, requestId: number): Array<[Key, Stack | undefined]> {
-  if (move.type === 'action') return move.output === undefined ? [] : [[OUTPUT_KEY, move.output]]
+function changesOf (move: Move, stackAt: (key: Key) => Stack | undefined, keyOf: (ref: SlotRef) => Key, requestId: number): Array<[Key, Stack | undefined]> {
+  if (move.type === 'action') return move.output === undefined ? [] : [[keyOf(OUTPUT), move.output]]
   const fromKey = keyOf(move.from)
-  if (move.type === 'drop' || move.type === 'consume') return [[fromKey, takenFrom(move.count, move.from, stackAt(fromKey))[1]]]
+  if (move.type === 'drop' || move.type === 'consume' || move.type === 'destroy') return [[fromKey, takenFrom(move.count, move.from, stackAt(fromKey))[1]]]
   const toKey = keyOf(move.to)
   const destination = stackAt(toKey)
   if (move.type === 'swap') return [[fromKey, destination], [toKey, stackAt(fromKey)]]
@@ -117,7 +88,7 @@ function changesOf (move: Move, stackAt: (key: Key) => Stack | undefined, reques
 }
 
 /** WindowID names the dynamic ids 1 and 100 first and last */
-function windowIdOf (id: BedrockClientboundPackets['container_open']['window_id']): number {
+function windowIdOf (id: WindowId): number {
   if (id === 'first') return 1
   if (id === 'last') return 100
   return Number(id)
@@ -133,36 +104,55 @@ function windowsOf (registry: BedrockBotInternal['registry']): ReturnType<typeof
   return Reflect.apply(prismarineWindows, undefined, [registry])
 }
 
-/** `action` writes an action that names no slot, after which the created output holds `output`, if given */
+/** `action` writes an action that names no slot, after which the created output holds `output`, if given; `destroy` is a drop without the swing */
 export type Move =
   | { readonly type: 'take' | 'place', readonly count: number, readonly from: SlotRef, readonly to: SlotRef }
   | { readonly type: 'swap', readonly from: SlotRef, readonly to: SlotRef }
   | { readonly type: 'drop', readonly count: number, readonly from: SlotRef }
   | { readonly type: 'consume', readonly count: number, readonly from: SlotRef }
+  | { readonly type: 'destroy', readonly count: number, readonly from: SlotRef }
   | { readonly type: 'action', readonly action: StackAction, readonly output?: Stack | undefined }
 
-/** the slots as moves made so far would leave them, on top of the bot's */
-export class Draft implements Pick<ClickedSlots, 'stackAt' | 'stackSize'> {
+/** the slots as moves made so far would leave them, on top of the bot's, with the rules of the screen open when it was made */
+export class Draft implements ClickedSlots {
   private readonly planned = new Map<Key, Stack | undefined>()
   private readonly base: (key: Key) => Stack | undefined
-  private readonly sizes: Pick<ClickedSlots, 'stackSize'>
+  private readonly keyOf: (ref: SlotRef) => Key
+  private readonly rules: Omit<ClickedSlots, 'stackAt'>
 
-  constructor (base: (key: Key) => Stack | undefined, sizes: Pick<ClickedSlots, 'stackSize'>) {
+  constructor (base: (key: Key) => Stack | undefined, keyOf: (ref: SlotRef) => Key, rules: Omit<ClickedSlots, 'stackAt'>) {
     this.base = base
-    this.sizes = sizes
+    this.keyOf = keyOf
+    this.rules = rules
   }
 
   stackAt (ref: SlotRef): Stack | undefined {
-    return this.at(keyOf(ref))
+    return this.at(this.keyOf(ref))
   }
 
   stackSize (stack: Stack): number {
-    return this.sizes.stackSize(stack)
+    return this.rules.stackSize(stack)
+  }
+
+  enchantCategories (stack: Stack): readonly string[] {
+    return this.rules.enchantCategories(stack)
+  }
+
+  itemName (stack: Stack): string | undefined {
+    return this.rules.itemName(stack)
+  }
+
+  shiftTargets (from: SlotRef, stack: Stack): readonly SlotRef[] {
+    return this.rules.shiftTargets(from, stack)
+  }
+
+  accepts (to: SlotRef, stack: Stack): boolean | undefined {
+    return this.rules.accepts(to, stack)
   }
 
   /** throws where the slots cannot make a move */
   apply (moves: readonly Move[]): void {
-    for (const move of moves) for (const [key, stack] of changesOf(move, key => this.at(key), 0)) this.planned.set(key, stack)
+    for (const move of moves) for (const [key, stack] of changesOf(move, key => this.at(key), this.keyOf, 0)) this.planned.set(key, stack)
   }
 
   private at (key: Key): Stack | undefined {
@@ -177,24 +167,36 @@ interface PendingRequest {
   response: StackResponse | undefined
 }
 
-interface Screen {
-  readonly id: BedrockClientboundPackets['container_open']['window_id']
-  readonly type: ScreenType
-  readonly window: Window
-  readonly view: readonly Key[]
+interface Screen extends OpenScreen {
+  readonly hooks: readonly ScreenHooks[]
+  /** each window slot, as a request names it, and its key */
+  readonly view: readonly SlotRef[]
+  readonly keys: readonly Key[]
+  readonly properties: Map<number, number>
+}
+
+/** a screen opened, shown at once or at its window's first content */
+interface Opened {
+  readonly opening: ScreenOpening
+  readonly defined: Defined
+  readonly properties: Map<number, number>
+}
+
+/** a click mode a feature makes (a drag, a double click): its buttons, and the click, made in its input pass */
+export interface ClickMode {
+  readonly buttons: readonly number[]
+  readonly click: (ctx: FrameContext, click: WindowClick, screen: OpenScreen, clicked: SlotRef | undefined) => Promise<void>
 }
 
 export interface InventorySettings {
   readonly screenAnimations: boolean
 }
 
-/** from 1.26.60 the vanilla client brackets a click placing from the cursor: when its request left */
+/** from 1.26.60 the vanilla client brackets a click placing from the cursor: when its request left; held through a drag */
 interface CursorDrag {
   leftAt: Ns | undefined
+  held: boolean
 }
-
-/** a click on a crafting output, made in an input pass: the crafting plugin's */
-export type OutputClick = (ctx: FrameContext, click: WindowClick, screen: ScreenType) => Promise<void>
 
 interface Closing {
   readonly screen: Screen
@@ -208,9 +210,10 @@ interface Closing {
 /** The player's items as the server sends them and the bot's requests predict them, shown in Java's windows. */
 export class Inventory {
   quickBarSlot = 0
-  /** with none, a click on a crafting output sends nothing */
-  outputClick: OutputClick | undefined
-  readonly stats = { otherWindows: 0, otherScreens: 0, unknownResponses: 0 }
+  /** the screens the bot shows: its features add theirs */
+  readonly screens = new Screens()
+  /** otherData: container_set_data's dropped, of an id no screen opened with */
+  readonly stats = { otherWindows: 0, otherScreens: 0, otherData: 0, unknownResponses: 0 }
   readonly window: Window<StorageEvents>
   private readonly bot: BedrockBotInternal
   private readonly settings: InventorySettings
@@ -223,28 +226,35 @@ export class Inventory {
   /** the frame's responses, taken in after its input: a click in the frame a response came in names the slots by the request, as the vanilla client's */
   private answers: StackResponse[] = []
   private screen: Screen | undefined
+  /** a screen opened, to be shown at its window's first content */
+  private unshown: Opened | undefined
+  /** container_set_data's of ids not open, by id: a furnace's come before its container_open */
+  private readonly unopened = new Map<string, Map<number, number>>()
+  private openingCount = 0
+  private lastOpening: WindowType | undefined
   private closing: Closing | undefined
   private runtimeId: bigint | undefined
   private equipmentChanged = true
   /** undefined until the player is first shown */
   private equipped: { main: Stack | undefined, offhand: Stack | undefined } | undefined
-  private readonly screensOpened = new Set<ScreenType>()
-  private readonly screensTold = new Set<ScreenType>()
-  private optionsDue: Array<{ readonly type: ScreenType, readonly at: Ns }> = []
+  private readonly layoutsOpened = new Set<NonNullable<ScreenDefinition['options']>>()
+  private readonly layoutsTold = new Set<NonNullable<ScreenDefinition['options']>>()
+  private optionsDue: Ns[] = []
   private cursorDrag: CursorDrag | undefined
-  private readonly clickedSlots: ClickedSlots = {
-    stackAt: ref => this.stackAt(ref),
-    stackSize: ({ networkId }) => this.bot.registry.items[networkId]?.stackSize ?? DEFAULT_STACK_SIZE,
-    enchantCategories: ({ networkId }) => this.bot.registry.items[networkId]?.enchantCategories ?? [],
-    itemName: ({ networkId }) => this.bot.registry.items[networkId]?.name
-  }
+  private readonly clickModes = new Map<number, ClickMode>()
+  /** bot.inventory's slots, by the slot each shows */
+  private readonly inventoryKeys: readonly Key[]
 
   constructor (bot: BedrockBotInternal, settings: InventorySettings) {
     this.bot = bot
     this.settings = settings
     this.Item = prismarineItem(bot.registry)
     this.Window = windowsOf(bot.registry).Window
-    this.window = new this.Window<StorageEvents>(0, 'minecraft:inventory', 'Inventory', INVENTORY_VIEW.length, { start: 9, end: 44 }, 0, true)
+    // the inventory screen is there without the plugins
+    this.screens.add(INVENTORY_SCREEN)
+    this.screens.add(WORKBENCH_SCREEN)
+    this.inventoryKeys = viewOf(INVENTORY_LAYOUT).map(ref => this.keyOf(ref))
+    this.window = this.javaWindow(0, INVENTORY_LAYOUT)
   }
 
   install (core: BedrockCore): void {
@@ -267,43 +277,37 @@ export class Inventory {
       // a Bedrock version's registry, though prismarine-registry's typings give either edition's
       if ('handleItemRegistry' in registry) registry.handleItemRegistry(packet)
     })
-    core.handle(OWNER, 'inventory_content', packet => {
+    core.handle(OWNER, 'inventory_content', (packet, { now }) => {
       // 1.16.201 names it inventory_id
-      const where = WINDOWS[String(packet.window_id ?? packet.inventory_id)]
+      const id = String(packet.window_id ?? packet.inventory_id)
+      const { unshown } = this
+      const sized = unshown !== undefined && String(unshown.opening.id) === id ? unshown : undefined
+      const where = sized === undefined ? this.whereOf(id) : OWN
       if (where === undefined) {
         this.stats.otherWindows++
         return
       }
       packet.input.forEach((item, index) => { this.receive(`${where[0]}:${where[1] + index}`, readStack(item)) })
       this.equipmentChanged = true
+      if (sized === undefined) return
+      this.unshown = undefined
+      this.show(core, now, sized, packet.input.length)
     })
-    core.handle(OWNER, 'inventory_slot', packet => {
-      const where = WINDOWS[String(packet.window_id)]
-      if (where === undefined) {
-        this.stats.otherWindows++
-        return
-      }
-      this.receive(`${where[0]}:${where[1] + packet.slot}`, readStack(packet.item))
-      this.equipmentChanged = true
-    })
-    core.handle(OWNER, 'player_hotbar', packet => {
-      if (!packet.select_slot || packet.selected_slot === this.quickBarSlot) return
-      this.quickBarSlot = packet.selected_slot
-      core.emit(bot, 'heldItemChanged', bot.heldItem)
-      this.equipmentChanged = true
-    })
+    core.handle(OWNER, 'inventory_slot', packet => { this.receiveSlot(packet.window_id, packet.slot, readStack(packet.item)) })
+    core.handle(OWNER, 'player_hotbar', packet => { if (packet.select_slot) this.select(core, packet.selected_slot) })
     core.handle(OWNER, 'item_stack_response', packet => { this.answers.push(...readResponses(packet.responses)) })
-    core.handle(OWNER, 'container_open', (packet, ctx) => { this.open(core, packet, ctx.now) })
+    core.handle(OWNER, 'container_open', (packet, ctx) => {
+      this.openScreen(core, ctx, { id: packet.window_id, type: packet.window_type, position: packet.coordinates, entity: packet.runtime_entity_id })
+    })
     core.handle(OWNER, 'container_close', packet => {
       const { screen } = this
-      if (screen === undefined || packet.window_id !== screen.id) return
-      this.screen = undefined
-      this.closing = undefined
-      core.emit(bot, 'windowClose', screen.window)
+      if (this.unshown?.opening.id === packet.window_id) this.unshown = undefined
+      if (screen?.opening.id === packet.window_id) this.closed(core, screen)
     })
+    core.handle(OWNER, 'container_set_data', packet => { this.setData(packet.window_id, packet.property, packet.value) })
     core.inputPass(OWNER, ctx => {
       this.takeAnswers()
-      this.send(ctx)
+      this.send(core, ctx)
     })
     // up to 1.19.0 after the tick's auth input, from 1.19.10 before it
     const place = this.atLeast('bedrock_1.19.10') ? { at: 'ActorLegacyTickSystem' as const } : { after: 'lifecycle.hold' }
@@ -317,23 +321,121 @@ export class Inventory {
   }
 
   /** the open screen that can still be clicked: none once its close handed the items back */
-  get screenType (): ScreenType | undefined {
-    return this.closing?.end === undefined ? this.screen?.type : undefined
+  get screenType (): WindowTypeName | undefined {
+    return this.closing?.end === undefined ? this.screen?.definition.type : undefined
   }
 
-  /** the slots as the bot predicts them, for moves to be planned on */
+  /** the screens the server opened, each counted once shown or refused: what openBlock waits for */
+  get openings (): number {
+    return this.openingCount
+  }
+
+  /** the type of the screen last counted in openings */
+  get lastOpened (): WindowType | undefined {
+    return this.lastOpening
+  }
+
+  /** the slots as the bot predicts them, for moves to be planned on, with the open screen's rules */
   draft (): Draft {
-    return new Draft(key => this.slots.get(key), this.clickedSlots)
+    const definition = this.screen?.definition
+    const names: Pick<ClickedSlots, 'itemName' | 'enchantCategories'> = {
+      enchantCategories: ({ networkId }) => this.bot.registry.items[networkId]?.enchantCategories ?? [],
+      itemName: ({ networkId }) => this.bot.registry.items[networkId]?.name
+    }
+    return new Draft(key => this.slots.get(key), ref => this.keyOf(ref), {
+      ...names,
+      stackSize: ({ networkId }) => this.bot.registry.items[networkId]?.stackSize ?? DEFAULT_STACK_SIZE,
+      shiftTargets: (from, stack) => definition?.shiftTargets?.(from, stack) ?? defaultShiftTargets(from),
+      accepts: (to, stack) => definition?.accepts?.(to, stack, names)
+    })
   }
 
   stackAt (ref: SlotRef): Stack | undefined {
-    return this.slots.get(keyOf(ref))
+    return this.slots.get(this.keyOf(ref))
+  }
+
+  /** a slot shown as `stack` until the server sends it, with no request: an edit the server answers otherwise */
+  predictSlot (ref: SlotRef, stack: Stack | undefined): void {
+    this.set(this.keyOf(ref), stack)
+  }
+
+  /** the slot of `window` that shows bot.inventory's slot `inventorySlot`, if it shows it */
+  windowSlotOf (window: Window, inventorySlot: number): number | undefined {
+    const key = this.inventoryKeys[inventorySlot]
+    const keys = window === this.window ? this.inventoryKeys : window === this.screen?.window ? this.screen.keys : []
+    const slot = keys.findIndex(shown => shown === key)
+    return slot < 0 ? undefined : slot
+  }
+
+  /** a slot of the player's windows, the ui's or the open screen's own, as inventory_slot sends it; another window's is counted */
+  receiveSlot (id: WindowId, slot: number, stack: Stack | undefined): void {
+    const where = this.whereOf(String(id))
+    if (where === undefined) {
+      this.stats.otherWindows++
+      return
+    }
+    this.receive(`${where[0]}:${where[1] + slot}`, stack)
+    this.equipmentChanged = true
+  }
+
+  /** the hotbar slot selected: by the server, in the packet pass; by the player, in an input pass */
+  select (core: BedrockCore, slot: number): void {
+    if (slot === this.quickBarSlot) return
+    this.quickBarSlot = slot
+    core.emit(this.bot, 'heldItemChanged', this.bot.heldItem)
+    this.equipmentChanged = true
+  }
+
+  /** a screen another packet opens (update_trade, update_equipment), in its packet pass, as container_open opens one */
+  openScreen (core: BedrockCore, { now }: FrameContext, opening: ScreenOpening): void {
+    const id = String(opening.id)
+    const properties = this.unopened.get(id) ?? new Map<number, number>()
+    this.unopened.delete(id)
+    // another id's were for no screen
+    for (const others of this.unopened.values()) this.stats.otherData += others.size
+    this.unopened.clear()
+    const defined = this.screens.definedOf(opening.type)
+    if (defined === undefined) {
+      this.notShown(opening.type)
+      return
+    }
+    this.unshown = undefined
+    this.clearOwn()
+    const opened: Opened = { opening, defined, properties }
+    if (defined.definition.shown === 'open') {
+      this.show(core, now, opened, undefined)
+      return
+    }
+    this.screen = undefined
+    this.unshown = opened
+  }
+
+  /** a click mode clickWindow does not make itself, made by a feature on every screen; throws for one made already */
+  addClickMode (mode: number, clickMode: ClickMode): void {
+    if (this.clickModes.has(mode) || isSupportedClick({ slot: 0, mouseButton: 0, mode })) throw new Error(`clickWindow makes mode ${mode} already`)
+    this.clickModes.set(mode, clickMode)
+  }
+
+  /** the moves a click on the open screen's window makes on the slots as `draft` has them, as clickWindow makes them: none for an output or a feature's mode */
+  clickMoves (click: WindowClick, draft: Draft): Move[] {
+    const { screen, clicked } = this.clicked(click)
+    return this.clickModes.has(click.mode) || isOutput(clicked, click) ? [] : this.movesOf(screen, click, clicked, draft)
+  }
+
+  /** from 1.26.60, a drag's bracket: started before its first request, then held until released at its end */
+  holdCursorDrag (ctx: FrameContext): void {
+    if (this.atLeast('bedrock_1.26.60')) this.startCursorDrag(ctx).held = true
+  }
+
+  /** the drag's end, in an input pass: its bracket stops in this one, or in that of the frame after its last request left */
+  releaseCursorDrag (): void {
+    if (this.cursorDrag !== undefined) this.cursorDrag.held = false
   }
 
   /** made in an input pass, it names its slots and predicts its moves at once, as the vanilla client does; the arm swings for each drop, in the pass */
-  async request (core: BedrockCore, { outbox }: FrameContext, moves: readonly Move[]): Promise<void> {
+  async request (core: BedrockCore, { outbox }: FrameContext, moves: readonly Move[], text: RequestText = {}): Promise<void> {
     this.check(moves)
-    const { runtimeId } = this
+    const { runtimeId, screen } = this
     if (runtimeId !== undefined) for (const move of moves) if (move.type === 'drop') outbox.queue('animate', swingArm(this.bot.version, runtimeId, 'dropitem'))
     const request: PendingRequest = { id: core.requestIds.nextStackRequest(), before: new Map(), response: undefined }
     this.pending.push(request)
@@ -342,7 +444,8 @@ export class Inventory {
       this.predict(request, move)
       return action
     })
-    this.queued.push(stackRequest(this.bot.version, request.id, actions))
+    this.queued.push(stackRequest(this.bot.version, request.id, actions, text))
+    if (screen !== undefined) for (const hooks of screen.hooks) hooks.requested?.(request.id, moves, screen)
     try {
       await core.waits.until(() => request.response !== undefined, RESPONSE_TICKS, `the server did not answer item stack request ${request.id} in ${RESPONSE_TICKS} ticks`)
     } catch (error) {
@@ -355,35 +458,49 @@ export class Inventory {
 
   /** a click names its slots in the input pass it is made in, and its request leaves in the next tick, as the vanilla client's */
   private async clickWindow (core: BedrockCore, click: WindowClick): Promise<void> {
-    if (!isSupportedClick(click)) throw new Error(`clickWindow does not support mode ${click.mode} with mouse button ${click.mouseButton} on Bedrock`)
+    const mode = this.clickModes.get(click.mode)
+    const supported = mode === undefined ? isSupportedClick(click) : mode.buttons.includes(click.mouseButton)
+    if (!supported) throw new Error(`clickWindow does not support mode ${click.mode} with mouse button ${click.mouseButton} on Bedrock`)
     await core.call(async ctx => { await this.click(core, ctx, click) })
   }
 
-  private async click (core: BedrockCore, ctx: FrameContext, click: WindowClick): Promise<void> {
+  /** the open screen and its slot a click is on: none outside the window */
+  private clicked (click: WindowClick): { screen: Screen, clicked: SlotRef | undefined } {
     const { screen } = this
     if (screen === undefined) throw new Error('clickWindow needs an open window: on Bedrock the inventory too is a screen (bot.openInventory())')
     if (this.screenType === undefined) throw new Error(`the ${screen.window.type} window is closing`)
-    const key = screen.view[click.slot]
-    if (key === undefined && click.slot !== OUTSIDE) throw new Error(`the ${screen.window.type} window has no slot ${click.slot}`)
-    const clicked = key === undefined ? undefined : clickedRefOf(key)
-    if (clicked?.container === 'creative_output' && click.mode !== 4) return await this.outputClick?.(ctx, click, screen.type)
-    const moves = clickMoves(click, clicked, this.clickedSlots)
+    const clicked = screen.view[click.slot]
+    if (clicked === undefined && click.slot !== OUTSIDE) throw new Error(`the ${screen.window.type} window has no slot ${click.slot}`)
+    return { screen, clicked }
+  }
+
+  private movesOf ({ definition }: Screen, click: WindowClick, clicked: SlotRef | undefined, draft: Draft): Move[] {
+    return [...definition.moves?.(click, clicked, draft) ?? clickMoves(click, clicked, draft)]
+  }
+
+  private async click (core: BedrockCore, ctx: FrameContext, click: WindowClick): Promise<void> {
+    const { screen, clicked } = this.clicked(click)
+    const mode = this.clickModes.get(click.mode)
+    if (mode !== undefined) return await mode.click(ctx, click, screen, clicked)
+    if (isOutput(clicked, click)) return await screen.hooks.find(hooks => hooks.output !== undefined)?.output?.(ctx, click, screen)
+    const moves = this.movesOf(screen, click, clicked, this.draft())
     if (moves.length === 0) return
     const dragged = click.mode === 0 && this.atLeast('bedrock_1.26.60') && moves.some(move => move.type === 'place' && move.from.container === 'cursor')
     if (dragged) this.startCursorDrag(ctx)
     await this.request(core, ctx, moves)
   }
 
-  private startCursorDrag (ctx: FrameContext): void {
+  private startCursorDrag (ctx: FrameContext): CursorDrag {
     this.stopCursorDrag(ctx)
-    if (this.cursorDrag !== undefined) return
+    if (this.cursorDrag !== undefined) return this.cursorDrag
     ctx.outbox.queue('serverbound_cursor_item_drag', { state: 'start' })
-    this.cursorDrag = { leftAt: undefined }
+    this.cursorDrag = { leftAt: undefined, held: false }
+    return this.cursorDrag
   }
 
   /** the vanilla client ends the drag in the input pass of the frame after its request left */
   private stopCursorDrag ({ outbox }: FrameContext): void {
-    if (this.cursorDrag?.leftAt === undefined) return
+    if (this.cursorDrag?.leftAt === undefined || this.cursorDrag.held) return
     outbox.queue('serverbound_cursor_item_drag', { state: 'stop' })
     this.cursorDrag = undefined
   }
@@ -392,11 +509,11 @@ export class Inventory {
     // the inventory being closed opens again once the server closed it, as the vanilla client's
     if (this.closing !== undefined) await this.closing.done.catch(() => {})
     const { screen, runtimeId } = this
-    if (screen?.type === 'inventory') return this.window
+    if (screen?.window === this.window) return this.window
     if (screen !== undefined) throw new Error(`the inventory cannot open over the ${screen.window.type} window`)
     if (runtimeId === undefined) throw new Error('the inventory cannot open before start_game')
     core.command(({ outbox }) => { outbox.queue('interact', this.interact('open_inventory', runtimeId)) })
-    await core.waits.until(() => this.screen?.type === 'inventory', RESPONSE_TICKS, `the server did not open the inventory in ${RESPONSE_TICKS} ticks`)
+    await core.waits.until(() => this.screen?.window === this.window, RESPONSE_TICKS, `the server did not open the inventory in ${RESPONSE_TICKS} ticks`)
     return this.window
   }
 
@@ -409,7 +526,7 @@ export class Inventory {
 
   private close (core: BedrockCore, screen: Screen): Closing {
     let handedBack: Promise<unknown> = Promise.resolve()
-    const closed = core.waits.until(() => this.screen !== screen, RESPONSE_TICKS, `the server did not close the ${screen.type} screen in ${RESPONSE_TICKS} ticks`)
+    const closed = core.waits.until(() => this.screen !== screen, RESPONSE_TICKS, `the server did not close the ${screen.definition.type} screen in ${RESPONSE_TICKS} ticks`)
     const closing: Closing = {
       screen,
       end: undefined,
@@ -424,22 +541,22 @@ export class Inventory {
       handedBack = Promise.all(this.handBack(core, ctx, screen))
       // awaited once the screen closed: a refusal before then is not unhandled
       handedBack.catch(() => {})
-      const animated = this.atLeast('bedrock_1.21.120') && this.settings.screenAnimations
-      closing.end = animated ? ctx.now + ANIMATIONS[screen.type] : ctx.now
+      const animation = ANIMATIONS[screen.definition.animation]
+      const animated = animation > 0 && this.atLeast('bedrock_1.21.120') && this.settings.screenAnimations
+      closing.end = animated ? ctx.now + animation : ctx.now
       closing.ended = !animated
     })
     return closing
   }
 
-  /** the inventory screen's grid goes back before the cursor, another screen's after it, as the vanilla client does; what has no room is dropped, a request a slot */
+  /** in the screen's order, as the vanilla client does; what has no room is dropped, a request a slot */
   private handBack (core: BedrockCore, ctx: FrameContext, screen: Screen): Array<Promise<void>> {
-    const sources = screen.type === 'inventory' ? [...INVENTORY_GRID, CURSOR] : [CURSOR, ...TABLE_GRID]
     const requests: Array<Promise<void>> = []
-    for (const from of sources) {
+    for (const from of screen.definition.handBack) {
       const stack = this.stackAt(from)
       if (stack === undefined) continue
       let left = stack.count
-      for (const { to, count } of placesFor(stack, HOTBAR_AND_INVENTORY, this.clickedSlots)) {
+      for (const { to, count } of placesFor(stack, HOTBAR_AND_INVENTORY, this.draft())) {
         requests.push(this.request(core, ctx, [{ type: 'place', count, from, to }]))
         left -= count
       }
@@ -448,36 +565,97 @@ export class Inventory {
     return requests
   }
 
-  private open (core: BedrockCore, packet: BedrockClientboundPackets['container_open'], now: Ns): void {
-    const type = packet.window_type
-    if (type !== 'inventory' && type !== 'workbench') {
-      this.stats.otherScreens++
+  /** its slots shown and its hooks run before windowOpen, in the packet pass */
+  private show (core: BedrockCore, now: Ns, { opening, defined: { definition, hooks }, properties }: Opened, contentSize: number | undefined): void {
+    const layout = definition.layout(opening, contentSize)
+    if (layout === undefined) {
+      this.notShown(opening.type)
       return
     }
-    const screen: Screen = type === 'inventory'
-      ? { id: packet.window_id, type, window: this.window, view: INVENTORY_VIEW }
-      : { id: packet.window_id, type, window: new this.Window(windowIdOf(packet.window_id), 'minecraft:crafting_table', 'Crafting', CRAFTING_TABLE_VIEW.length, { start: 10, end: 45 }, 0, true), view: CRAFTING_TABLE_VIEW }
-    if (screen.window !== this.window) this.showAll(screen)
+    const view = viewOf(layout)
+    const window = definition.playerWindow === true ? this.window : this.javaWindow(windowIdOf(opening.id), layout)
+    const screen: Screen = { opening, definition, window, view, keys: view.map(ref => this.keyOf(ref)), properties, hooks }
+    if (window !== this.window) this.showAll(screen)
     this.screen = screen
-    this.screensOpened.add(type)
-    // 1.20.50 – 1.21.101: once a client process, a screen's first opening tells the server the screens opened so far
-    if (this.atLeast('bedrock_1.20.50') && !this.atLeast('bedrock_1.21.111') && core.requestIds.freshProcess && !this.screensTold.has(type)) {
-      this.screensTold.add(type)
-      this.optionsDue.push({ type, at: now + OPTIONS_DELAY })
-    }
-    core.emit(this.bot, 'windowOpen', screen.window)
+    this.tellOptions(core, definition, now)
+    for (const run of this.screens.shownHooks) run(screen)
+    for (const hook of hooks) hook.shown?.(screen)
+    core.emit(this.bot, 'windowOpen', window)
+    this.counted(opening.type)
   }
 
-  private send (ctx: FrameContext): void {
+  private javaWindow (id: number, layout: ScreenLayout): Window<StorageEvents> {
+    const { slots, craftingResultSlot, windowType, title } = layout
+    return new this.Window<StorageEvents>(id, windowType, title, viewOf(layout).length, { start: slots.length, end: slots.length + PLAYER_SLOTS.length - 1 }, craftingResultSlot, true)
+  }
+
+  /** where a window id's items go: the player's windows, the ui, or the open screen's own */
+  private whereOf (id: string): Where | undefined {
+    const { screen } = this
+    return WINDOWS[id] ?? (screen !== undefined && String(screen.opening.id) === id && ownsWindow(screen.definition) ? OWN : undefined)
+  }
+
+  /** shown or not, an opening is counted for openBlock */
+  private counted (type: WindowType): void {
+    this.openingCount++
+    this.lastOpening = type
+  }
+
+  private notShown (type: WindowType): void {
+    this.stats.otherScreens++
+    this.counted(type)
+  }
+
+  /** 1.20.50 – 1.21.101: once a client process, a screen's first opening tells the server the screens opened so far */
+  private tellOptions (core: BedrockCore, { options }: ScreenDefinition, now: Ns): void {
+    if (options === undefined) return
+    this.layoutsOpened.add(options)
+    if (this.atLeast('bedrock_1.20.50') && !this.atLeast('bedrock_1.21.111') && core.requestIds.freshProcess && !this.layoutsTold.has(options)) {
+      this.layoutsTold.add(options)
+      this.optionsDue.push(now + OPTIONS_DELAY)
+    }
+  }
+
+  private setData (id: WindowId, property: number, value: number): void {
+    const { screen, unshown } = this
+    if (screen?.opening.id === id) {
+      screen.properties.set(property, value)
+      for (const hooks of screen.hooks) hooks.data?.(property, value, screen)
+      return
+    }
+    if (unshown?.opening.id === id) {
+      unshown.properties.set(property, value)
+      return
+    }
+    const properties = this.unopened.get(String(id)) ?? new Map<number, number>()
+    properties.set(property, value)
+    this.unopened.set(String(id), properties)
+  }
+
+  /** the screen's own window is emptied when it closes or another opens */
+  private clearOwn (): void {
+    for (const key of [...this.slots.keys()].filter(key => key.startsWith(`${OWN[0]}:`))) this.receive(key, undefined)
+  }
+
+  /** by the server, or by the bot alone for a screen whose close is its feature's */
+  private closed (core: BedrockCore, screen: Screen): void {
+    this.screen = undefined
+    this.closing = undefined
+    this.clearOwn()
+    core.emit(this.bot, 'windowClose', screen.window)
+    for (const hooks of screen.hooks) hooks.closed?.(screen)
+  }
+
+  private send (core: BedrockCore, ctx: FrameContext): void {
     const { now, outbox } = ctx
     this.stopCursorDrag(ctx)
-    for (const due of this.optionsDue.filter(({ at }) => at <= now)) {
+    for (const due of this.optionsDue.filter(at => at <= now)) {
       outbox.queue('set_player_inventory_options', {
         left_tab: 'search',
         right_tab: 'crafting',
         filtering: false,
-        layout: this.screensOpened.has('inventory') ? 'recipe_book' : 'none',
-        crafting_layout: this.screensOpened.has('workbench') ? 'recipe_book' : 'none'
+        layout: this.layoutsOpened.has('layout') ? 'recipe_book' : 'none',
+        crafting_layout: this.layoutsOpened.has('crafting_layout') ? 'recipe_book' : 'none'
       })
       this.optionsDue = this.optionsDue.filter(other => other !== due)
     }
@@ -490,14 +668,23 @@ export class Inventory {
     }
     this.sendRequests(outbox, now)
     closing.sent = true
-    const close = this.atLeast('bedrock_1.21.0') ? { window_id: closing.screen.id, window_type: 'none' as const, server: false } : { window_id: closing.screen.id, server: false }
-    outbox.queue('container_close', close)
+    const { screen } = closing
+    const close = screen.hooks.find(hooks => hooks.close !== undefined)?.close
+    if (close !== undefined) {
+      close(outbox, screen)
+      this.closed(core, screen)
+      return
+    }
+    const id = screen.definition.closeId ?? screen.opening.id
+    outbox.queue('container_close', this.atLeast('bedrock_1.21.0') ? { window_id: id, window_type: 'none', server: false } : { window_id: id, server: false })
   }
 
   private sendRequests (outbox: OutboxWriter, now: Ns): void {
     if (this.queued.length === 0) return
     // the drag's request leaves with the requests queued before it
     if (this.cursorDrag !== undefined) this.cursorDrag.leftAt = now
+    const { screen } = this
+    if (screen !== undefined) for (const hooks of screen.hooks) hooks.beforeSend?.(outbox, screen)
     outbox.queue('item_stack_request', { requests: this.queued })
     this.queued = []
   }
@@ -553,16 +740,22 @@ export class Inventory {
     const listed = new Set<Key>()
     if (response.ok) {
       for (const slot of response.slots) {
-        const key = responseKeyOf(slot)
+        const key = this.responseKeyOf(slot)
         if (key === undefined) continue
         listed.add(key)
         // a response never makes an item: it counts and numbers those the request moved
-        settle(key, stack => slot.count === 0 || stack === undefined ? undefined : { ...withCount(stack, slot.count), stackId: slot.stackId })
+        settle(key, stack => slot.count === 0 || stack === undefined ? undefined : this.settled(slot, { ...withCount(stack, slot.count), stackId: slot.stackId }))
       }
     }
     for (const [key, before] of request.before) if (!listed.has(key)) settle(key, () => before)
     request.response = response
     this.pending.splice(index, 1)
+  }
+
+  /** what the open screen's features make of a slot a response lists */
+  private settled (slot: ResponseSlot, stack: Stack): Stack {
+    const { screen } = this
+    return screen === undefined ? stack : screen.hooks.reduce((settled, hooks) => hooks.settle?.(slot, settled, screen) ?? settled, stack)
   }
 
   /** throws before a request takes an id: as well once a close handed the items back, the vanilla client's screen being gone */
@@ -572,8 +765,20 @@ export class Inventory {
     this.draft().apply(moves)
   }
 
+  private keyOf ({ container, slot }: SlotRef): Key {
+    const store = this.screens.storeOf(container)
+    if (store === undefined) throw new Error(`no screen says where the ${container} container's items are`)
+    return `${store}:${slot}`
+  }
+
+  /** a container no screen defines is none of the bot's */
+  private responseKeyOf ({ container, slot }: ResponseSlot): Key | undefined {
+    const store = this.screens.storeOf(container)
+    return store === undefined ? undefined : `${store}:${slot}`
+  }
+
   private predict (request: PendingRequest, move: Move): void {
-    for (const [key, stack] of changesOf(move, key => this.slots.get(key), request.id)) {
+    for (const [key, stack] of changesOf(move, key => this.slots.get(key), ref => this.keyOf(ref), request.id)) {
       if (!request.before.has(key)) request.before.set(key, this.slots.get(key))
       this.set(key, stack)
     }
@@ -585,6 +790,7 @@ export class Inventory {
     if (move.type === 'action') return move.action
     const source = slotInfo(version, move.from, this.nameOf(move.from))
     if (move.type === 'drop') return dropAction(version, move.count, source)
+    if (move.type === 'destroy') return destroyAction(version, move.count, source)
     if (move.type === 'consume') return consumeAction(version, move.count, source)
     const destination = slotInfo(version, move.to, this.nameOf(move.to))
     if (move.type === 'swap') return swapAction(version, source, destination)
@@ -592,7 +798,7 @@ export class Inventory {
   }
 
   private nameOf (ref: SlotRef): number {
-    const key = keyOf(ref)
+    const key = this.keyOf(ref)
     return this.pending.findLast(request => request.before.has(key))?.id ?? this.slots.get(key)?.stackId ?? 0
   }
 
@@ -610,17 +816,17 @@ export class Inventory {
       this.window.selectedItem = item
       if (this.screen !== undefined) this.screen.window.selectedItem = item
     }
-    this.show(this.window, INVENTORY_VIEW, key, item)
-    if (this.screen !== undefined && this.screen.window !== this.window) this.show(this.screen.window, this.screen.view, key, item)
+    this.showKey(this.window, this.inventoryKeys, key, item)
+    if (this.screen !== undefined && this.screen.window !== this.window) this.showKey(this.screen.window, this.screen.keys, key, item)
   }
 
-  private show (window: Window, view: readonly Key[], key: Key, item: Item | null): void {
-    const slot = view.indexOf(key)
+  private showKey (window: Window, keys: readonly Key[], key: Key, item: Item | null): void {
+    const slot = keys.indexOf(key)
     if (slot >= 0) showSlot(window, slot, item)
   }
 
-  private showAll ({ window, view }: Screen): void {
-    view.forEach((key, slot) => { showSlot(window, slot, itemOf(this.Item, this.slots.get(key))) })
+  private showAll ({ window, keys }: Screen): void {
+    keys.forEach((key, slot) => { showSlot(window, slot, itemOf(this.Item, this.slots.get(key))) })
     window.selectedItem = itemOf(this.Item, this.slots.get('ui:0'))
   }
 

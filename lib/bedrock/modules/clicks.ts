@@ -9,12 +9,16 @@ export interface WindowClick {
   readonly mode: number
 }
 
-/** the slots as the bot predicts them */
+/** the slots as the bot predicts them, and the open screen's rules */
 export interface ClickedSlots {
   stackAt: (ref: SlotRef) => Stack | undefined
   stackSize: (stack: Stack) => number
   enchantCategories: (stack: Stack) => readonly string[]
   itemName: (stack: Stack) => string | undefined
+  /** where a shift click sends the stack in `from` */
+  shiftTargets: (from: SlotRef, stack: Stack) => readonly SlotRef[]
+  /** whether the vanilla client puts the stack in `to`: undefined, as an armor slot or the offhand takes it */
+  accepts: (to: SlotRef, stack: Stack) => boolean | undefined
 }
 
 const BUTTONS: Readonly<Record<number, number>> = Object.freeze({ 0: 2, 1: 2, 2: 9, 4: 2 })
@@ -84,12 +88,16 @@ function outsideClick (right: boolean, slots: ClickedSlots): Move[] {
   return cursor === undefined ? [] : [{ type: 'drop', count: right ? 1 : cursor.count, from: CURSOR }]
 }
 
-/** the vanilla client moves the slot's stack whatever the cursor holds: from the hotbar to the inventory, back, and from elsewhere to either */
+/** the vanilla client shift clicks a stack from the hotbar to the inventory, back, and from elsewhere to either */
+export function defaultShiftTargets (from: SlotRef): readonly SlotRef[] {
+  return from.container === 'hotbar' ? INVENTORY : from.container === 'inventory' ? HOTBAR : HOTBAR_AND_INVENTORY
+}
+
+/** the vanilla client moves the slot's stack whatever the cursor holds */
 function shiftClick (clicked: SlotRef, slots: ClickedSlots): Move[] {
   const stack = slots.stackAt(clicked)
   if (stack === undefined) return []
-  const destinations = clicked.container === 'hotbar' ? INVENTORY : clicked.container === 'inventory' ? HOTBAR : HOTBAR_AND_INVENTORY
-  return placesFor(stack, destinations, slots).map(({ to, count }) => ({ type: 'place', count, from: clicked, to }))
+  return placesFor(stack, slots.shiftTargets(clicked, stack), slots).map(({ to, count }) => ({ type: 'place', count, from: clicked, to }))
 }
 
 /** with an item on the cursor, the vanilla client puts it in the key's empty hotbar slot */
@@ -126,11 +134,15 @@ function arrivals (move: Move): Array<readonly [to: SlotRef, from: SlotRef]> {
 }
 
 /** an armor slot takes only what is worn there, the offhand the items allowed there */
+export function defaultAccepts (to: SlotRef, stack: Stack, names: Pick<ClickedSlots, 'itemName' | 'enchantCategories'>): boolean {
+  if (to.container === 'offhand') return OFFHAND.includes(String(names.itemName(stack)))
+  if (to.container !== 'armor') return true
+  return names.enchantCategories(stack).some(category => WORN[to.slot]?.includes(category))
+}
+
 function fits ([to, from]: readonly [SlotRef, SlotRef], slots: ClickedSlots): boolean {
   const stack = slots.stackAt(from)
-  if (stack === undefined || (to.container !== 'armor' && to.container !== 'offhand')) return true
-  if (to.container === 'offhand') return OFFHAND.includes(String(slots.itemName(stack)))
-  return slots.enchantCategories(stack).some(category => WORN[to.slot]?.includes(category))
+  return stack === undefined || (slots.accepts(to, stack) ?? defaultAccepts(to, stack, slots))
 }
 
 /** a supported click's moves, as the vanilla client makes them; none where it sends nothing, as for an item put in an armor slot it is not worn in, or an egg in the offhand. `clicked` undefined: outside the window */

@@ -17,7 +17,18 @@ export interface Given {
   ints?: Readonly<Record<string, number>>
 }
 
-export type InventoryWindow = 'inventory' | 'armor' | 'offhand' | 'ui'
+/** one of the player's windows, the ui, or a screen's own window by its dynamic id */
+export type InventoryWindow = 'inventory' | 'armor' | 'offhand' | 'ui' | number
+
+/** a slot an ok item_stack_response lists: no stack id, from 1.26.40, is none written */
+export interface RespondedSlot {
+  container: Exclude<MCProtocol.Bedrock.Write.Types.ContainerSlotType, number>
+  slot: number
+  count: number
+  stackId?: number
+}
+
+type Responses = MCProtocol.Bedrock.Write.Types.ItemStackResponses
 
 /** no NBT, no blocks to be placed on or destroy; a shield's blocking tick, which only a shield is written with */
 interface ExtraData {
@@ -57,6 +68,41 @@ export class ServerInventory {
     const input = items.map(given => this.item(given, v4)) as MCProtocol.Bedrock.Write.Types.ItemStacks
     // 1.16.201 names the window inventory_id
     this.server.send('inventory_content', this.atLeast('bedrock_1.16.210') ? { window_id: window, input } : { inventory_id: window, input })
+  }
+
+  /** item_stack_response, as the version's servers write it: a refusal by its status's number */
+  respond (requestId: number, slots: readonly RespondedSlot[], status: 'ok' | number = 'ok'): void {
+    const ok = status === 'ok'
+    const container = (name: RespondedSlot['container']): object => {
+      if (!this.atLeast('bedrock_1.16.210')) return { container_id: name }
+      if (!this.atLeast('bedrock_1.21.20')) return { slot_type: name }
+      return { slot_type: this.atLeast('bedrock_1.21.30') ? { container_id: name } : { container_id: name, dynamic_container_id: 0 } }
+    }
+    const presence = this.atLeast('bedrock_1.26.40') && !this.atLeast('bedrock_1.26.51')
+    const slot = ({ slot, count, stackId }: RespondedSlot): object => ({
+      slot,
+      hotbar_slot: slot,
+      count,
+      ...presence ? { item_stack_id_presence: stackId !== undefined } : {},
+      ...stackId === undefined && this.atLeast('bedrock_1.26.40') ? {} : { item_stack_id: stackId ?? 0 },
+      custom_name: '',
+      ...this.atLeast('bedrock_1.21.50') && !this.atLeast('bedrock_1.26.40') ? { filtered_custom_name: '' } : {},
+      ...this.atLeast('bedrock_1.16.210') ? { durability_correction: 0 } : {}
+    })
+    const containers = slots.map(responded => ({ ...container(responded.container), slots: [slot(responded)] }))
+    const answer = {
+      ...this.atLeast('bedrock_1.16.210') ? { status } : { result: status },
+      request_id: requestId,
+      ...presence ? { containers_presence: ok } : {},
+      ...ok ? { containers } : {}
+    }
+    // the version's layout
+    this.server.send('item_stack_response', { responses: [answer] as Responses })
+  }
+
+  /** container_set_data */
+  setData (window: InventoryWindow, property: number, value: number): void {
+    this.server.send('container_set_data', { window_id: window, property, value })
   }
 
   private item (given: Given | null, v4: boolean): SlotItem {

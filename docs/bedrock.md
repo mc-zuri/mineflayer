@@ -923,8 +923,8 @@ selects (player_hotbar). `bot.currentWindow` is the screen open: `bot.inventory`
 `minecraft:crafting_table` window while a crafting table's is, else `null`. A crafting table's window has the
 server's id for the screen (its dynamic ids 1 and 100, which the protocol names `first` and `last`, as numbers).
 
-- **Items** come in inventory_content and inventory_slot (the windows `inventory`, `armor`, `offhand` and `ui`; others
-  are counted and dropped), shown from the packet pass, and are named by the registry: from 1.21.60 the server names
+- **Items** come in inventory_content and inventory_slot (the windows `inventory`, `armor`, `offhand` and `ui`, and the
+  open screen's own window, by its id; others are counted and dropped), shown from the packet pass, and are named by the registry: from 1.21.60 the server names
   them in item_registry, which the registry takes (`registry.handleItemRegistry`); before, start_game does. An item is
   read as each version writes it: up to 1.16.210 an aux value of its metadata and count, wrapped with its stack id
   (`runtime_id` on 1.16.201, `stack_id` on 1.16.210); from 1.16.220 a count and metadata; from 1.26.20 an ItemV4,
@@ -1038,12 +1038,42 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   screen's first opening, the screens it opened so far (the inventory's `layout`, the crafting table's
   `crafting_layout`: `recipe_book` once opened). A bot is a process of its own; a test that continues a recording's
   process sends none.
-- **Events**: `windowOpen` (container_open of the inventory or a crafting table), `windowClose` (the screen
+- **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
   closed), `heldItemChanged` (each update of the held slot, and a new selection).
 
 Not yet: drags and double clicks (`clickWindow` modes 5 and 6), using a block with an item the use places or uses up
 (the client then names the slot it changes), screens other than the inventory and the crafting table (counted, not
 shown), and the hotbar selection by the bot.
+
+### Screens
+
+A screen is shown when the server opens one the bot has a definition for: in container_open, or in another packet a
+feature handles (update_trade and update_equipment open the villager's and the horse's screens). The inventory and the
+crafting table are the bot's own; each other screen is one file, `lib/bedrock/screens/<window type>.ts`, which its
+feature's plugin adds (`bot._inventory.screens.add`). A definition gives:
+
+- the screen's Java window: prismarine-windows' type where its Bedrock table has the screen, else Java 1.14's, and its
+  slots before the player's 36 (`inventory` 9 – 35, then `hotbar` 0 – 8, as the crafting table's), each as the vanilla
+  client names it in a request, which can change by version;
+- where each container it names has its items: the player's windows, the `ui` window at the slot the request names
+  (`anvil_input` 1, `stonecutter_input` 3, … `creative_output` 50, alike on every version), or the screen's own window,
+  by its dynamic id (a chest's `container`, a furnace's `furnace_ingredient` 0, `furnace_fuel` 1, `furnace_output` 2);
+  a container is in one place on every screen;
+- when it is shown: at its opening, or at its own window's first inventory_content, which sizes it (a chest of 27 or
+  54), as servers send it right after the opening; `windowOpen` comes then, and `openBlock` resolves then;
+- its close: which animation it has from 1.21.120 (the inventory's 240 ms: the inventory, the smithing table and the
+  enchanting table; the crafting table's 390 ms: every other screen recorded; or none), what it gives back and in which
+  order (a UI station's inputs, a block container only the cursor), and the id container_close names (`none` for
+  trading, whose close the server answers with the screen's id);
+- its click rules where they are not the inventory's: where a shift click sends a stack, which slot takes which item,
+  or a click's moves themselves.
+
+Its feature adds what it does on it: the click on its `creative_output` (any but the drop key's: on a screen without
+one it sends nothing), container_set_data for the screen's id (in the packet pass, kept in the screen's properties, as
+those of a furnace, which come before its opening), what its window gets before `windowOpen` and after `windowClose`,
+what a request on it is told (its custom names and cause), packets that leave before its requests, what a response
+tells of a slot, a close of its own (a lectern's), and a click mode clickWindow does not make itself (a drag). A
+screen the bot has no definition for is counted, not shown: `openBlock` rejects naming it.
 
 ## Crafting
 
