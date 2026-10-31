@@ -294,6 +294,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   setBeaconEffects: (primary: string, secondary?: string | null, beacon?: Block | null) => Promise<void>
   /** openBlock, resolving with the furnace's, blast furnace's or smoker's window; rejects for another screen, which stays open */
   openFurnace: (furnace: Block) => Promise<Furnace>
+  /** Java's: openBlock on an enchanting table, resolving with its window: the options as player_enchant_options tells them, enchant as the vanilla client's button */
+  openEnchantmentTable: (enchantmentTable: Block) => Promise<BedrockEnchantmentTable>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */
@@ -1105,6 +1107,27 @@ export interface Anvil {
 export interface Enchantment {
   level: number
   expected: { enchant: number, level: number }
+}
+
+/** an option of an enchanting table on Bedrock: Java's level (what the option asks) and expected (its first enchantment), -1 without an option */
+export interface BedrockEnchantment extends Enchantment {
+  /** every enchantment the option gives, in the order the item gets them; a name the registry does not know undefined */
+  enchants: Array<{ id: number, name: string | undefined, level: number }>
+  /** what the enchant request names */
+  optionId: number
+}
+
+/** Java's EnchantmentTable, as Java's code has it: targetItem null when empty, putTargetItem and putLapis resolving with nothing */
+export interface BedrockEnchantmentTable extends Window<ConditionalStorageEvents> {
+  enchantments: BedrockEnchantment[]
+  /** always -1: Bedrock tells no table's seed */
+  xpseed: number
+  close (): Promise<void>
+  targetItem (): Item | null
+  enchant (choice: string | number): Promise<Item>
+  takeTargetItem (): Promise<Item>
+  putTargetItem (item: Item): Promise<void>
+  putLapis (item: Item): Promise<void>
 }
 
 export interface Villager extends Window<ConditionalStorageEvents> {

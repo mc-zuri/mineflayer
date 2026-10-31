@@ -97,6 +97,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   wandering trader, its trades, and trading by its result's clicks (see trading below).
 - `bot.openFurnace(furnaceBlock)`: a furnace's, a blast furnace's or a smoker's screen, Java's `Furnace` (see furnaces
   below).
+- `bot.openEnchantmentTable(block)`: Java's, its window's options from player_enchant_options and its enchant (see the
+  enchanting table below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1480,6 +1482,53 @@ screen rejects with Java's `This is not a furnace-like window` and stays open. E
 
 As recorded in cooking_00 on 1.26.60 (the properties of a furnace opened lit and of a smoker's cook); `furnaceTest`
 plays them, and Java's members against a server taking the bot's requests as it predicts them.
+
+## Enchanting table
+
+The enchanting table's screen (container_open's `enchantment`) is a `minecraft:enchanting_table` window of Java's 38
+slots: 0 the item (`ui` 14, `enchanting_input` in requests), 1 the lapis lazuli (`ui` 15, `enchanting_lapis`), 2 – 37
+the player's. Its close gives back the cursor, the item, then the lapis lazuli (the item before the lapis lazuli as
+recorded on 1.26.20, 1.26.51 and 1.26.60; where the cursor goes is not recorded), and from 1.21.120 waits for the
+inventory's animation (240 ms), as recorded.
+
+- **`bot.openEnchantmentTable(block)`** is Java's: it asserts the block is an `enchanting_table`, opens it with
+  `bot.openBlock(block)` and rejects a window whose type does not start with `minecraft:enchant` (Java's message).
+  Every enchanting table's window has the members below before `windowOpen`, whoever opened it.
+- **`table.enchantments`**: three entries, from the server's last player_enchant_options (`enchant_options` up to
+  1.16.210): `level` the option's cost (the level its button asks for), `expected` its first enchantment
+  (`{ enchant: id, level }`), and Bedrock's `enchants` (every enchantment it gives, `{ id, name, level }` by Bedrock's
+  ids and the registry's names, the equipment's, the held item's then its own: the order the item gets them) and
+  `optionId` (what the enchant names). An entry without an option is Java's -1s (`optionId` -1, no `enchants`). Java
+  reads them from window properties, which Bedrock does not send for a table: the server sends empty options before
+  it opens the table, the three options with the response to the request putting an item in, and empty ones with the
+  responses to the enchant and to taking the item out.
+- **`ready`** (the window's event) comes in the packet pass of the player_enchant_options that brings options while
+  the table is open, once until empty options come (Java's: once the three levels are known, so when an item is in).
+- **`table.enchant(choice)`** waits for `ready` (400 ticks, Java's 20 s), reads `choice` with Java's `parseInt`, and
+  asserts as Java's that the option has a level. It makes the vanilla client's request in an input pass, which leaves
+  in the next tick, and nothing else: `craft_recipe` naming the option's id (the times from 1.21.20),
+  `results_deprecated` with the enchanted item (the item with its NBT and `ench`, the option's enchantments as `id` and
+  `lvl` shorts, written as a crafted result is), a `consume` of the item, a `place` of the enchanted item from the
+  created output back into the item's slot (named by the request, as the consume renamed it), and a `consume` of
+  `choice + 1` lapis lazuli. It resolves with slot 0's item once the server took the request. It rejects before
+  sending, where the vanilla client's button does nothing: with fewer than `choice + 1` lapis lazuli, and outside
+  creative below the level the option asks for or `choice + 1` (a level the server has not told is 0); and when the
+  options are gone or the item was taken before its input pass, and for a book (an enchanted book is not recorded).
+- **`table.takeTargetItem()`**, **`putTargetItem(item)`**, **`putLapis(item)`** and **`targetItem()`** are Java's: a
+  shift click on slot 0 (`bot.putAway(0)`), resolving with the item; `bot.moveSlotItem(item.slot, 0)` (`1` for the
+  lapis lazuli), resolving with nothing as Java's code does (its typings say an `Item`); slot 0's item, `null` when
+  empty. They and `enchant` reject when the table is not the screen open.
+- **`table.xpseed`** is always -1: Java reads a window property; Bedrock tells the player's seed in start_game alone,
+  and not again after an enchant changed it.
+
+Recorded and replayed by the tests on every build: an iron sword enchanted with one of its options, each group playing
+the server's options and the client's request with the bot, byte for byte. The groups are by how the options are
+written (`enchant_options` 1.16.201 – 1.16.210, a varint cost up to 1.26.10, a byte from 1.26.20), how the request is
+(`container_id` 1.16.201, the actions numbered anew at 1.17.40 and 1.18.11, a `cause` from 1.19.30, the containers
+renumbered at 1.19.50, the times and full container names from 1.21.20, the result by name from 1.26.40, renumbered
+at 1.26.60) and the sword's network id; and on 1.26.60 the lapis lazuli given back on close. Not recorded, so as the
+bot does it: the button with too little lapis lazuli or too low a level, an enchant in creative, an option of no
+enchantment, the cursor's place in the hand-back, a book.
 
 ## Tests
 
