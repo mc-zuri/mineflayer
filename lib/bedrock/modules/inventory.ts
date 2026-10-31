@@ -172,8 +172,7 @@ interface PendingRequest {
 interface Screen extends OpenScreen {
   readonly hooks: readonly ScreenHooks[]
   readonly layout: ScreenLayout
-  /** each window slot, as a request names it, and its key */
-  readonly view: readonly SlotRef[]
+  /** each window slot's key */
   readonly keys: readonly Key[]
   readonly properties: Map<number, number>
 }
@@ -415,6 +414,7 @@ export class Inventory {
     }
     this.unshown = undefined
     this.clearOwn()
+    this.releaseCursorDrag()
     const opened: Opened = { opening, defined, properties, at: now }
     if (defined.definition.shown === 'open') {
       this.show(core, now, opened, undefined)
@@ -496,6 +496,8 @@ export class Inventory {
     const { screen, clicked } = this.clicked(click)
     const mode = this.clickModes.get(click.mode)
     if (mode !== undefined) return await mode.click(ctx, click, screen, clicked)
+    // another click ends a drag, as Java's server ends it: the drag's bracket stops before this click's own
+    this.releaseCursorDrag()
     if (isOutput(clicked, click)) return await screen.hooks.find(hooks => hooks.output !== undefined)?.output?.(ctx, click, screen)
     const moves = this.movesOf(screen, click, clicked, this.draft())
     if (moves.length === 0) return
@@ -556,6 +558,8 @@ export class Inventory {
     core.command(ctx => {
       // the server closed it first, and gives the items back itself
       if (this.screen !== screen) return
+      // a drag over the screen ends with it: its bracket stops before the close
+      this.releaseCursorDrag()
       handedBack = Promise.all(this.handBack(core, ctx, screen))
       // awaited once the screen closed: a refusal before then is not unhandled
       handedBack.catch(() => {})
@@ -671,6 +675,7 @@ export class Inventory {
     this.screen = undefined
     this.closing = undefined
     this.clearOwn()
+    this.releaseCursorDrag()
     core.emit(this.bot, 'windowClose', screen.window)
     core.emitWindow(screen.window, 'close', [])
     for (const hooks of screen.hooks) hooks.closed?.(screen)

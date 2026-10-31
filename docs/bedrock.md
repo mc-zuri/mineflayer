@@ -990,7 +990,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   -999 outside the window) as the vanilla client does, sending the request it sends (none where it sends none), and
   resolves once the server took it; it rejects a refusal (undoing what it showed), a click with no screen open (on
   Bedrock the inventory too is a screen: `bot.openInventory()`), a slot the window has not, and the modes it does not
-  make: 3 (creative middle click), 5 (drags) and 6 (double clicks). As recorded on the inventory and crafting table
+  make: 3 (creative middle click) and the middle drag (see drags below). As recorded on the inventory and crafting table
   screens (by every gesture on 1.26.51, the take and drop of the cursor and a shield put in the offhand on every build),
   but where marked:
 
@@ -1070,7 +1070,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: `bot.openEntity` (the screens an entity opens), drags and double clicks (`clickWindow` modes 5 and 6), using
+Not yet: `bot.openEntity` (the screens an entity opens), using
 a block with an item the use places or uses up (the client then names the slot it changes), screens other than the inventory, the crafting table and the containers (counted, not
 shown), and the hotbar selection by the bot.
 
@@ -1192,8 +1192,41 @@ container's, then the player's inventory and hotbar (`inventoryStart` the contai
   another screen, or the windows plugin is not loaded (naming the window's id, type and title: Java writes the whole
   window). An entity rejects: its screens are not yet shown.
 
-Not yet: drags and double clicks on containers, `bot.openEntity` and the entities' containers (minecarts, chest boats,
+Not yet: `bot.openEntity` and the entities' containers (minecarts, chest boats,
 the horse), and `chestLidMove` (block_event).
+
+### Drags and double clicks
+
+The drags plugin (`lib/bedrock/plugins/drags.ts`) makes `bot.clickWindow`'s modes 5 and 6 on every screen, as the
+vanilla client made them against Bedrock Dedicated Server (reduced_stations: a dropper's left drag, a dispenser's right
+drag and a chest's double click, the same moves on all 59 builds but for the ids and the slots a response not yet in
+names; clicks_mouse on 1.26.51: the same on the inventory screen). Each request has one action, and those a click makes
+leave in one packet.
+
+- **Mode 5** (Java's drag, `-999` for the start and the end): buttons 0, 1, 2 start a left drag, add a slot, end it;
+  4, 5, 6 the right's. The start sends nothing and remembers the cursor's stack, the end sends nothing; each slot added
+  moves the items at once, as the vanilla client does while the mouse moves, where Java's server moves them all at the
+  end. A right drag places one item in each slot. A left drag shares the stack evenly: the first slot takes it all;
+  each next one gets what the slots before hold over the new share (`⌊count / slots⌋`), slot by slot, their rest going
+  to the cursor, then what it still needs from the cursor; the second slot first takes the first's stack back and
+  places it again, as recorded (64 planks over 9 slots: 64, 32 × 2, 21 × 3 and 1 on the cursor, … 7 × 9 and 1). The
+  rest stays on the cursor. From 1.26.60 the drag is bracketed with serverbound_cursor_item_drag: its start with the
+  first slot's requests, its stop at the drag's end. A slot added to no drag, to the other button's, outside the
+  window, holding an item, already in the drag, that does not take the item (an armor slot it is not worn in, the
+  output), or once each slot would get none, sends nothing (not recorded but the empty slots of one item's drag: the bot
+  drags only over empty slots). A drag whose slots or cursor changed since (another click, the server) is ended, as
+  Java's server ends it at another click. A drag ended otherwise than by its end (broken, by another click, or its
+  screen closed or another opened) stops its bracket all the same, so that it is never left held (whether the vanilla
+  client stops it there is not recorded): a click placing from the cursor sends the stop before its own start, a close
+  before its container_close. Buttons 8 – 10 (the creative middle drag) reject.
+- **Mode 6** (Java's double click: button 0, after the click that took the slot's stack): the cursor gathers its item
+  from the window's stacks, partial ones before full ones, each in the window's order, until it holds a stack, one
+  `take` request a stack; never from a crafting output. Nothing on a slot holding an item, outside the window or with
+  an empty cursor. Recorded with one stack to gather (a chest's, a hotbar's on the inventory screen): the order of
+  several is Java's.
+
+Tests (`test/bedrock/dragTest.ts`): every version plays the three recorded gestures with 1.26.51's ids, 1.26.60 with
+its brackets where 1.26.60.5 recorded them, and stops the bracket of a drag broken or whose screen ended.
 
 ## Crafting
 

@@ -67,6 +67,8 @@ export interface OpenScreen {
   readonly opening: ScreenOpening
   readonly definition: ScreenDefinition
   readonly window: Window
+  /** each window slot, as a request names it */
+  readonly view: readonly SlotRef[]
   /** container_set_data's for the screen's id, those sent before its opening too */
   readonly properties: ReadonlyMap<number, number>
 }

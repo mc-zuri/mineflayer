@@ -22,6 +22,7 @@ import chat from './plugins/chat.ts'
 import chest from './plugins/chest.ts'
 import craft from './plugins/craft.ts'
 import enchantmentTable from './plugins/enchantment_table.ts'
+import drags from './plugins/drags.ts'
 import entities from './plugins/entities.ts'
 import experience from './plugins/experience.ts'
 import furnace from './plugins/furnace.ts'
@@ -75,7 +76,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   enchantment_table: enchantmentTable,
   grindstone,
   anvil,
-  chest
+  chest,
+  drags
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

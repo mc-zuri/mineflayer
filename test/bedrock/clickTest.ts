@@ -623,7 +623,7 @@ describe('bedrock window clicks', () => {
 
     it('rejects the clicks it does not make, before they reach a frame', async () => {
       const { bot } = await withScreen()
-      for (const [mouseButton, mode] of [[2, 0], [-1, 0], [0.5, 0], [2, 1], [9, 2], [40, 2], [0, 3], [2, 4], [0, 5], [0, 6]] as const) {
+      for (const [mouseButton, mode] of [[2, 0], [-1, 0], [0.5, 0], [2, 1], [9, 2], [40, 2], [0, 3], [2, 4], [8, 5], [1, 6]] as const) {
         await assert.rejects(bot.clickWindow(36, mouseButton, mode), { message: `clickWindow does not support mode ${mode} with mouse button ${mouseButton} on Bedrock` })
       }
       bot.end()
