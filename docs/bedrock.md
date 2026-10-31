@@ -1363,6 +1363,30 @@ ticks, a brewed potion shift clicked out, the close. Not recorded, so as on ever
 player's slots (the bot moves the stack between the inventory and the hotbar), and which items the vanilla client lets
 into which slot (the bot sends the click, which the server may refuse).
 
+## Beacon
+
+Java has no beacon helper: a Java bot opens a beacon with `openBlock`, clicks a payment in, and sends the effects
+itself. On Bedrock the beacon is a screen of its own (`beacon`), whose window is Java's: the payment in slot 0
+(`beacon_payment` 27 of the ui container in requests), then the player's 36. Choosing an effect sends nothing; the
+confirm button sends one request, which pays for the effect and uses the payment up. Its close has the crafting table's
+animation from 1.21.120 and gives back the cursor, then the payment.
+
+- **`bot.setBeaconEffects(primary, secondary, beacon)`** (Bedrock's) is the confirm button: one request of
+  `beacon_payment` (the primary effect's id, secondary 0) and `destroy` of the payment's one item, made in the input
+  pass, resolving on the server's answer. The primary is `'speed'` (1), `'haste'` (3), `'resistance'` (11),
+  `'jump_boost'` (8) or `'strength'` (5). It pays with the payment slot's item, or first puts one there with the
+  window's clicks (`bot.transfer` of one): the first the inventory has of an iron ingot, a gold ingot, an emerald, a
+  diamond and a netherite ingot. With no beacon open it opens the `beacon` block given, and closes it after, also when
+  it fails. An unknown effect, a secondary effect, a payment slot holding something else, an inventory with nothing to
+  pay with, no beacon open or given, another window open, or a block opening another screen reject naming the member,
+  before the confirm is sent.
+
+Recorded on every build (reduced_stations): an iron ingot taken from the hotbar and put in the payment slot, each of
+the five effects confirmed, the close; the server took the payment from a beacon with no pyramid. Not recorded: a
+secondary effect (`setBeaconEffects` rejects one, as the vanilla client's id for it is not known), the other payments
+(paid as the ingot is), and which items the vanilla client lets into the payment slot. A payment left in the slot was
+given back at the close against a scripted server (containers_beacon); the cursor's place before it is not recorded.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
