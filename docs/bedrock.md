@@ -90,6 +90,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   cursorPos)`, `bot.openBlock(block, direction, cursorPos)`, `bot.activateEntity(entity)`,
   `bot.activateEntityAt(entity, position)`: the player's items and screens, and using a block or an entity (see the
   inventory below).
+- `bot.openContainer(block, direction, cursorPos)`, `bot.openChest`, `bot.openDispenser`: a container block's screen
+  (see containers below).
 - `bot.recipesFor(itemType, metadata, minResultCount, craftingTable)`, `bot.recipesAll(itemType, metadata,
   craftingTable)`, `bot.craft(recipe, count, craftingTable)`, `bot.placeRecipe(recipe, all)` (Bedrock's): the recipes
   crafting_data sends, and crafting them (see crafting below).
@@ -1069,7 +1071,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
 Not yet: `bot.openEntity` (the screens an entity opens), drags and double clicks (`clickWindow` modes 5 and 6), using
-a block with an item the use places or uses up (the client then names the slot it changes), screens other than the inventory and the crafting table (counted, not
+a block with an item the use places or uses up (the client then names the slot it changes), screens other than the inventory, the crafting table and the containers (counted, not
 shown), and the hotbar selection by the bot.
 
 ### Screens
@@ -1138,6 +1140,60 @@ They click the window given (`transfer`'s `window`, else the screen open) or, fo
 screen open; with none open they click `bot.inventory`, whose screen they open (`bot.openInventory()`) and close after,
 also when they fail, so that the close gives back what the cursor holds. A window that is not open rejects
 (`transfer needs the minecraft:chest window open`): Java clicks whatever window is open with its slots.
+
+### Containers
+
+The chest plugin adds the containers' screens (`lib/bedrock/screens/container.ts`, `hopper.ts`, `dispenser.ts`,
+`dropper.ts`, `crafter.ts`), as the vanilla client shows them against Bedrock Dedicated Server, alike on every version
+recorded (reduced_stations, reduced_slots):
+
+| Block | container_open's type | `window.type`, `window.title` | Its slots | A request names them |
+| --- | --- | --- | --- | --- |
+| chest, trapped chest | `container` | `minecraft:chest`, Chest (Large Chest for 54) | 27, or 54 beside another chest | `container` |
+| ender chest | `container` | `minecraft:container`, Ender Chest | 27 | `container` |
+| barrel | `container` | `minecraft:generic_9x3`, Barrel | 27 | `barrel` |
+| shulker box (any colour) | `container` | `minecraft:shulker_box`, Shulker Box | 27 | `shulker` |
+| another block, or one the bot has not | `container` | `minecraft:container`, Container | 27, or as many as sent | `container` |
+| hopper | `hopper` | `minecraft:hopper`, Hopper | 5 | `container` |
+| dispenser | `dispenser` | `minecraft:dispenser`, Dispenser | 9 | `container` |
+| dropper | `dropper` | `minecraft:dropper`, Dropper | 9 | `container` |
+| crafter (from 1.20.50, recorded from 1.21.0) | `crafter` | `minecraft:crafter_3x3`, Crafter | 9 | `container` |
+
+The window types are Java's before 1.14 (prismarine-windows' Bedrock table), whose chest window was a trapped chest's
+too and whose generic container an ender chest's, else Java 1.14's (the barrel's `generic_9x3`, the crafter's
+`crafter_3x3`, which has a result slot after the 9 that Bedrock's screen has not). A window's slots are the
+container's, then the player's inventory and hotbar (`inventoryStart` the container's size, `craftingResultSlot` -1).
+
+- **Shown** at the screen's first inventory_content, which the server sends in the opening's batch (two or three
+  times), so that `windowOpen` comes with the items, as Java's after its window items, and `openBlock` resolves then. Its
+  size makes a chest large (54: not recorded, nor how a large chest's slots are named past 26). A screen no content comes
+  for is shown in the first tick after its opening's frame, with 27 slots for a `container` (a hopper's and the others'
+  with theirs), and gets its items by inventory_slot: as recorded with a scripted server on 1.26.20, 1.26.51 and 1.26.60,
+  which sends none, the vanilla client showing a small chest's screen.
+- **Clicks** are the inventory's (see the clicks above), with the containers named as the table says. A shift click
+  moves a stack of the container to the hotbar and the inventory (`hotbar_and_inventory`, from hotbar slot 0: recorded
+  for the chest, the ender chest, the shulker box and the hopper), and one of the hotbar or the inventory into the
+  container: onto its stacks with room, then into its first empty slot, in one request (not recorded: as Java's).
+  Bedrock Dedicated Server sends a container's slots a request changed (inventory_slot) before the request's response:
+  a container's slot the server sent in the packet pass of a request's response stands over the response, as the vanilla
+  client went on from the slots a left drag's server sent (a dropper's on 1.26.60.5, its responses each listing the first
+  slot). The response settles one sent in an earlier frame, and the player's own slots, which the server does not send
+  again after a request (a request on the hotbar on 1.26.51 is followed only by its response): those may have been sent
+  before the server took the request (a hopper's item, an item picked up).
+- **The close** gives back the cursor's item, and from 1.21.120 waits for the crafting table's animation: the vanilla
+  client closed each container 457 to 470 ms after the close key up to 1.26.51 (32 frames a second), 560 to 562 ms on
+  1.26.60 (16), as it closes a crafting table.
+- **`bot.openContainer(block, direction, cursorPos)`**, **`bot.openChest`** and **`bot.openDispenser`** (one function,
+  as Java's) open a chest, a trapped chest, an ender chest, a barrel, a shulker box, a hopper, a dispenser or a dropper
+  with `bot.openBlock` and resolve with its window, which has the window members above. `direction` and `cursorPos` are
+  passed only when given: Java's defaults, the top face's centre, would make the bot look there first, where the vanilla
+  client clicks where it looks. They reject with Java's errors: `containerToOpen is neither a block nor an entity` for
+  another block (a crafter too, as Java's), and `Non-container window used as a container: …` when the server opens
+  another screen, or the windows plugin is not loaded (naming the window's id, type and title: Java writes the whole
+  window). An entity rejects: its screens are not yet shown.
+
+Not yet: drags and double clicks on containers, `bot.openEntity` and the entities' containers (minecarts, chest boats,
+the horse), and `chestLidMove` (block_event).
 
 ## Crafting
 

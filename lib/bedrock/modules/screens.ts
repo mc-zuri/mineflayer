@@ -40,7 +40,7 @@ export interface ScreenDefinition {
   readonly type: WindowTypeName
   /** each container its slots name, and where its items come from: 'open' is the screen's own window */
   readonly containers: Readonly<Partial<Record<ContainerName, Store>>>
-  /** 'open': shown at its opening; 'content': at its window's first inventory_content, which sizes it */
+  /** 'open': shown at its opening; 'content': at its window's first inventory_content, which sizes it, or at the first tick after its opening's frame if its layout has one without */
   readonly shown: 'open' | 'content'
   /** undefined: the bot does not show it, as one it has no definition for */
   readonly layout: (opening: ScreenOpening, contentSize: number | undefined) => ScreenLayout | undefined
@@ -55,7 +55,7 @@ export interface ScreenDefinition {
   /** set_player_inventory_options' field its first opening sets (1.20.50 – 1.21.101) */
   readonly options?: 'layout' | 'crafting_layout'
   /** where a shift click sends a stack; undefined keeps the default: hotbar to inventory, inventory to hotbar, else either */
-  readonly shiftTargets?: (from: SlotRef, stack: Stack) => readonly SlotRef[] | undefined
+  readonly shiftTargets?: (from: SlotRef, stack: Stack, layout: ScreenLayout) => readonly SlotRef[] | undefined
   /** whether the vanilla client puts the stack in `to`; undefined keeps the default: armor and the offhand */
   readonly accepts?: (to: SlotRef, stack: Stack, names: Pick<ClickedSlots, 'itemName' | 'enchantCategories'>) => boolean | undefined
   /** a click's moves; undefined keeps the default's. A click it throws for rejects */

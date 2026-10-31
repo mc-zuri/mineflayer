@@ -18,7 +18,7 @@ export interface Given {
 }
 
 /** one of the player's windows, the ui, or a screen's own window by its dynamic id */
-export type InventoryWindow = 'inventory' | 'armor' | 'offhand' | 'ui' | number
+export type InventoryWindow = 'inventory' | 'armor' | 'offhand' | 'ui' | 'first' | number
 
 /** a slot an ok item_stack_response lists: no stack id, from 1.26.40, is none written */
 export interface RespondedSlot {

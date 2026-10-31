@@ -164,11 +164,14 @@ interface PendingRequest {
   readonly id: number
   /** each slot the request's moves changed, as it was before, until the server sends it */
   readonly before: Map<Key, Stack | undefined>
+  /** the screen's own slots the server sent in this frame's packet pass: newer than its response, which comes after them */
+  readonly received: Set<Key>
   response: StackResponse | undefined
 }
 
 interface Screen extends OpenScreen {
   readonly hooks: readonly ScreenHooks[]
+  readonly layout: ScreenLayout
   /** each window slot, as a request names it, and its key */
   readonly view: readonly SlotRef[]
   readonly keys: readonly Key[]
@@ -180,6 +183,8 @@ interface Opened {
   readonly opening: ScreenOpening
   readonly defined: Defined
   readonly properties: Map<number, number>
+  /** its opening's frame */
+  readonly at: Ns
 }
 
 /** a click mode a feature makes (a drag, a double click): its buttons, and the click, made in its input pass */
@@ -315,6 +320,7 @@ export class Inventory {
     const place = this.atLeast('bedrock_1.19.10') ? { at: 'ActorLegacyTickSystem' as const } : { after: 'lifecycle.hold' }
     core.system(OWNER, { name: 'inventory.equip', place, gate: 'present', replay: false, run: ({ outbox }) => { this.equip(outbox) } })
     core.system(OWNER, { name: 'inventory.request', place: { after: 'inventory.equip' }, gate: 'always', replay: false, run: ({ outbox, now }) => { this.sendRequests(outbox, now) } })
+    core.system(OWNER, { name: 'inventory.show', place: { before: 'movement.rewind' }, gate: 'always', replay: false, run: ({ now }) => { this.showUnsized(core, now) } })
   }
 
   /** the stack in the selected hotbar slot */
@@ -344,7 +350,8 @@ export class Inventory {
 
   /** the slots as the bot predicts them, for moves to be planned on, with the open screen's rules */
   draft (): Draft {
-    const definition = this.screen?.definition
+    const { screen } = this
+    const definition = screen?.definition
     const names: Pick<ClickedSlots, 'itemName' | 'enchantCategories'> = {
       enchantCategories: ({ networkId }) => this.bot.registry.items[networkId]?.enchantCategories ?? [],
       itemName: ({ networkId }) => this.bot.registry.items[networkId]?.name
@@ -352,7 +359,7 @@ export class Inventory {
     return new Draft(key => this.slots.get(key), ref => this.keyOf(ref), {
       ...names,
       stackSize: ({ networkId }) => this.bot.registry.items[networkId]?.stackSize ?? DEFAULT_STACK_SIZE,
-      shiftTargets: (from, stack) => definition?.shiftTargets?.(from, stack) ?? defaultShiftTargets(from),
+      shiftTargets: (from, stack) => screen?.definition.shiftTargets?.(from, stack, screen.layout) ?? defaultShiftTargets(from),
       accepts: (to, stack) => definition?.accepts?.(to, stack, names)
     })
   }
@@ -408,7 +415,7 @@ export class Inventory {
     }
     this.unshown = undefined
     this.clearOwn()
-    const opened: Opened = { opening, defined, properties }
+    const opened: Opened = { opening, defined, properties, at: now }
     if (defined.definition.shown === 'open') {
       this.show(core, now, opened, undefined)
       return
@@ -444,7 +451,7 @@ export class Inventory {
     this.check(moves)
     const { runtimeId, screen } = this
     if (runtimeId !== undefined) for (const move of moves) if (move.type === 'drop') outbox.queue('animate', swingArm(this.bot.version, runtimeId, 'dropitem'))
-    const request: PendingRequest = { id: core.requestIds.nextStackRequest(), before: new Map(), response: undefined }
+    const request: PendingRequest = { id: core.requestIds.nextStackRequest(), before: new Map(), received: new Set(), response: undefined }
     this.pending.push(request)
     const actions = moves.map(move => {
       const action = this.actionOf(move)
@@ -585,7 +592,7 @@ export class Inventory {
     }
     const view = viewOf(layout)
     const window = definition.playerWindow === true ? this.window : this.javaWindow(windowIdOf(opening.id), layout)
-    const screen: Screen = { opening, definition, window, view, keys: view.map(ref => this.keyOf(ref)), properties, hooks }
+    const screen: Screen = { opening, definition, window, layout, view, keys: view.map(ref => this.keyOf(ref)), properties, hooks }
     if (window !== this.window) this.showAll(screen)
     this.screen = screen
     this.tellOptions(core, definition, now)
@@ -593,6 +600,14 @@ export class Inventory {
     for (const hook of hooks) hook.shown?.(screen)
     core.emit(this.bot, 'windowOpen', window)
     this.counted(opening.type)
+  }
+
+  /** a screen no content came for, as a scripted server opens one, shows as the vanilla client shows it: unsized, if its layout has one */
+  private showUnsized (core: BedrockCore, now: Ns): void {
+    const { unshown } = this
+    if (unshown === undefined || unshown.at === now || unshown.defined.definition.layout(unshown.opening, undefined) === undefined) return
+    this.unshown = undefined
+    this.show(core, now, unshown, undefined)
   }
 
   private javaWindow (id: number, layout: ScreenLayout): Window<StorageEvents> {
@@ -727,8 +742,10 @@ export class Inventory {
   }
 
   private takeAnswers (): void {
-    if (this.answers.length === 0) return
     for (const response of this.answers) this.answer(response)
+    // a slot sent in an earlier frame than a response was sent before the server took the request
+    for (const request of this.pending) request.received.clear()
+    if (this.answers.length === 0) return
     this.answers = []
     this.equipmentChanged = true
   }
@@ -757,7 +774,7 @@ export class Inventory {
     if (response.ok) {
       for (const slot of response.slots) {
         const key = this.responseKeyOf(slot)
-        if (key === undefined) continue
+        if (key === undefined || request.received.has(key)) continue
         listed.add(key)
         // a response never makes an item: it counts and numbers those the request moved
         settle(key, stack => slot.count === 0 || stack === undefined ? undefined : this.settled(slot, { ...withCount(stack, slot.count), stackId: slot.stackId }))
@@ -820,7 +837,12 @@ export class Inventory {
 
   /** the server's state now, which no pending request puts back */
   private receive (key: Key, stack: Stack | undefined): void {
-    for (const request of this.pending) request.before.delete(key)
+    // the server sends again a screen's own slots its requests changed, not the player's: one of those may predate the request
+    const own = key.startsWith(`${OWN[0]}:`)
+    for (const request of this.pending) {
+      request.before.delete(key)
+      if (own) request.received.add(key)
+    }
     this.set(key, stack)
   }
 
