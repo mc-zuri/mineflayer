@@ -1797,6 +1797,42 @@ selections, resets, drags, crafts and hand-back of two screens, byte for byte. N
 hotbar key on the output, a shift click making more than a stack, and before 1.26.60 the selection forgotten when the
 input empties (1.26.60's reset tells it).
 
+### The loom
+
+Its window is `minecraft:loom`, of Java's 40 slots: 0 the banner (`ui` 9, `loom_input` in requests), 1 the dye (`ui`
+10, `loom_dye`), 2 the banner pattern item (`ui` 11, `loom_material`), 3 the result (`ui` 50, `creative_output`). Its
+close gives back the cursor's item (its place is not recorded: as the crafting table's), then the banner's, the pattern
+item's and the dye's, as recorded on 1.26.51, and from 1.21.120 waits for the crafting table's animation (390 ms), as
+recorded on every build. It has no recipe: a request names the pattern.
+
+- **`bot.bedrock.selectLoomPattern(pattern)`** is the pattern's button, by Bedrock's code: one of the 32 of a dye
+  alone, which the vanilla client's buttons show in this order (recorded on 1.26.20, 1.26.51 and 1.26.60): `bo mc cr
+  ld rud lud rd gra gru hh hhb vh vhr mr ss bl br tl tr sc bs cs dls drs ls ms rs ts bt tt bts tts`. The vanilla client
+  tells the server nothing (every build). The selection lasts until another loom opens, a craft too (not recorded). It
+  rejects without a loom open, for another code, and for those of a banner pattern item (`cre sku flo moj bri cbo pig
+  glb flw gus`), which are not recorded, so not supported.
+- **The output** (`bot.clickWindow(3, …)`) makes the pattern selected on the banner, in the dye's color, when the slots
+  hold a banner and a `<color>_dye` item (other dyes are not recorded); else it sends nothing. The result is the banner
+  with the pattern after its own (`Patterns`, a list of `Color`, Bedrock's index of the color, black 0 … white 15, red 1
+  recorded, and `Pattern`), before the banner's other tags: from 1.20.61 the server gives banners `Type` 0, so the
+  result is `{Patterns, Type}`, as recorded. A request is, by version: up to 1.17.30 `non_implemented` (naming no
+  pattern), from 1.17.40 `craft_loom_request` (the times from 1.21.20); then `results_deprecated` (the result, once),
+  a `consume` of the banner then of the dye, and the result moved: with a mouse button taken to the cursor, as recorded,
+  with a hotbar key to the key's slot (neither while the slot holds an item), with a shift click to the inventory as a
+  shift click moves a stack, onto a banner of the same patterns first (neither recorded).
+- **`bot.bedrock.applyBannerPattern(pattern, dye, banner, loom)`** patterns a banner at the loom open, else at the one
+  given, which it opens with `bot.openBlock` and closes after, also when it fails: it puts the banner (the inventory's
+  first, as null) and then one dye in their slots with `bot.transfer`, as recorded, selects the pattern and shift
+  clicks the output. It rejects, sending nothing, for a pattern `selectLoomPattern` rejects, an item that is no banner
+  or no dye, one the inventory has not, an item on the cursor or in the loom's slots, and with no loom open or given;
+  it rejects after the transfers when the inventory has no room for the result.
+
+Recorded and replayed by the tests: the first pattern on a white banner with red dye, to the cursor, on every build, of
+the request's layout by version (one build each, byte for byte). Not recorded, so as the bot does it: the other dyes'
+colors, a banner with patterns already (no limit to their number is checked: the server's), the selection after a
+craft, a hotbar key or a shift click on the output, the patterns of a banner pattern item, and the cursor's place in
+the hand-back.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
