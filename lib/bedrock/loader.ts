@@ -14,6 +14,7 @@ import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
 import abilities from './plugins/abilities.ts'
 import bossBar from './plugins/boss_bar.ts'
+import brewingStand from './plugins/brewing_stand.ts'
 import breath from './plugins/breath.ts'
 import chat from './plugins/chat.ts'
 import craft from './plugins/craft.ts'
@@ -59,7 +60,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   particle,
   craft,
   windows,
-  villager
+  villager,
+  brewing_stand: brewingStand
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

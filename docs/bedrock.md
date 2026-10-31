@@ -1332,6 +1332,37 @@ Not yet: `bot.openEntity` (the containers' feature), the trades' locked tiers, t
 (`trade_tier`, `TierExpRequirements`: Java has no API for them), the mouse-over naming the entity under the
 crosshair (the inventory's `interact` names none).
 
+## Brewing stand
+
+Java has no brewing helper: a Java bot opens a brewing stand with `openBlock` and reads its brew time and fuel from
+`craft_progress_bar` with a listener of its own. On Bedrock the stand is a screen of its own (`brewing_stand`), whose
+window is Java's: the three bottles in slots 0 – 2 (`brewing_result` 1 – 3 in requests), the ingredient in 3
+(`brewing_input` 0), the blaze powder in 4 (`brewing_fuel` 4), then the player's 36. Its items are its own window's, by
+the dynamic id the server opens it with (`inventory_content` of 5 slots, `inventory_slot` as the server changes them:
+the powder it burns, the potions it brews); clicks on them make the vanilla client's requests (see the clicks above).
+Its close has the crafting table's animation from 1.21.120 and gives back only the cursor: the stand keeps its items.
+
+- **`bot.openBrewingStand(block)`** (Bedrock's, at the level of Java's `openFurnace`) is `openBlock`, resolving with
+  the stand's window; a block the server opens another screen for rejects (`openBrewingStand: the crafting_table
+  opened a minecraft:crafting_table window`), that screen closed first. `openBlock` resolves with the same window.
+- **`brewTime`**, **`fuel`** and **`fuelTotal`** are container_set_data's properties 0, 1 and 2 for the screen's id,
+  as the server sends them, those before its opening too (three of 0 at every opening recorded), null until it tells
+  one: the ticks the brew still takes (400 when it starts, then one less a tick, 0 at its end), the brews the fuel
+  still makes (20 a blaze powder, one less a brew) and the brews the last powder gave (20). Raw, not Java furnace's
+  fractions and seconds. The window's **`update`** event comes in the packet pass of each, after the value changed.
+- **`potionItems()`**, **`ingredientItem()`**, **`fuelItem()`** read the slots; **`putPotion(bottle, itemType,
+  metadata)`** (one), **`putIngredient(itemType, metadata, count)`** and **`putFuel(…)`** are Java furnace's puts:
+  `bot.transfer` from the window's inventory part (one powder of two is a right click, as recorded, the other put
+  back); **`takePotion(bottle)`**, **`takePotions()`** (each bottle holding one), **`takeIngredient()`** and
+  **`takeFuel()`** are `bot.putAway` of the slot (a shift click, as recorded), resolving with the item taken. A bottle
+  other than 0, 1 or 2, an empty slot, or a take with the stand not open reject naming the member.
+
+Recorded on every build (reduced_brewing): the properties before the opening, three potions put in, a blaze powder of
+two put as fuel by a right click (the server burns it at once: fuel 20), the other as the ingredient, the brew's 400
+ticks, a brewed potion shift clicked out, the close. Not recorded, so as on every screen: a shift click from the
+player's slots (the bot moves the stack between the inventory and the hotbar), and which items the vanilla client lets
+into which slot (the bot sends the click, which the server may refuse).
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):

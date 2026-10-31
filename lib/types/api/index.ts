@@ -288,6 +288,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   openVillager: (villager: Entity) => Promise<BedrockVillager>
   /** Java's: selects the trade, then trades `times` (the uses left) times by clicks on its result, the outputs and what is left put in the inventory */
   trade: (villager: BedrockVillager, tradeIndex: string | number, times?: number) => Promise<void>
+  /** Bedrock's (Java has no brewing helper): openBlock for a brewing stand, resolving with its window, which has the stand's state as the server tells it */
+  openBrewingStand: (brewingStand: Block) => Promise<BedrockBrewingStand>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */
@@ -949,6 +951,11 @@ interface FurnaceEvents extends StorageEvents {
   update: () => void
 }
 
+export interface BedrockBrewingStandEvents extends StorageEvents {
+  /** a property of the stand told by the server */
+  update: () => void
+}
+
 interface ConditionalStorageEvents extends StorageEvents {
   ready: () => void
 }
@@ -998,6 +1005,41 @@ export interface Furnace extends Window<FurnaceEvents> {
   fuelItem (): Item
 
   outputItem (): Item
+}
+
+/** Bedrock's brewing stand window: the bottles in slots 0 – 2, the ingredient in 3, the blaze powder in 4 */
+export interface BedrockBrewingStand extends Window<BedrockBrewingStandEvents> {
+  /** the ticks the brew still takes: 400 when it starts, 0 with none; null until the server tells it */
+  readonly brewTime: number | null
+  /** the brews the fuel still makes: 20 a blaze powder; null until the server tells it */
+  readonly fuel: number | null
+  /** the brews the last blaze powder gave; null until the server tells it */
+  readonly fuelTotal: number | null
+
+  close (): Promise<void>
+
+  /** the three bottles' slots, each null where it is empty */
+  potionItems (): Array<Item | null>
+
+  ingredientItem (): Item | null
+
+  fuelItem (): Item | null
+
+  /** moves one potion of the inventory into the bottle 0, 1 or 2 */
+  putPotion (bottle: number, itemType: number, metadata: number | null): Promise<void>
+
+  putIngredient (itemType: number, metadata: number | null, count: number): Promise<void>
+
+  putFuel (itemType: number, metadata: number | null, count: number): Promise<void>
+
+  takePotion (bottle: number): Promise<Item>
+
+  /** the bottles' potions, each one there */
+  takePotions (): Promise<Item[]>
+
+  takeIngredient (): Promise<Item>
+
+  takeFuel (): Promise<Item>
 }
 
 export interface Dispenser extends Window<StorageEvents> {
