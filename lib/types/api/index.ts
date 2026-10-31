@@ -331,6 +331,12 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
 export interface BedrockExtensions {
   /** openBlock on a grindstone, resolving with its window, whose grind makes the vanilla client's clicks */
   openGrindstone: (grindstone: Block) => Promise<BedrockGrindstone>
+  /** the stonecutter's recipes whose ingredient, as shown, is the item (of any metadata for null), in the order its buttons show them */
+  stonecutterRecipes: (itemType: number, metadata?: number | null) => BedrockRecipe[]
+  /** the open stonecutter's button: its output then crafts the recipe, while its input takes it */
+  selectStonecutterRecipe: (recipe: BedrockRecipe) => Promise<void>
+  /** cuts `count` (1, as null; 0 cuts nothing) crafts of the recipe at the stonecutter open or the one given, which it opens and closes; rejects, sending nothing, without the ingredients */
+  stonecut: (recipe: BedrockRecipe, count?: number | null, stonecutter?: Block | null) => Promise<void>
 }
 
 export interface BotEvents {

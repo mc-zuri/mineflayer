@@ -35,6 +35,7 @@ import scoreboard from './plugins/scoreboard.ts'
 import settings, { chunkRadiusOf } from './plugins/settings.ts'
 import sound from './plugins/sound.ts'
 import spawnPoint from './plugins/spawn_point.ts'
+import stonecutter from './plugins/stonecutter.ts'
 import tablist from './plugins/tablist.ts'
 import team from './plugins/team.ts'
 import time from './plugins/time.ts'
@@ -77,7 +78,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   grindstone,
   anvil,
   chest,
-  drags
+  drags,
+  stonecutter
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

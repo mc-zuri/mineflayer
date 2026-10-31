@@ -1740,6 +1740,63 @@ or rejecting: enchantments and enchanted books on either item, an empty name, mo
 40 levels and the rename's cap (Java's rules), the result with no room in the inventory, the cursor's place in the
 hand-back, how long a name Bedrock's box takes (Java's 35 kept).
 
+## Stations
+
+Java's bot has no helper for these stations: it opens one with `openBlock` and clicks its window, its server crafting
+the recipe a button selected. Each station's screen is a window of Java's layout, its slots in the `ui` window; a click
+on its output crafts as the vanilla client's does, in the click's request; and the members Java's bot has not are
+Bedrock's own, under `bot.bedrock`.
+
+### The stonecutter
+
+Its window is `minecraft:stonecutter`, of Java's 38 slots: 0 the input (`ui` 3, `stonecutter_input` in requests), 1 the
+result (`ui` 50, `creative_output`), then the inventory (9 – 35) and the hotbar. Its close gives back the cursor's item,
+then the input's (the cursor's place is not recorded: as the crafting table's), and from 1.21.120 waits for the
+crafting table's animation (390 ms), as recorded on every build. Its recipes are crafting_data's of block
+`stonecutter` (one ingredient each), which `bot.recipesAll`, `recipesFor` and `craft` leave to it.
+
+- **`bot.bedrock.stonecutterRecipes(itemType, metadata)`**: the stonecutter's recipes whose ingredient, as the recipe
+  shows it, is the item (of the metadata, unless null or undefined), in crafting_data's order. The vanilla client's
+  buttons are the recipes taking the input's item in that order, as its button and craft were on all 338 recorded
+  crafts (1.26.51 and 1.26.60); their priority does not order them. From 1.16.220 a block item's `Item.metadata` is
+  0, its variant only in the block state the server sends, so for a variant sharing its id with others (granite's
+  `stone`) the item's metadata lists data 0's (plain stone's) recipes: given null, it lists them all, and
+  `stonecut`, which matches by the state, rejects those the inventory has not the ingredients of.
+- **`bot.bedrock.selectStonecutterRecipe(recipe)`** is the button: the output then crafts the recipe, for as long as
+  the input holds an item it takes; emptying the input or swapping another item in forgets it, a craft leaving items
+  does not. Up to 1.26.51 the vanilla client tells the server nothing (the server crafts the recipe the request names);
+  1.26.60 tells it `serverbound_stonecutter_set_recipe`, with the window's id and twice the button's index among those
+  the input shows, in the select's input pass. It rejects without a stonecutter open, for a recipe not the
+  stonecutter's or not of the last crafting_data, and when the input does not take it, sending nothing.
+- **The output** (`bot.clickWindow(1, …)`) crafts the recipe selected, if the input takes it; else it sends nothing,
+  as a Java server takes nothing from an empty result slot. A request is, by version: up to 1.17.40
+  `non_implemented` (naming no recipe) and `results_deprecated` (the recipe's output, once); 1.18.0 – 1.18.11
+  `craft_recipe` and `results_deprecated`; from 1.18.30 `craft_recipe` alone (the times from 1.21.20); then a `consume`
+  of the input, and the result moved: with a mouse button (either) taken to the cursor, with a hotbar key to the key's
+  slot (not recorded: as the crafting grid's), unless that slot holds another item or has no room for it; with a shift
+  click to the inventory as a shift click moves a stack, as often as the input allows while there is room, up to
+  1.21.2 a request a craft, from 1.21.20 a stack's worth a request (4 stone: four requests of a stair each, one of 8
+  slabs). Up to 1.21.2 the vanilla client then takes one request id more, which it never sends, and the bot does too.
+- **1.26.60's reset**: at the screen's opening, and before every request that fills the empty input or empties it (a
+  click, a craft, the hand-back), the vanilla client tells `serverbound_stonecutter_set_recipe` index 0 twice, in that
+  request's packet; a request leaving items in the input tells nothing. The server answers each with
+  `clientbound_stonecutter_set_recipe`, which the bot reads and nothing depends on (the server crafted a recipe whose
+  last selection said 0).
+- **`bot.bedrock.stonecut(recipe, count, stonecutter)`** cuts `count` crafts (1, as null; 0 cuts nothing) at the
+  stonecutter open, else at the one given, which it opens with `bot.openBlock` and closes after, also when it fails:
+  it tops the input up to the crafts' ingredients with `bot.transfer` from the inventory's slots holding them, one
+  slot at a time (a take, then places, the rest put back, as the vanilla client's clicks), selects the recipe, and
+  shift clicks the output. It rejects, sending nothing, for a recipe not the stonecutter's, a count that is not a whole
+  number, without the ingredients, for more crafts than a stack of the ingredient, an input of another item or of more
+  than the crafts take, an item on the cursor, and with no stonecutter open or given; it rejects after cutting what
+  fits when the inventory has no room for all.
+
+Recorded and replayed by the tests: a craft to the cursor on every build, of the request's layout by version (one
+build each, byte for byte); 4 stone shift clicked to stairs (1.21.2) and to slabs (1.21.20, 1.26.51); on 1.26.60 the
+selections, resets, drags, crafts and hand-back of two screens, byte for byte. Not recorded, so as the bot does it: a
+hotbar key on the output, a shift click making more than a stack, and before 1.26.60 the selection forgotten when the
+input empties (1.26.60's reset tells it).
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
