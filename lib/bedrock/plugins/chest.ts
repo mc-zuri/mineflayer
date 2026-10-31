@@ -7,9 +7,13 @@ import { CRAFTER_SCREEN } from '../screens/crafter.ts'
 import { DISPENSER_SCREEN } from '../screens/dispenser.ts'
 import { DROPPER_SCREEN } from '../screens/dropper.ts'
 import { hopperScreen } from '../screens/hopper.ts'
+import { HORSE_SCREEN } from '../screens/horse.ts'
 import type { Chest } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 
+const OWNER = 'chest'
+// update_equipment names no coordinates
+const ORIGIN = Object.freeze({ x: 0, y: 0, z: 0 })
 /** the blocks Java's openContainer opens, by their Bedrock names; a shulker box of any colour too */
 const CONTAINER_BLOCKS: readonly string[] = Object.freeze(['chest', 'trapped_chest', 'ender_chest', 'barrel', 'dispenser', 'dropper', 'hopper'])
 /** the windows Java's openContainer resolves with, by the start of their type */
@@ -26,7 +30,7 @@ function isChest (window: Window): window is Chest {
 
 /**
  * The container screens (chests, barrels, shulker boxes, hoppers, dispensers, droppers, crafters, chest minecarts, hopper
- * minecarts, chest boats), and Java's openContainer.
+ * minecarts, chest boats), the horse's, which update_equipment opens, and Java's openContainer.
  */
 export default function chest (bot: BedrockBotInternal): void {
   const { screens } = bot._inventory
@@ -35,7 +39,10 @@ export default function chest (bot: BedrockBotInternal): void {
   // a server may open an entity's screen by the entity's type (not recorded): the same screens
   for (const type of ['container', 'minecart_chest', 'chest_boat'] as const) screens.add(containerScreen(type, blockAt, nameOf))
   for (const type of ['hopper', 'minecart_hopper'] as const) screens.add(hopperScreen(type, nameOf))
-  for (const screen of [DISPENSER_SCREEN, DROPPER_SCREEN, CRAFTER_SCREEN]) screens.add(screen)
+  for (const screen of [DISPENSER_SCREEN, DROPPER_SCREEN, CRAFTER_SCREEN, HORSE_SCREEN]) screens.add(screen)
+  bot._core.handle(OWNER, 'update_equipment', (packet, ctx) => {
+    bot._inventory.openScreen(bot._core, ctx, { id: packet.window_id, type: packet.window_type, position: ORIGIN, entity: packet.entity_id })
+  })
 
   async function openTarget (target: Block | Entity, direction?: Vec3, cursorPos?: Vec3): Promise<Window> {
     if (!('stateId' in target)) return await bot.openEntity(target)

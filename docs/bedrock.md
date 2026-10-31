@@ -1207,8 +1207,20 @@ container's, then the player's inventory and hotbar (`inventoryStart` the contai
   bot shows as the same screens: no server was recorded opening them by these, nor Bedrock Dedicated Server opening an
   entity's at all. An opening naming an entity without a container is the block's at its coordinates. Slots a server
   sends of the screen before it is shown (the scripted server, in the opening's batch) are its own.
+- **The horse's screen** (`lib/bedrock/screens/horse.ts`) is opened by update_equipment (`window_type` `horse`, no
+  container_open), as a scripted server opened it on 1.26.20, 1.26.51 and 1.26.60 (containers_horse): `window.type`
+  `EntityHorse` (Java's before 1.14; Java's later `HorseWindow`), titled Horse as Java's, of 2 slots, the saddle's and
+  the armour's, which requests name `horse_equip` 0 and 1 (recorded: `take 1 horse_equip:0` to the cursor). It is shown
+  as a container's: at its content, which that server sent in the opening's batch on 1.26.20 and 1.26.60, else at the
+  next tick (1.26.51, which sent none). Its close gives back the cursor's item and has the inventory's animation: the
+  vanilla client closed it 310 to 314 ms after the close key on 1.26.51, as it closes the inventory, not a container's
+  405 to 438 ms; 405 to 407 ms on 1.26.60, a container's 530 to 532 ms. The bot does not check which items its slots
+  take: update_equipment names them (`acceptedItems`) by their legacy names (`horsearmordiamond`), which the registry
+  has not. Tests (`test/bedrock/horseTest.ts`): every version plays 1.26.60's opening, click and close with its ids.
 
-Not yet: the horse's screen, and `chestLidMove` (block_event).
+Not yet: how the vanilla client opens the horse's screen (the inventory key while riding: `interact open_inventory`,
+its target not recorded) and what Bedrock Dedicated Server sends then; a donkey's, a mule's or a llama's chest slots;
+`chestLidMove` (block_event).
 
 ### Drags and double clicks
 
