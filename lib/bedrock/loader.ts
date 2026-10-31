@@ -30,6 +30,7 @@ import tablist from './plugins/tablist.ts'
 import team from './plugins/team.ts'
 import time from './plugins/time.ts'
 import title from './plugins/title.ts'
+import villager from './plugins/villager.ts'
 import windows from './plugins/windows.ts'
 import { connectBedrockProtocol } from './transport/adapter.ts'
 import { bedrockProtocolVersionOf, isBedrockVersion, isSupportedBedrockVersion, latestSupportedBedrockVersion, oldestSupportedBedrockVersion } from './version.ts'
@@ -57,7 +58,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   sound,
   particle,
   craft,
-  windows
+  windows,
+  villager
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

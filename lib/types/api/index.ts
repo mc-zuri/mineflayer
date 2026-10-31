@@ -284,6 +284,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   craft: (recipe: BedrockRecipe, count?: number | null, craftingTable?: Block | null) => Promise<void>
   /** Bedrock's: the recipe book's select, putting a craft's ingredients (`all`: as many crafts' as the grid takes; those the inventory has, where it lacks some) in the open screen's grid */
   placeRecipe: (recipe: BedrockRecipe, all?: boolean) => Promise<void>
+  /** Java's: uses a trader (a villager or a wandering trader) and resolves with its trading screen's window, its trades read and `ready` emitted */
+  openVillager: (villager: Entity) => Promise<BedrockVillager>
+  /** Java's: selects the trade, then trades `times` (the uses left) times by clicks on its result, the outputs and what is left put in the inventory */
+  trade: (villager: BedrockVillager, tradeIndex: string | number, times?: number) => Promise<void>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */
@@ -1059,6 +1063,26 @@ export interface VillagerTrade {
   priceMultiplier?: number
   demand?: number
   realPrice?: number
+}
+
+/** a trade of a Bedrock trader: Java's fields from the offer, its items as `inputs` and `outputs` too */
+export interface BedrockVillagerTrade extends VillagerTrade {
+  inputs: Item[]
+  outputs: Item[]
+  /** the villager level the trade needs */
+  tier: number
+}
+
+/** the trading screen's window: Java's villager window before 1.14, slots 0 and 1 the ingredients, 2 the result */
+export interface BedrockVillager extends Window<ConditionalStorageEvents> {
+  trades: BedrockVillagerTrade[]
+  /** the trade the screen shows selected: the first once opened, then the one last selected or traded */
+  selectedTrade: BedrockVillagerTrade | null
+  /** Bedrock's: the vanilla client's click on a trade in the list, putting its items in the ingredient slots; resolves once the server took them */
+  selectTrade: (tradeIndex: number) => Promise<void>
+  /** bot.trade of this window */
+  trade: (tradeIndex: string | number, times?: number) => Promise<void>
+  close: () => Promise<void>
 }
 
 /** a scoreboard's text as the packets give it: legacy text before 1.13, JSON text from 1.13, an NBT component from 1.20.3 */

@@ -93,6 +93,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.recipesFor(itemType, metadata, minResultCount, craftingTable)`, `bot.recipesAll(itemType, metadata,
   craftingTable)`, `bot.craft(recipe, count, craftingTable)`, `bot.placeRecipe(recipe, all)` (Bedrock's): the recipes
   crafting_data sends, and crafting them (see crafting below).
+- `bot.openVillager(villager)`, `bot.trade(villager, tradeIndex, times)`: the trading screen of a villager or a
+  wandering trader, its trades, and trading by its result's clicks (see trading below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1251,6 +1253,85 @@ a decorated pot of sherds, a firework star of a shape or a fade: no recording cr
 for a grid only one of them makes), the recipe book's choice between recipes alike (the bot crafts the one given), the
 stonecutter, the smithing table and the other stations.
 
+## Trading
+
+The trading screen is opened by update_trade (no container_open on any recorded build): its window is Java's villager
+window before 1.14 (`minecraft:villager`, 39 slots): 0 and 1 the ingredient slots (`trade2_ingredient1` and
+`trade2_ingredient2` in requests, `ui` 4 and 5), 2 the result (`creative_output` 50, its `craftingResultSlot`), 3 – 38
+the inventory part. Its title is the offer's `display_name` as a translation (`{"translate":"entity.villager.mason"}`),
+as Java's window titles are JSON. update_trade has one layout on every version; its `villager_unique_id` names the
+trader by its unique id, zigzag on the wire (see the notes).
+
+- **`bot.openVillager(villager)`** uses the entity (`bot.activateEntity`'s use) and resolves at the end of the frame
+  the screen opened, with its window, its trades read and `ready` emitted. It takes the entities whose use opens the
+  screen, by `entity.name` (which the bot has on every version): `villager_v2`, `villager` and `wandering_trader`;
+  Java's asserts the registry's villager type, and refuses a wandering trader, whose Bedrock screen is the same. It
+  rejects another entity before the use, a screen of another kind, one the bot does not show, and none in 100 ticks.
+- **`window.trades`** are Java's `VillagerTrade`s, read from the offers' NBT (`Recipes`): `inputItem1` (`buyA`),
+  `inputItem2` (`buyB`, null without), `hasItem2`, `outputItem` (`sell`), `inputs` and `outputs`, `nbTradeUses` and
+  `maximumNbTradeUses` (`uses`, `maxUses`), `tradeDisabled` (no use left: Bedrock tells no flag), `xp` (`traderExp`),
+  `demand`, `priceMultiplier` (`priceMultiplierA`), `realPrice` (`buyCountA`, the price the server computed with the
+  demand and the discounts: Bedrock tells no `specialPrice` apart, which is undefined), and Bedrock's `tier` (the
+  villager level the trade needs). An item is the registry's of its `Name`, `Count` and `Damage` (32767, any, as every
+  recorded price names it: shown as 0, matching any), its `tag` as its NBT, a block's item placing the state its `Block`
+  compound names (by the palette start_game numbered, so that a sale stacks with the inventory's), a shield written with
+  the blocking tick its item layout needs (no recorded trade sells a block or a shield). A trade the server took counts
+  a use up (the server sends the offers again only when they change otherwise, as recorded). update_trade again for the
+  screen open replaces the trades, without another `ready`, as Java's later trade lists. container_open opening a
+  trading screen shows it without trades.
+- **`ready`** is emitted on the window right after `windowOpen`, in the packet pass of update_trade.
+- **What the vanilla client does at the opening**: in that frame's input pass, it selects the first trade (below), so
+  that the stack of its item goes from the inventory to the ingredient slot (recorded: 64 wheat for a price of 1).
+  With none of the items in the inventory nothing is sent. Java's `openVillager` moves nothing.
+- **`window.selectedTrade`** is the trade the screen shows selected: the first once opened, then the one selected
+  or traded last (Java's, the one `trade` selected).
+- **`window.selectTrade(index)`** (Bedrock's) is the vanilla client's click on a trade in the list: in one input pass,
+  what the ingredient slots hold goes back to the inventory (a request for each slot it goes to, as a hand-back), then
+  the trade's items from the inventory (`hotbar_and_inventory` 0 – 35, of the data value the trade costs) into its
+  ingredient slots, a request for each stack, until the slot holds a stack's worth; an item the inventory lacks is
+  left out, and what has no room in the inventory stays (recorded: a click on the trade selected, and on the second
+  trade with its emerald on the cursor). It resolves once the server took the requests.
+- **The result** (`bot.clickWindow(2, button, 0)`, either button) trades once, as the vanilla client's mouse click,
+  when the selected trade has a use left, its ingredient slots hold its price (`buyCountA`, `buyCountB`) and the
+  cursor holds nothing or its item with room: one request, `craft_recipe` (the offer's `netId`, the times from 1.21.20),
+  `results_deprecated` (the sale, as crafting writes a result), a `consume` of each price, then the sale taken from
+  the created output to the cursor. Otherwise nothing is sent, as recorded for an unmet trade. A shift click or a hotbar
+  key on it rejects: the vanilla client's are not recorded.
+- **`bot.trade(villager, tradeIndex, times)`** and **`window.trade(tradeIndex, times)`** are Java's code over these
+  clicks: `tradeIndex` parsed as Java's, `times` (0 or none: the uses left); it rejects as Java's (`trade blocked`,
+  `Not enough item 1 to trade`, `Not enough item 2 to trade`) counting what the ingredient slots, the inventory part
+  and the cursor hold (the opening's select moved the items to the ingredient slots), and for no such trade, more trades
+  than uses left, or a window that is not the screen open. It puts the cursor's item away first (the result is taken to
+  the cursor), selects the trade (Java selects it and the server moves the items), then for each trade tops the
+  ingredient slots up with `bot.transfer` and takes the result with `bot.putAway(2)` (a click on the result, then the
+  cursor's sale to the inventory), and finally puts away what the ingredient slots hold. Each click waits for the
+  server's answer.
+- **The close** (`bot.closeWindow`, `window.close()`) hands back the cursor, then ingredient slot 1, then 2, and names
+  no window in its container_close (`none`, `window_type` `none` from 1.21.0), which the server answers naming the
+  screen's id. From 1.21.120 it comes after the crafting table's animation, as recorded on 1.26.51 and 1.26.60 (466 to
+  655 ms after the close step); on 1.26.20 the recorded client closed at once, in the hand-back's packet.
+- **The trader's death** (`entityDead`): the vanilla client closes the screen itself, as `closeWindow` does (recorded on
+  1.26.20, 1.26.51 and 1.26.60, before the server's close).
+
+Recorded on 1.26.20, 1.26.51 and 1.26.60 only, with a server trading wheat for an emerald and an emerald and wheat for
+bread, and replayed by the tests on those builds byte for byte: the use holding wheat, the opening's select, a click on
+the selected trade, a trade, a select of the second trade, a click on its unmet result and the close; the trader's
+death. A trader walking as it is used (recorded on 1.26.51 and 1.26.60) is clicked where the client draws it, between
+the positions the server sent, and by the bot where the server last put it: the use's point differs. Not recorded, so as
+the bot does it: versions before 1.26.20 (written from the protocol data: one update_trade layout, the requests and the
+close each the version's), which count a trade consumes when `buyCountA` is not `buyA`'s `Count` (the bot consumes
+`buyCountA`; every recorded one is 1), a select with several stacks of an item, a wandering trader's screen, an item
+sold with NBT, and whether the screen closes when the trader is removed without dying.
+
+Tests (`test/bedrock/villagerTest.ts`): the recorded session played with the bot on 1.26.20, 1.26.51 and 1.26.60;
+on every version the screen update_trade opens, its trades, the opening's select, a trade and the close at the
+trader's death, each request read back; on the latest, `bot.trade` and its rejections, the result's rules, the select's
+and the offers' edge cases.
+
+Not yet: `bot.openEntity` (the containers' feature), the trades' locked tiers, the villager's level and experience
+(`trade_tier`, `TierExpRequirements`: Java has no API for them), the mouse-over naming the entity under the
+crosshair (the inventory's `interact` names none).
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -1360,3 +1441,6 @@ What was found getting here, beyond mineflayer:
   versions (`MobArmorStandPlace` and `ArmorStandPlace`), and from 1.19.1 some types share the name `_`.
 - **minecraft-data** compares its legacy Bedrock versions (0.14, 0.15) wrongly: `bedrock_0.14`'s version `>=`
   1.16.201 is true. mineflayer's Bedrock versions are a list, not comparisons.
+- **minecraft-data** read update_trade's `villager_unique_id` and `entity_unique_id` unsigned, where the game writes
+  them zigzag, as every unique id: the workspace's minecraft-data reads them as `zigzag64` on every version (the
+  recorded villager -8589934590 read as 17179869179).
