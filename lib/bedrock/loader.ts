@@ -14,6 +14,7 @@ import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
 import abilities from './plugins/abilities.ts'
 import beacon from './plugins/beacon.ts'
+import anvil from './plugins/anvil.ts'
 import bossBar from './plugins/boss_bar.ts'
 import brewingStand from './plugins/brewing_stand.ts'
 import breath from './plugins/breath.ts'
@@ -71,7 +72,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   lectern,
   furnace,
   enchantment_table: enchantmentTable,
-  grindstone
+  grindstone,
+  anvil
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

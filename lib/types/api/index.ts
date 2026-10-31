@@ -296,6 +296,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   openFurnace: (furnace: Block) => Promise<Furnace>
   /** Java's: openBlock on an enchanting table, resolving with its window: the options as player_enchant_options tells them, enchant as the vanilla client's button */
   openEnchantmentTable: (enchantmentTable: Block) => Promise<BedrockEnchantmentTable>
+  /** Java's: openBlock on an anvil, resolving with its window: combine and rename as the vanilla client's clicks, the result by Bedrock's rules */
+  openAnvil: (anvil: Block) => Promise<BedrockAnvil>
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */
@@ -1136,6 +1138,11 @@ export interface BedrockEnchantmentTable extends Window<ConditionalStorageEvents
   takeTargetItem (): Promise<Item>
   putTargetItem (item: Item): Promise<void>
   putLapis (item: Item): Promise<void>
+}
+
+/** Java's Anvil on Bedrock's anvil window */
+export interface BedrockAnvil extends Window<StorageEvents>, Anvil {
+  close (): Promise<void>
 }
 
 /** Bedrock's grindstone, which Java's bot has not: grind puts the items in, takes the result and puts it away, resolving with it */

@@ -100,6 +100,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.openEnchantmentTable(block)`: Java's, its window's options from player_enchant_options and its enchant (see the
   enchanting table below).
 - `bot.bedrock.openGrindstone(block)` (Bedrock's): the grindstone, and its window's grind (see the grindstone below).
+- `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1566,6 +1567,62 @@ table's, with 1.17.10 apart (`RepairCost`); on 1.26.60 the items given back on c
 it: the second slot alone, the name of a first slot a request emptied (the request's), curses, books and the other
 items the vanilla client takes, the cursor's place in the hand-back. The experience a grindstone gives comes as orbs
 the server spawns.
+
+## Anvil
+
+The anvil's screen (container_open's `anvil`, of every anvil block) is a `minecraft:anvil` window of Java's 39 slots: 0
+the item (`ui` 1, `anvil_input` in requests), 1 the material (`ui` 2, `anvil_material`), 2 the result (`ui` 50, the
+created output, its crafting result slot), 3 – 38 the player's. Its close gives back the cursor, the item, then the
+material (the item before the material as recorded on 1.26.20, 1.26.51 and 1.26.60; where the cursor goes is not
+recorded), and from 1.21.120 waits for the crafting table's animation (390 ms), as recorded.
+
+- **`bot.openAnvil(block)`** is Java's: it opens the anvil with `bot.openBlock(block)` and rejects a window that is no
+  anvil's (`Not a anvil-like window: <type>`). Every anvil's window has `combine` and `rename` before `windowOpen`,
+  whoever opened it.
+- **`anvil.combine(itemOne, itemTwo, name)`** and **`anvil.rename(item, name)`** check as Java's, with its messages: a
+  name longer than 35 characters, no result (`Not anvil-able (in either direction), cancelling.`, `Not valid rename,
+  cancelling.`), and outside creative a level below the cost (`Player does not have enough xp to do action,
+  cancelling.`). `combine` takes the items in the order that makes a result (both orders cost the same where both
+  do). Then they do what the vanilla client does: the item moved into slot 0 by `bot.moveSlotItem`, the same for the
+  material into slot 1 (an item already in its slot stays there), a click on the result, and up to 1.19.40 the cursor
+  put in the first empty slot of the window's inventory (`bot.putSelectedItemRange`). Each item moves from the window's
+  slot holding its stack, else, as Java's `bot.transfer`, the first of its type, metadata and NBT in the window's
+  inventory, so an item of `bot.inventory` works as in Java; an item in no slot of the window rejects (`<member>: the
+  <name> given is in no slot of the window`). They resolve once the server took the
+  request and, outside creative, told the level it took (100 ticks), as Java's wait for `experience`; Java's rename
+  waits in creative too, and never resolves there.
+- **A click on the result** (`bot.clickWindow(2, button, 0)`) makes the vanilla client's request, which leaves in the
+  next tick: `optional` (no recipe, no filtered name), a `consume` of the material it takes, then of the item, and the
+  result taken to the cursor (up to 1.19.40) or placed in the first slot of the inventory with room (from 1.19.50). Its
+  custom names are up to 1.19.40 always one, the new name or else the item's (its custom name, else the registry's
+  display name: `Iron Sword` as recorded), with the cause `anvil_text` from 1.19.30; from 1.19.50 the new name and
+  `anvil_text`, or none and -1. In the same input pass, before the request: up to 1.18.11 a renaming result's
+  filter_text_packet with the new name (the vanilla client sends one for each letter typed too, which the bot does
+  not), on 1.16.201 outside creative entity_event `player_add_xp_levels` with the levels taken (negative, as
+  recorded; in creative not recorded), and anvil_damage with the anvil's position on every version but 1.17.0 and
+  from 1.26.40. A click that makes no result, a level below the cost outside creative and a click of another mode
+  reject, sending nothing.
+- **The anvil's damage**: the vanilla client rolls whether its use damages the anvil and tells it in anvil_damage
+  (`damage` 1 in 28 of 159 recorded uses), and up to 1.26.30 the server applies what it is told. The bot always sends
+  0, so that its use of an anvil does not depend on chance: it never breaks an anvil itself. On 1.17.0 and from
+  1.26.40 the client sends none, and the server rolls.
+- **The result** is the vanilla client's, by Bedrock's rules: a material the item is repaired with mends a quarter of
+  the durability for each one, as many as it needs, each a level; two of an item leave what both had left and 12 % of
+  the durability, for 2 levels; a new name costs a level more, and a rename alone keeps the item's `RepairCost`
+  (written, 0 when it had none), where a repair writes the larger of the two's twice over plus one. The cost adds both
+  items' `RepairCost` (Java's prior work), a cost of 40 makes no result, a rename alone costs 39 at most. Its NBT has
+  the item's keys first, then `RepairCost` and `display` (`Name`, beside what the item's display had). Recorded:
+  `Damage` 200 and 2 iron ingots make `Damage` 76 and `RepairCost` 1 for 2 levels, two of `Damage` 200 `Damage` 120 for
+  2, a rename of `Damage` 0 `RepairCost` 0 with its name for 1.
+
+Recorded and replayed by the tests on every build: an iron sword of `Damage` 200 repaired with 2 iron ingots, two
+combined, and one renamed, each group playing the client's packets with the bot, byte for byte (the anvil's damage as
+0), and from 1.19.50 its tell of the result in the hand. The groups are the grindstone's, with 1.17.0 (no
+anvil_damage), 1.18.11 (the last with filter_text_packet) and 1.26.10 (the anvil's position written anew) apart; on
+1.26.60 the item and the material given back on close. Not recorded, so as the bot does it
+or rejecting: enchantments and enchanted books on either item, an empty name, more material than needed, prior work,
+40 levels and the rename's cap (Java's rules), the result with no room in the inventory, the cursor's place in the
+hand-back, how long a name Bedrock's box takes (Java's 35 kept).
 
 ## Tests
 
