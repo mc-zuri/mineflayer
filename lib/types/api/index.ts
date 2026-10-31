@@ -250,6 +250,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   currentWindow: Window | null
   heldItem: Item | null
   quickBarSlot: number
+  /** Java's: the hotbar slot read at once, selected in the next input pass (the vanilla client's hotbar key), told to the server in the tick after */
+  setQuickBarSlot: (slot: number) => void
+  /** Java's: bot.inventory's first hotbar slot, 36 */
+  QUICK_BAR_START: number
   /** opens the inventory screen (its 2 × 2 crafting grid), as the vanilla client does: resolves once the server opened it */
   openInventory: () => Promise<Window<StorageEvents>>
   /** gives back what the screen's definition says (the cursor, a grid, a station's inputs; dropping what has no room), closes the screen, and resolves once the server closed it */

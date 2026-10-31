@@ -242,7 +242,9 @@ export class Inventory {
   private runtimeId: bigint | undefined
   private equipmentChanged = true
   /** undefined until the player is first shown */
-  private equipped: { main: Stack | undefined, offhand: Stack | undefined } | undefined
+  private equipped: { main: Stack | undefined, slot: number, offhand: Stack | undefined } | undefined
+  /** the hotbar slot the player's key asked for, selected in the next input pass */
+  private asked: number | undefined
   private readonly layoutsOpened = new Set<NonNullable<ScreenDefinition['options']>>()
   private readonly layoutsTold = new Set<NonNullable<ScreenDefinition['options']>>()
   private optionsDue: Ns[] = []
@@ -268,14 +270,14 @@ export class Inventory {
     bot.inventory = this.window
     Object.defineProperties(bot, {
       currentWindow: { get: () => this.screen?.window ?? null },
-      heldItem: { get: () => this.window.slots[HOTBAR_START + this.quickBarSlot] ?? null },
-      quickBarSlot: { get: () => this.quickBarSlot }
+      heldItem: { get: () => this.window.slots[HOTBAR_START + this.shownSlot] ?? null },
+      quickBarSlot: { get: () => this.shownSlot }
     })
     bot.openInventory = async () => await this.openInventory(core)
     bot.closeWindow = async window => { await this.closeWindow(core, window) }
     bot.clickWindow = async (slot, mouseButton, mode) => { await this.clickWindow(core, { slot, mouseButton, mode }) }
     this.window.on('updateSlot', (slot, _oldItem, newItem) => {
-      if (slot === HOTBAR_START + this.quickBarSlot) core.emit(bot, 'heldItemChanged', newItem)
+      if (slot === HOTBAR_START + this.shownSlot) core.emit(bot, 'heldItemChanged', newItem)
     })
     core.observe(OWNER, 'start_game', packet => { this.runtimeId = packet.runtime_entity_id })
     core.handle(OWNER, 'item_registry', packet => {
@@ -397,6 +399,21 @@ export class Inventory {
     this.quickBarSlot = slot
     core.emit(this.bot, 'heldItemChanged', this.bot.heldItem)
     this.equipmentChanged = true
+  }
+
+  /** the player's hotbar key: read at once, selected in the next input pass, the last asked in a frame; none if it is the slot selected then */
+  askSlot (core: BedrockCore, slot: number): void {
+    this.asked = slot
+    core.command(() => {
+      const asked = this.shownSlot
+      this.asked = undefined
+      this.select(core, asked)
+    })
+  }
+
+  /** the slot bot.quickBarSlot reads: the one asked for, until the input pass selects it */
+  private get shownSlot (): number {
+    return this.asked ?? this.quickBarSlot
   }
 
   /** a screen another packet opens (update_trade, update_equipment), in its packet pass, as container_open opens one */
@@ -733,9 +750,10 @@ export class Inventory {
     this.equipmentChanged = false
     const main = this.confirmed(`inventory:${this.quickBarSlot}`)
     const offhand = this.confirmed(OFFHAND)
-    const mainChange = equipped === undefined ? 'item' : changeOf(equipped.main, main)
+    // another slot of an alike item is told by mob_equipment alone, its slot being the server's selection (not recorded)
+    const mainChange = equipped === undefined ? 'item' : changeOf(equipped.main, main) ?? (equipped.slot === this.quickBarSlot ? undefined : 'other')
     const offhandChange = changeOf(equipped?.offhand, offhand)
-    this.equipped = { main, offhand }
+    this.equipped = { main, slot: this.quickBarSlot, offhand }
     if (mainChange === 'item') outbox.queue('interact', this.interact('mouse_over_entity', 0n))
     if (mainChange !== undefined && (equipped !== undefined || main !== undefined)) outbox.queue('mob_equipment', this.mobEquipment(runtimeId, main, this.quickBarSlot, this.quickBarSlot, 'inventory'))
     if (offhandChange !== undefined) outbox.queue('mob_equipment', this.mobEquipment(runtimeId, offhand, 1, 0, 'offhand'))

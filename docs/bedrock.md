@@ -103,6 +103,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   enchanting table below).
 - `bot.bedrock.openGrindstone(block)` (Bedrock's): the grindstone, and its window's grind (see the grindstone below).
 - `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
+- `bot.setQuickBarSlot(slot)`, `bot.QUICK_BAR_START`: selecting a hotbar slot (see items below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -1069,9 +1070,9 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: using
-a block with an item the use places or uses up (the client then names the slot it changes), screens other than the inventory, the crafting table and the containers (counted, not
-shown), and the hotbar selection by the bot.
+Not yet: using a block with an item the use places or uses up (the client then names the slot it changes). The
+screens no feature defines (the Education ones and the command block, structure and jigsaw editors) are counted, not
+shown.
 
 ### Screens
 
@@ -1892,6 +1893,26 @@ Recorded and replayed by the tests: an empty map and a locator map to the cursor
 layout by version (byte for byte on 1.16.201, 1.16.210, 1.19.30, 1.21.20, 1.21.30, 1.26.40 and 1.26.60). Not
 recorded, so as the bot does it: a hotbar key or a shift click on the output, the slots' items in the other order, and
 the cursor's place in the hand-back.
+
+## Items
+
+- **`bot.setQuickBarSlot(slot)`** selects a hotbar slot as the vanilla client's number key does. It throws Java's
+  `AssertionError` for a slot out of 0 – 8. `bot.quickBarSlot` and `bot.heldItem` read the slot at once (as
+  `getControlState` reads a control); the next input pass selects it, emitting `heldItemChanged` there, the last slot
+  asked in a frame winning: a slot selected already, or the one the frame started with, selects nothing, emits nothing
+  and sends nothing, as the client's key on the slot selected sends nothing. Java emits `heldItemChanged` at once, for
+  each call. A block or an entity used after it in the same input pass names the new slot, as the client's key then
+  click.
+- **What is told**: the next tick tells the slot as any change of what the player holds (see the inventory above):
+  `interact mouse_over_entity` then `mob_equipment` naming the slot as `slot` and `selected_slot`, as recorded on
+  every build moving between an empty slot and one of dirt. The vanilla client never sends player_hotbar. A slot holding
+  an item alike the one held before (or both empty) is told by `mob_equipment` alone, the slot being the server's
+  selection: no recording moves between alike slots. The server answers nothing.
+- **`bot.QUICK_BAR_START`** is Java's 36, `bot.inventory`'s first hotbar slot.
+
+Recorded and replayed by the tests: the selection of an empty slot, then of one of dirt, on every build, in groups by
+how the items and the interact are written and where the tick tells them (up to 1.19.0 after its auth input, from
+1.19.10 before it).
 
 ## Tests
 

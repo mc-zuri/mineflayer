@@ -34,6 +34,7 @@ import loom from './plugins/loom.ts'
 import particle from './plugins/particle.ts'
 import rain from './plugins/rain.ts'
 import scoreboard from './plugins/scoreboard.ts'
+import simpleInventory from './plugins/simple_inventory.ts'
 import settings, { chunkRadiusOf } from './plugins/settings.ts'
 import sound from './plugins/sound.ts'
 import smithing from './plugins/smithing.ts'
@@ -85,7 +86,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   stonecutter,
   smithing,
   loom,
-  cartography
+  cartography,
+  simple_inventory: simpleInventory
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */
