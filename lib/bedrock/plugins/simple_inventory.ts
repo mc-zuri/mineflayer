@@ -1,12 +1,45 @@
 import assert from 'assert'
+import { readStack } from '../modules/items.ts'
+import type { Stack } from '../modules/items.ts'
+import type { WindowId } from '../modules/screens.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
+import type { BedrockClientboundPackets } from '../../types/protocol/bedrock-client.ts'
+
+type Transaction = BedrockClientboundPackets['inventory_transaction']['transaction']
+type Actions = NonNullable<Transaction['actions']>
+type Action = NonNullable<Transaction['inventory_actions']>[number] | Extract<Actions, { network_ids: boolean }>['actions'][number] | Exclude<Actions, { network_ids: boolean }>[number]
 
 const QUICK_BAR_START = 36
 const QUICK_BAR_COUNT = 9
 const OUTSIDE = -999
 const WORN: Readonly<Record<string, number>> = Object.freeze({ head: 5, torso: 6, legs: 7, feet: 8, 'off-hand': 45 })
+// the player's windows, by number up to 1.16.210 and from 1.26.30, each with the slot inventory_slot numbers 0: a transaction numbers the offhand's one item 1, as requests do
+const PLAYER_WINDOWS: Readonly<Record<string, readonly [WindowId, number]>> = Object.freeze({
+  0: ['inventory', 0],
+  inventory: ['inventory', 0],
+  119: ['offhand', 1],
+  offhand: ['offhand', 1],
+  120: ['armor', 0],
+  armor: ['armor', 0],
+  124: ['ui', 0],
+  ui: ['ui', 0]
+})
 
-/** Java's simple_inventory: the hotbar selection, equip, unequip, toss and tossStack */
+/** each container action of the player's windows: its window, its slot as inventory_slot numbers it, and what it leaves there */
+function transactionSlots ({ inventory_actions: inline, actions = [] }: Transaction): Array<[WindowId, number, Stack | undefined]> {
+  // 1.16.201 writes the actions inline, 1.16.210 after network_ids
+  const all: readonly Action[] = inline ?? (Array.isArray(actions) ? actions : actions.actions)
+  return all.flatMap(action => {
+    // the window named inventory_id up to 1.26.20; up to 1.16.210 the stack id the action's, with network_ids
+    const { inventory_id: inventoryId, window_id: windowId, new_item_stack_id: stackId }: { inventory_id?: WindowId | undefined, window_id?: number | undefined, new_item_stack_id?: number | undefined } = action
+    const window = PLAYER_WINDOWS[String(inventoryId ?? windowId)]
+    if (action.source_type !== 'container' || window === undefined) return []
+    const stack = readStack(action.new_item)
+    return [[window[0], action.slot - window[1], stack === undefined || stackId === undefined ? stack : { ...stack, stackId }]]
+  })
+}
+
+/** Java's simple_inventory: the hotbar selection, equip, unequip, toss and tossStack; and the slots the server's inventory transactions change */
 export default function simpleInventory (bot: BedrockBotInternal): void {
   // Java's: the hotbar slot an equip fills next when none is empty
   let nextQuickBarSlot = 0
@@ -94,6 +127,11 @@ export default function simpleInventory (bot: BedrockBotInternal): void {
     const window = bot.currentWindow ?? bot.inventory
     await bot.transfer({ window, itemType, metadata, count, sourceStart: window.inventoryStart, sourceEnd: window.inventoryEnd, destStart: OUTSIDE })
   }
+
+  // the server's report of slots it changed: of an item picked up its only one, of a command's or a use's with inventory_content
+  bot._core.handle('simple_inventory', 'inventory_transaction', ({ transaction }) => {
+    for (const [window, slot, stack] of transactionSlots(transaction)) bot._inventory.receiveSlot(window, slot, stack)
+  })
 
   // Java's, defined once the local player is
   bot._core.observe('simple_inventory', 'start_game', () => {

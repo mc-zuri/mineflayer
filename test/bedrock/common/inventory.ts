@@ -30,6 +30,18 @@ export interface RespondedSlot {
 
 type Responses = MCProtocol.Bedrock.Write.Types.ItemStackResponses
 type CreativeContent = MCProtocol.Bedrock.Write.Types.packet_creative_content
+type InventoryTransaction = MCProtocol.Bedrock.Write.Types.packet_inventory_transaction
+
+/** an action of the server's inventory transaction: a slot of a window, or of the creative inventory (where /give takes an item from, and /clear puts it) */
+export interface TransactionAction {
+  window: InventoryWindow | 'creative'
+  slot: number
+  from: Given | null
+  to: Given | null
+}
+
+// the windows' numbers, which transactions write up to 1.16.210 and from 1.26.30
+const WINDOW_NUMBERS = Object.freeze({ inventory: 0, first: 1, offhand: 119, armor: 120, ui: 124 })
 
 /** no NBT, no blocks to be placed on or destroy; a shield's blocking tick, which only a shield is written with */
 interface ExtraData {
@@ -119,6 +131,39 @@ export class ServerInventory {
     const groups = grouped ? { groups: [{ category: 'construction', name: '', icon_item: none }] } : {}
     // the version's layout
     this.server.send('creative_content', { ...groups, items: entries } as CreativeContent)
+  }
+
+  /** inventory_transaction normal, as the version's servers write it: up to 1.16.210 aux items, the stack ids the actions' (network_ids); up to 1.26.20 Items */
+  transaction (actions: readonly TransactionAction[]): void {
+    this.server.send('inventory_transaction', this.transactionPacket(actions))
+  }
+
+  /** the inventory_transaction that transaction sends */
+  transactionPacket (actions: readonly TransactionAction[]): InventoryTransaction {
+    const numbered = !this.atLeast('bedrock_1.16.220') || this.atLeast('bedrock_1.26.30')
+    const written = actions.map(({ window, slot, from, to }) => {
+      const id = typeof window === 'number' || !numbered || window === 'creative' ? window : WINDOW_NUMBERS[window]
+      const items = { slot, old_item: this.transactionItem(from), new_item: this.transactionItem(to) }
+      if (window === 'creative') {
+        const presence = this.atLeast('bedrock_1.26.30') && !this.atLeast('bedrock_1.26.51') ? { container_presence: true, flag_presence: true } : {}
+        return { source_type: 'creative', ...presence, ...items, ...this.atLeast('bedrock_1.16.220') ? {} : { new_item_stack_id: 0 } }
+      }
+      if (!this.atLeast('bedrock_1.16.220')) return { source_type: 'container', inventory_id: id, ...items, new_item_stack_id: to?.stackId ?? 0 }
+      if (!this.atLeast('bedrock_1.26.30')) return { source_type: 'container', inventory_id: id, ...items }
+      if (!this.atLeast('bedrock_1.26.51')) return { source_type: 'container', container_presence: true, window_id: id, flag_presence: true, ...items }
+      return { source_type: 'container', window_id: id, ...items }
+    })
+    const transaction = this.atLeast('bedrock_1.16.210')
+      ? { legacy: { legacy_request_id: 0 }, transaction_type: 'normal', actions: this.atLeast('bedrock_1.16.220') ? written : { network_ids: true, actions: written } }
+      : { legacy_request_id: 0, transaction_type: 'normal', network_ids: true, inventory_actions: written }
+    // the version's layout
+    return { transaction } as InventoryTransaction
+  }
+
+  /** a transaction's item: up to 1.16.210 not wrapped with its stack id, an ItemV4 from 1.26.30 */
+  private transactionItem (given: Given | null): SlotItem {
+    const item = this.item(given, this.atLeast('bedrock_1.26.30'))
+    return 'item' in item ? item.item : item
   }
 
   private item (given: Given | null, v4: boolean): SlotItem {

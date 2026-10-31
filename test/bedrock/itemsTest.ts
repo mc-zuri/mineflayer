@@ -373,6 +373,76 @@ const CREATIVE_LAYOUTS: readonly CreativeLayout[] = [
   { from: 'bedrock_1.26.40', to: latestSupportedBedrockVersion, craft: { item_id: 1, times_crafted: 1 } }
 ]
 
+/** recorded in the features scenario (case mineflayer.mount): an item picked up into empty hotbar slot 0, which the server reports by an inventory transaction alone (with take_item_entity), and the vanilla client's mob_equipment of it in its next tick */
+interface RecordedPickup {
+  from: BedrockVersion
+  to: BedrockVersion
+  transaction: string
+  /** the item's network id, count and stack id */
+  item: [number, number, number]
+  told: string
+}
+
+const PICKUPS: readonly RecordedPickup[] = [
+  {
+    // recorded on 1.16.201.2: the actions inline, the window by its number, the stack id the action's (network_ids)
+    from: 'bedrock_1.16.201',
+    to: 'bedrock_1.16.210',
+    transaction: '1e00000102000000008c040600000000120200018c0406000000000000',
+    item: [262, 3, 9],
+    told: '1f018c040600000000000000'
+  },
+  {
+    // recorded on 1.21.20.3: the window by its name, the stack id the item's
+    from: 'bedrock_1.16.220',
+    to: 'bedrock_1.26.10',
+    transaction: '1e0000020000000096040100000112000a00000000000000000000020001960401000000000a0000000000000000000000',
+    item: [267, 1, 9],
+    told: '1f01960401000000000a00000000000000000000000000'
+  },
+  {
+    // recorded on 1.26.20.4: an Item, told as an ItemV4
+    from: 'bedrock_1.26.20',
+    to: 'bedrock_1.26.20',
+    transaction: '1e00000200000000c6040200000112000a00000000000000000000020001c60402000000000a0000000000000000000000',
+    item: [291, 2, 9],
+    told: '1f01230102000000000a00000000000000000000000000'
+  },
+  {
+    // recorded on 1.26.30.5: ItemV4s, the window by its number after its presence, the stack id naming its kind
+    from: 'bedrock_1.26.30',
+    to: 'bedrock_1.26.30',
+    transaction: '1e0000010001020001010001000000000000000000002301020000010012000a0000000000000000000002010001010001230102000000000a000000000000000000000000000000000000',
+    item: [291, 2, 9],
+    told: '1f01230102000000000a00000000000000000000000000'
+  },
+  {
+    // recorded on 1.26.40.5
+    from: 'bedrock_1.26.40',
+    to: 'bedrock_1.26.45',
+    transaction: '1e00000100010200010100010000000000000000000006010200000112000a0000000000000000000002010001010001060102000000000a000000000000000000000000000000000000',
+    item: [262, 2, 9],
+    told: '1f01060102000000000a00000000000000000000000000'
+  },
+  {
+    // recorded on 1.26.51.1: the window an option
+    from: 'bedrock_1.26.51',
+    to: latestSupportedBedrockVersion,
+    transaction: '1e000000020001000000000000000000000006010200000112000a000000000000000000000200010001060102000000000a000000000000000000000000000000000000',
+    item: [262, 2, 9],
+    told: '1f01060102000000000a00000000000000000000000000'
+  }
+]
+
+/** how a version writes the server's inventory transaction */
+const TRANSACTION_LAYOUTS: ReadonlyArray<{ from: BedrockVersion, to: BedrockVersion, layout: string }> = [
+  { from: 'bedrock_1.16.201', to: 'bedrock_1.16.201', layout: 'the actions inline, the windows by number, aux items' },
+  { from: 'bedrock_1.16.210', to: 'bedrock_1.16.210', layout: 'the actions after network_ids' },
+  { from: 'bedrock_1.16.220', to: 'bedrock_1.26.20', layout: 'the windows by name, Items' },
+  { from: 'bedrock_1.26.30', to: 'bedrock_1.26.45', layout: 'the windows by number after their presence, ItemV4s' },
+  { from: 'bedrock_1.26.51', to: latestSupportedBedrockVersion, layout: 'the windows by number, an option' }
+]
+
 type SentRequest = BedrockServerboundPackets['item_stack_request']['requests'][number]
 type SentSlot = NonNullable<SentRequest['actions'][number]['source']>
 
@@ -673,6 +743,90 @@ describe('bedrock items', () => {
       }
     })
   }
+
+  for (const recorded of PICKUPS) {
+    describe(`taking an item picked up as the server reports it, by an inventory transaction alone (${recorded.from.slice(8)} – ${recorded.to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(recorded.from, recorded.to)) {
+        it(`bedrock ${version}: shows it in the hotbar slot with its stack id, in the packet pass, and tells the new hand in the next tick as the vanilla client`, async () => {
+          const { bot, server, driver, tick } = await holding(version, null)
+          const held: Array<[number, number, number] | null> = []
+          bot.on('heldItemChanged', item => { held.push(item === null ? null : [item.type, item.count, item.stackId ?? 0]) })
+          const interact = atLeast(version, 'bedrock_1.21.130') ? '21040000' : '210400000000000000000000000000'
+          // the vanilla client's interact named the entity under the crosshair on some builds, which the bot does not pick
+          const told = atLeast(version, 'bedrock_1.19.10') ? [interact, recorded.told, 'player_auth_input'] : ['player_auth_input', interact, recorded.told]
+
+          server.receive(Buffer.from(recorded.transaction, 'hex'))
+          await driver.tick()
+          const item = bot.heldItem
+          assert.deepStrictEqual([held, item === null ? null : [item.type, item.count, item.stackId], lastTick(server, tick())], [[recorded.item], recorded.item, told])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  for (const { from, to, layout } of TRANSACTION_LAYOUTS) {
+    describe(`the server's inventory transactions, ${layout} (${from.slice(8)} – ${to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(from, to)) {
+        it(`bedrock ${version}: sets each slot of the player's windows a container action names, the offhand's numbered as requests number it, and nothing else`, async () => {
+          const { bot, internal, inventory, driver } = await holding(version, null)
+          const idOf = (name: string): number => bot.registry.itemsByName[name]?.id ?? 0
+          const [stone, chestplate, arrow, dirt] = [idOf('stone'), idOf('iron_chestplate'), idOf('arrow'), idOf('dirt')]
+          inventory.slot('inventory', 10, { id: dirt, count: 1, stackId: 5 })
+          await driver.tick()
+          const otherWindows = internal._inventory.stats.otherWindows
+          inventory.transaction([
+            { window: 'creative', slot: 0, from: null, to: { id: stone, count: 4 } },
+            { window: 'inventory', slot: 9, from: null, to: { id: stone, count: 4, stackId: 20 } },
+            { window: 'armor', slot: 1, from: null, to: { id: chestplate, count: 1, stackId: 21 } },
+            { window: 'offhand', slot: 1, from: null, to: { id: arrow, count: 5, stackId: 22 } },
+            { window: 'ui', slot: 0, from: null, to: { id: dirt, count: 1, stackId: 23 } },
+            { window: 7, slot: 10, from: null, to: { id: dirt, count: 1, stackId: 24 } },
+            { window: 'inventory', slot: 10, from: { id: dirt, count: 1 }, to: null }
+          ])
+          await driver.tick()
+          const shown = (item: Item | null | undefined): Array<string | number | null> | null => item == null ? null : [item.name, item.count, item.stackId]
+          assert.deepStrictEqual([[9, 6, 45, 10].map(slot => shown(bot.inventory.slots[slot])), shown(bot.inventory.selectedItem), internal._inventory.stats.otherWindows], [
+            [['stone', 4, 20], ['iron_chestplate', 1, 21], ['arrow', 5, 22], null], ['dirt', 1, 23], otherWindows
+          ])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  describe('the test server\'s transactions, both presences written true (1.26.30 – 1.26.45)', () => {
+    // recorded on 1.26.30.5 and 1.26.45.1 (features): two dirt taken from the creative inventory to hotbar slot 0
+    const recorded: ReadonlyArray<{ from: BedrockVersion, to: BedrockVersion, transaction: string }> = [
+      { from: 'bedrock_1.26.30', to: 'bedrock_1.26.30', transaction: '1e000001000102000101000100000000000000000000030002000001000486dfbb92080a0000000000000000000003010001000103000200000086dfbb92080a000000000000000000000000000000000000' },
+      { from: 'bedrock_1.26.40', to: 'bedrock_1.26.45', transaction: '1e0000010001020001010001000000000000000000000300020000010486dfbb92080a0000000000000000000003010001000103000200000086dfbb92080a000000000000000000000000000000000000' }
+    ]
+    for (const { from, to, transaction } of recorded) {
+      for (const version of bedrockTestVersionsFrom(from, to)) {
+        it(`bedrock ${version}: writes the recorded bytes`, async () => {
+          const { bot, server, inventory } = await holding(version, null)
+          const dirt = { id: 3, count: 2, blockRuntimeId: -2108756090 }
+          const params = inventory.transactionPacket([{ window: 'inventory', slot: 0, from: null, to: { ...dirt, stackId: 2 } }, { window: 'creative', slot: 1, from: dirt, to: null }])
+          assert.strictEqual(server.codec.serializer.createPacketBuffer({ name: 'inventory_transaction', params }).toString('hex'), transaction)
+          bot.end()
+        })
+      }
+    }
+  })
+
+  describe('servers leaving a transaction\'s actions out (1.26.30 – 1.26.45)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.26.30', 'bedrock_1.26.45')) {
+      it(`bedrock ${version}: changes nothing`, async () => {
+        const { bot, server, driver } = await holding(version, { id: 3, count: 2, stackId: 2 })
+        const errors: string[] = []
+        bot.on('error', error => { errors.push(error.message) })
+        server.send('inventory_transaction', { transaction: { legacy: { legacy_request_id: 0 }, transaction_type: 'normal' } })
+        await driver.tick()
+        assert.deepStrictEqual([bot.heldItem?.type, bot.heldItem?.count, errors], [3, 2, []])
+        bot.end()
+      })
+    }
+  })
 
   describe(`no version differs in: (on ${latestSupportedBedrockVersion})`, () => {
     const version = latestSupportedBedrockVersion
@@ -1147,6 +1301,42 @@ describe('bedrock items', () => {
       assert.throws(() => { bot.creative.stopFlying() }, { message: 'bot.creative.stopFlying is not supported on Bedrock yet' })
       assert.deepStrictEqual(internal._inventory.inventoryRef(45), { container: 'offhand', slot: 1 })
       assert.throws(() => internal._inventory.inventoryRef(46), { message: 'bot.inventory has no slot 46' })
+      bot.end()
+    })
+  })
+
+  describe(`the server's inventory transactions, alike on every version: (on ${latestSupportedBedrockVersion})`, () => {
+    const version = latestSupportedBedrockVersion
+
+    it('sets the slot an item used leaves, whatever the transaction\'s type (item_release of a golden apple eaten, recorded on 1.26.60.5)', async () => {
+      const { bot, server, driver } = await holding(version, { id: 258, count: 64, stackId: 81 })
+      server.receive(Buffer.from('1e000004010001000000020140000000000a0000000000000000000002013f000001a401000a000000000000000000000200020140000000000a000000000000000000000000003f90eb5941d883fa4100', 'hex'))
+      await driver.tick()
+      assert.deepStrictEqual([bot.heldItem?.type, bot.heldItem?.count, bot.heldItem?.stackId], [258, 63, 82])
+      bot.end()
+    })
+
+    it('empties the offhand, its one item numbered 1 (arrows cleared, recorded on 1.26.51.1), and moves the grid\'s item to the hotbar (recorded on 1.26.51.1)', async () => {
+      const { bot, inventory, server, driver } = await holding(version, null)
+      inventory.slot('offhand', 0, { id: 303, count: 64, stackId: 50 })
+      inventory.slot('ui', 28, { id: 421, count: 1, metadata: 15, stackId: 2128 })
+      await driver.tick()
+      const before = [bot.inventory.slots[45]?.count, bot.inventory.slots[1]?.count]
+      server.receive(Buffer.from('1e0000000200017700012f0140000000000a0000000000000000000000000000000000000300000000000000000000002f0140000000000a00000000000000000000', 'hex'))
+      server.receive(Buffer.from('1e0000000200010000000000000000000000a50101000f01a221000a0000000000000000000000017c001ca50101000f00000a000000000000000000000000000000000000', 'hex'))
+      await driver.tick()
+      const moved = bot.inventory.slots[36]
+      assert.deepStrictEqual([before, bot.inventory.slots[45], bot.inventory.slots[1], [moved?.type, moved?.count, moved?.metadata, moved?.stackId]], [[64, 1], null, null, [421, 1, 15, 2129]])
+      bot.end()
+    })
+
+    it('takes no slot from an action of another source, though it names a window', async () => {
+      const { bot, server, driver } = await holding(version, null)
+      const none = { network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0 }
+      const stone = { network_id: 1, count: 1, metadata: 0, has_stack_id: true, stack_id: 30, block_runtime_id: 0, extra: { has_nbt: 0, can_place_on: [], can_destroy: [] } }
+      server.send('inventory_transaction', { transaction: { legacy: { legacy_request_id: 0 }, transaction_type: 'normal', actions: [{ source_type: 'creative', window_id: 0, slot: 0, old_item: none, new_item: stone }] } })
+      await driver.tick()
+      assert.strictEqual(bot.heldItem, null)
       bot.end()
     })
   })

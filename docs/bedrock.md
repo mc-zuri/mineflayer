@@ -1967,6 +1967,15 @@ the cursor's place in the hand-back.
   grid's items go back at its close). No recording destroys an item in creative.
 - **`bot.creative.flyTo`, `startFlying` and `stopFlying`** throw (`flyTo` rejects) `bot.creative.<name> is not
   supported on Bedrock yet`: flying is the movement's.
+- **The server's inventory transactions** (inventory_transaction) change the slots their container actions name, in
+  the packet pass, as inventory_slot does (`heldItemChanged` for the held slot, what the player holds told in the next
+  tick): the windows `inventory`, `armor`, `offhand` and `ui`, named or numbered as each version writes them (by
+  number up to 1.16.210 and from 1.26.30; the offhand's one item numbered 1, as requests number it), with the stack id
+  the item has (up to 1.16.210, the action's). Other actions (the creative inventory a command takes an item from or
+  puts it in, the world an item is picked up from) and other windows are not slots of the player's. Servers report an
+  item picked up by a transaction alone (with take_item_entity), and some new stack ids of an item held alone too; a
+  command's change (`/give`, `/clear`), an item eaten (item_release) or a screen's item handed back come with
+  inventory_content or inventory_slot of the same state, in every recording.
 
 Recorded and replayed by the tests: the selection of an empty slot, then of one of dirt, on every build, in groups by
 how the items and the interact are written and where the tick tells them (up to 1.19.0 after its auth input, from
@@ -1986,6 +1995,13 @@ the stack back at the close instead). Every other version makes the same request
 how creative_content numbers its entries (`runtime_id` 1.16.201, `stack_id` 1.16.210, `entry_id` from 1.16.220, in
 groups from 1.21.60) and craft_creative names them (`creative_item_network_id` 1.16.201, `item_id`, with the times from
 1.21.20).
+
+Recorded and replayed by the tests too: an item picked up into an empty hotbar slot, which the server reports by an
+inventory transaction alone, shown with its stack id and told by the bot's `mob_equipment` as the vanilla client's, byte
+for byte, on every build, in groups by how the transaction is written (the actions inline 1.16.201, after network_ids
+1.16.210, windows by name and Items 1.16.220 – 1.26.20, ItemV4s and windows by number after their presence 1.26.30 –
+1.26.45, the window an option from 1.26.51). Recorded too: a golden apple eaten (item_release, 1.26.60), the offhand
+cleared and an item of the grid put in the hotbar (recorded on 1.26.51, played on 1.26.60).
 
 ## Tests
 
