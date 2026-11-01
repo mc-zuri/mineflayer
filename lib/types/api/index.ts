@@ -111,7 +111,7 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'playerJoined' | 'playerUpdated' | 'playerLeft' | 'entityAttach' | 'entityDetach' | 'mount' | 'dismount'
   | 'message' | 'messagestr' | 'chat' | 'whisper' | 'actionBar' | 'unmatchedMessage'
   | 'windowOpen' | 'windowClose' | 'heldItemChanged'
-  | 'chestLidMove' | 'pistonMove' | 'noteHeard'> & BlockUpdateAtEvents & ChatPatternEvents
+  | 'chestLidMove' | 'pistonMove' | 'noteHeard' | 'resourcePack'> & BlockUpdateAtEvents & ChatPatternEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -346,6 +346,10 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   loadPlugin: (plugin: BedrockPlugin) => void
   loadPlugins: (plugins: BedrockPlugin[]) => void
   hasPlugin: (plugin: BedrockPlugin) => boolean
+  /** from a resourcePack listener only (else throws): the whole offer downloaded over the connection, as the vanilla client does, but the packs with a URL */
+  acceptResourcePack: () => void
+  /** from a resourcePack listener only (else throws): the whole offer refused */
+  denyResourcePack: () => void
   /** Bedrock's members, which Java's bot has not */
   bedrock: BedrockExtensions
 }

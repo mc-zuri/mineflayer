@@ -127,6 +127,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.chat(message)`, `bot.whisper(username, message)`, `bot.addChatPattern`, `bot.addChatPatternSet`,
   `bot.removeChatPattern`, `bot.chatAddPattern`, `bot.awaitMessage(...)`; `bot.tabComplete` rejects (see chat below).
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
+- `bot.acceptResourcePack()`, `bot.denyResourcePack()`: the answer to the packs the server offers in the join, from a
+  `resourcePack (url, hash, uuid)` listener (see resource packs below).
 - Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `game` (`bot.game`
   changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn or a dimension
   change: see health and dimension changes), `respawn` (a respawn, or a dimension change), `health`, `death` (see
@@ -174,7 +176,7 @@ packet arrived before:
 | The server sends | The bot answers |
 | --- | --- |
 | play_status login_success | client_cache_status: no cache (the bot keeps none) |
-| resource_packs_info, then resource_pack_stack | resource_pack_client_response have_all_packs, then completed (from 1.26.40 with the status's name) |
+| resource_packs_info, then resource_pack_stack | resource_pack_client_response have_all_packs, then completed (from 1.26.40 with the status's name); refused, or send_packs and the download, when a `resourcePack` listener decides (see resource packs) |
 | network_stack_latency, when it asks for an answer | the same timestamp, asking none |
 | boss_event show_bar of an entity the bot has, which has no bar yet | boss_event register_player (see boss bars) |
 | boss_event hide_bar of a bar the bot shows | boss_event unregister_player |
@@ -195,6 +197,36 @@ Events come at their point in the frame:
 | `heldItemChanged` | where the held slot changes: the packet pass, or the input pass (a request's prediction, a response taken in) |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
+
+## Resource packs
+
+The bot answers the packs the server offers in the join (resource_packs_info, before start_game) as the vanilla client,
+in the packet pass of the offer's frame (`lib/bedrock/modules/resource_packs.ts`):
+
+- **`resourcePack (url, hash, uuid)`**: emitted for each pack offered, texture packs first, then behaviour packs (up to
+  1.21.20), in the offer's packet pass, before `login`. `url` is where the pack can be fetched from instead (its
+  `cdn_url` from 1.21.42, its `resource_pack_links` entry 1.20.30 – 1.21.30), else `''`; `hash` is always undefined,
+  as Bedrock tells it (resource_pack_data_info) only once the pack is asked for; `uuid` is the pack's. From 1.21.50 the
+  offer writes the uuid as two little-endian 64-bit halves, which bedrock-protocol reads in byte order: the bot
+  reverses each half back, as resource_pack_stack names the pack (recorded on 1.26.20 – 1.26.60). No pack offered, no
+  event.
+- **`bot.acceptResourcePack()`**, **`bot.denyResourcePack()`**: Bedrock answers the whole offer at once, and the join
+  waits for the answer, so they answer the offer and act only when called from a `resourcePack` listener, while the
+  offer's listeners run; the last call wins. Called at any other time they throw (Java's writes a packet the server
+  ignores); a decision in a later frame is not offered, as no tick runs before start_game to time it out.
+  - accept: the packs without a URL are asked for (send_packs `<uuid>_<version>`), then, on each pack's
+    resource_pack_data_info, all of its chunks at once (resource_pack_chunk_request), and have_all_packs leaves in the
+    packet pass of the last chunk of the last pack, as recorded (1.26.20, 1.26.51, 1.26.60). The chunks are counted
+    and dropped, the pack is not kept (Java's claims it loaded without a download). A pack with a URL is not asked for
+    (the vanilla client fetches it from the URL; the bot fetches nothing, not recorded): when every pack has one, or
+    a pack has no chunks, have_all_packs leaves at once.
+  - deny: refused (from 1.26.40 named `cancel`, the server's label of the status: not recorded). What the server does
+    then is its own; one that requires the packs is expected to end the connection (`kicked`, `end`).
+  - no decision, or no listener: have_all_packs at once, as a vanilla client that has the packs in its cache, and as
+    Java's accept claims.
+- resource_pack_stack is answered completed, whatever the decision. The response's status is a byte up to 1.26.30,
+  and from 1.26.40 a varint followed by its name (`downloading`, `downloadingfinished`, `resourcepackstackfinished`)
+  with the pack ids only for send_packs; the pack ids are `package_id` up to 1.16.210.
 
 ## The local player
 
@@ -2565,7 +2597,10 @@ with an empty tag (7), and its first page by the book as it was, then edited (8)
   playing the recorded open and close of a chest, and by the columns that bring a double chest's block entities, whole
   1.16.201 – 1.17.40, and by block_entity_data's y, each group playing a recorded piston's push and pull, and by
   level_sound_event's note, a number with block_id 1.16.201 – 1.16.210, `Note` 1.16.220 – 1.26.20, `note` 1.26.30+,
-  each group hearing a constructed note). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
+  each group hearing a constructed note; the resource packs: by how the response is written, a status byte 1.16.201 –
+  1.26.30, its name too 1.26.40+, each group downloading a constructed pack, the recorded download played byte for byte
+  1.21.130 – 1.26.30 and 1.26.40+, and by how the offer names a pack, a string 1.16.201 – 1.20.15, with links
+  1.20.30 – 1.21.30, a URL per pack 1.21.42, the uuid type 1.21.50+). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
   workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.

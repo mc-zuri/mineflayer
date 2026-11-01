@@ -67,8 +67,6 @@ export class Session {
       this.endReason = kickReason(packet)
       this.bot.emit('kicked', this.endReason, this.loggedIn)
     })
-    core.handle(OWNER, 'resource_packs_info', (_packet, ctx) => { this.answerResourcePacks(ctx.outbox, 'have_all_packs', 'downloadingfinished') })
-    core.handle(OWNER, 'resource_pack_stack', (_packet, ctx) => { this.answerResourcePacks(ctx.outbox, 'completed', 'resourcepackstackfinished') })
     core.handle(OWNER, 'network_stack_latency', (packet, ctx) => {
       // the field is named unknown_flag up to 1.16.210
       if ('unknown_flag' in packet && packet.unknown_flag !== 0) ctx.outbox.queue('network_stack_latency', { timestamp: packet.timestamp, unknown_flag: 0 })
@@ -141,11 +139,6 @@ export class Session {
     if (!this.atLeast('bedrock_1.20.61')) return 12
     if (!this.atLeast('bedrock_1.21.20')) return 7
     return -1
-  }
-
-  private answerResourcePacks (outbox: OutboxWriter, status: 'have_all_packs' | 'completed', statusName: string): void {
-    if (this.atLeast('bedrock_1.26.40')) outbox.queue('resource_pack_client_response', { response_status: status, response_status_name: statusName })
-    else outbox.queue('resource_pack_client_response', { response_status: status, resourcepackids: [] })
   }
 
   /** a player whose game type falls back to the world's says so: from 1.26.20 first */

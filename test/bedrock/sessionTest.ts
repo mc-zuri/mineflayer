@@ -58,36 +58,6 @@ describe('bedrock session', () => {
     })
   }
 
-  describe('servers listing their resource packs with a status byte (up to 1.26.30)', () => {
-    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.26.30')) {
-      it(`bedrock ${version}: has all packs, then is done`, async () => {
-        const { server, driver } = await bedrockTestBot(bedrockCodec(version))
-        server.send('resource_packs_info')
-        server.send('resource_pack_stack')
-        await driver.frame(0)
-        assert.deepStrictEqual(sentInOneFlush(server), [
-          { name: 'resource_pack_client_response', params: { response_status: 'have_all_packs', resourcepackids: [] } },
-          { name: 'resource_pack_client_response', params: { response_status: 'completed', resourcepackids: [] } }
-        ])
-      })
-    }
-  })
-
-  describe('servers listing their resource packs with a status and its name (1.26.40+)', () => {
-    for (const version of bedrockTestVersionsFrom('bedrock_1.26.40')) {
-      it(`bedrock ${version}: has all packs, then is done`, async () => {
-        const { server, driver } = await bedrockTestBot(bedrockCodec(version))
-        server.send('resource_packs_info')
-        server.send('resource_pack_stack')
-        await driver.frame(0)
-        assert.deepStrictEqual(sentInOneFlush(server), [
-          { name: 'resource_pack_client_response', params: { response_status: 'have_all_packs', response_status_name: 'downloadingfinished' } },
-          { name: 'resource_pack_client_response', params: { response_status: 'completed', response_status_name: 'resourcepackstackfinished' } }
-        ])
-      })
-    }
-  })
-
   describe('servers asking for a latency answer with unknown_flag (up to 1.16.210)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.16.210')) {
       it(`bedrock ${version}: echoes the timestamp when asked`, async () => {

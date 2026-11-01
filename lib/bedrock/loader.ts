@@ -9,6 +9,7 @@ import { Controls } from './modules/input.ts'
 import { Inventory } from './modules/inventory.ts'
 import { Lifecycle } from './modules/lifecycle.ts'
 import { LocalPlayer } from './modules/movement.ts'
+import { ResourcePacks } from './modules/resource_packs.ts'
 import { Session } from './modules/session.ts'
 import { NetworkWorld } from './modules/world.ts'
 import pluginLoader from './plugin_loader.ts'
@@ -182,6 +183,7 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   // a tick ends with the player's movement recorded and shown, then spawn
   player.install(core)
   session.install(core)
+  new ResourcePacks(bot).install(core)
   new Lifecycle(bot, bot._world, player, { autoRespawn: options.respawn ?? true }).install(core)
   bot._world.install(core)
   controls.install(core)
