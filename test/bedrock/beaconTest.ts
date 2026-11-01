@@ -11,6 +11,7 @@ import { ServerInventory } from './common/inventory.ts'
 import { bedrockTestBot, bedrockTestVersionsFrom } from './common/server.ts'
 import type { FakeBedrockClient, TestBot } from './common/server.ts'
 import { ServerWorld } from './common/world.ts'
+import type { BlockAt } from './common/world.ts'
 
 // The beacon as the vanilla client used it in reduced_stations against Bedrock Dedicated Server (station.beacon_screen):
 // an iron ingot taken from the hotbar and put in the payment slot, an effect chosen, confirm, the close. The bot loads
@@ -72,16 +73,17 @@ function requestsSince (server: FakeBedrockClient, full: boolean): () => string[
 }
 
 interface BeaconBot extends TestBot {
+  world: ServerWorld
   inventory: ServerInventory
   errors: string[]
   idOf: (name: string) => number
   blockOf: (at: At) => Block
 }
 
-/** joined beside a beacon and a crafting table, with the windows plugin and the beacon's */
-async function beaconBot (version: BedrockVersion, screenAnimations = true): Promise<BeaconBot> {
+/** joined beside a beacon (on `pyramid`) and a crafting table, with the windows plugin and the beacon's */
+async function beaconBot (version: BedrockVersion, screenAnimations = true, pyramid: readonly BlockAt[] = []): Promise<BeaconBot> {
   const testBot = await bedrockTestBot(bedrockCodec(version), { screenAnimations, loadInternalPlugins: false, plugins: { windows: true, beacon: true } })
-  const blocks = [[BEACON_AT.x, BEACON_AT.y, BEACON_AT.z, 'beacon'], [TABLE_AT.x, TABLE_AT.y, TABLE_AT.z, 'crafting_table']] as const
+  const blocks: BlockAt[] = [...pyramid, [BEACON_AT.x, BEACON_AT.y, BEACON_AT.z, 'beacon'], [TABLE_AT.x, TABLE_AT.y, TABLE_AT.z, 'crafting_table']]
   const world = new ServerWorld(testBot.server, { hashes: atLeast(version, 'bedrock_1.20.0'), blocks })
   const itemStates = atLeast(version, 'bedrock_1.21.60') ? {} : { itemstates: world.registry.writeItemStates() }
   await world.join(testBot, { game: { runtime_entity_id: 1n, ...itemStates } })
@@ -92,7 +94,7 @@ async function beaconBot (version: BedrockVersion, screenAnimations = true): Pro
     assert.ok(block !== null)
     return block
   }
-  return { ...testBot, inventory: new ServerInventory(testBot.server), errors, idOf: name => testBot.bot.registry.itemsByName[name]?.id ?? 0, blockOf }
+  return { ...testBot, world, inventory: new ServerInventory(testBot.server), errors, idOf: name => testBot.bot.registry.itemsByName[name]?.id ?? 0, blockOf }
 }
 
 /** the server opens the beacon's screen (or the table's) once the bot used the block */
@@ -121,6 +123,73 @@ const RECORDED: readonly Recorded[] = [
   { name: 'the actions\' legacy ids', from: 'bedrock_1.26.40', to: 'bedrock_1.26.51', windowId: 31, firstRequest: -427, stackId: 154, closeFrame: 15 },
   // recorded on 1.26.60.5
   { name: 'the crafting table\'s close animation at 16 frames a second', from: 'bedrock_1.26.60', to: 'bedrock_1.26.60', windowId: 31, firstRequest: -3713, stackId: 2847, closeFrame: 9 }
+]
+
+/** ticks until `done` holds, the server taking each request as the bot predicts it (a stack made new gets a stack id of its own) and answering each close */
+function servingBy ({ internal, server, driver, inventory }: BeaconBot): (done: () => boolean) => Promise<void> {
+  let [answered, closes, nextStackId] = [0, 0, 500]
+  return async done => {
+    for (let tick = 0; tick < 300 && !done(); tick++) {
+      await driver.tick()
+      const requests = server.sentOf('item_stack_request').flatMap(({ requests }) => requests)
+      for (const { request_id: id, actions } of requests.slice(answered)) {
+        const slots = new Map(actions.flatMap(({ source, destination }) => [source, destination]).filter(info => info !== undefined).map(info => [nameOf(info), refOf(info)]))
+        inventory.respond(id, [...slots.values()].map(ref => {
+          const stack = internal._inventory.stackAt(ref)
+          return { ...ref, count: stack?.count ?? 0, stackId: stack === undefined ? 0 : stack.stackId > 0 ? stack.stackId : nextStackId++ }
+        }))
+      }
+      answered = requests.length
+      for (const { window_id: id } of server.sentOf('container_close').slice(closes)) server.send('container_close', { window_id: id, server: false })
+      closes = server.sentOf('container_close').length
+    }
+  }
+}
+
+/** ticks until `operation` settles, served */
+function servedBy (testBot: BeaconBot): <Result>(operation: Promise<Result>) => Promise<Result> {
+  const serve = servingBy(testBot)
+  return async operation => {
+    let done = false
+    operation.then(() => { done = true }, () => { done = true })
+    await serve(() => done)
+    return await operation
+  }
+}
+
+/** an operation that opens a block, whose screen the server opens once the bot used it, served */
+async function servedOpening<Result> (testBot: BeaconBot, operation: Promise<Result>, id: number, at: At = BEACON_AT): Promise<Result> {
+  await testBot.driver.ticks(4)
+  opensOnUse(testBot, id, at)
+  return await servedBy(testBot)(operation)
+}
+
+/** a pyramid of 4 levels under `at`: of iron, gold, emerald and diamond blocks by level, each level's far corner netherite */
+function pyramidUnder ({ x, y, z }: At): BlockAt[] {
+  return ['iron_block', 'gold_block', 'emerald_block', 'diamond_block'].flatMap((name, index) => {
+    const [level, side] = [index + 1, 2 * index + 3]
+    return Array.from({ length: side * side }, (_, at): BlockAt => {
+      const [bx, bz] = [x - level + at % side, z - level + Math.floor(at / side)]
+      return [bx, y - level, bz, bx === x + level && bz === z + level ? 'netherite_block' : name]
+    })
+  })
+}
+
+type StackRequest = BedrockServerboundPackets['item_stack_request']
+
+/** the bytes a request's secondary effect is written in: those differing from the same request's with none */
+function secondaryBytes (server: FakeBedrockClient, packet: StackRequest): number[] {
+  const encoded = (params: StackRequest): Buffer => server.codec.serializer.createPacketBuffer({ name: 'item_stack_request', params })
+  const requests = packet.requests.map(request => ({ ...request, actions: request.actions.map(action => action.type_id === 'beacon_payment' ? { ...action, secondary_effect: 0 } : action) }))
+  const none = encoded({ ...packet, requests })
+  return [...encoded(packet)].filter((byte, at) => byte !== none[at])
+}
+
+/** beacon_payment's layouts: 1.16.201's legacy request, then the request, then from 1.26.40 the actions' legacy ids */
+const PAYMENT_LAYOUTS: ReadonlyArray<{ name: string, from: BedrockVersion, to: BedrockVersion }> = [
+  { name: 'the legacy request', from: 'bedrock_1.16.201', to: 'bedrock_1.16.201' },
+  { name: 'the request', from: 'bedrock_1.16.210', to: 'bedrock_1.26.30' },
+  { name: 'the actions\' legacy ids', from: 'bedrock_1.26.40', to: 'bedrock_1.26.60' }
 ]
 
 describe('bedrock beacon', () => {
@@ -190,47 +259,30 @@ describe('bedrock beacon', () => {
     })
   }
 
+  // never recorded: every recorded confirm chose no secondary effect (0); written as the protocol data have the field, a zigzag32 on every version
+  for (const layout of PAYMENT_LAYOUTS) {
+    describe(`the secondary effect, not recorded: ${layout.name} (${layout.from.slice(8)} – ${layout.to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(layout.from, layout.to)) {
+        it(`bedrock ${version}: at a full pyramid, pays for the primary's level II by the primary's id, and for regeneration by 10`, async () => {
+          const testBot = await beaconBot(version, false, pyramidUnder(BEACON_AT))
+          const { bot, server, inventory, errors, idOf, blockOf } = testBot
+          inventory.slot('inventory', 0, { id: idOf('iron_ingot'), count: 2, stackId: 10 })
+          await servedOpening(testBot, bot.setBeaconEffects('haste', 'haste', blockOf(BEACON_AT)), 3)
+          await servedOpening(testBot, bot.setBeaconEffects('jump_boost', 'regeneration', blockOf(BEACON_AT)), 4)
+          const payments = server.sentOf('item_stack_request').filter(({ requests }) => requests[0]?.actions[0]?.type_id === 'beacon_payment')
+          const legacy = atLeast(version, 'bedrock_1.26.40') ? { legacy_type_id: 10 } : {}
+          assert.deepStrictEqual([payments.map(({ requests }) => requests[0]?.actions[0]), payments.map(packet => secondaryBytes(server, packet)), errors], [[
+            { type_id: 'beacon_payment', ...legacy, primary_effect: 3, secondary_effect: 3 },
+            { type_id: 'beacon_payment', ...legacy, primary_effect: 8, secondary_effect: 10 }
+          ], [[6], [20]], []])
+          bot.end()
+        })
+      }
+    })
+  }
+
   describe(`no version differs in: (on ${latestSupportedBedrockVersion})`, () => {
     const version = latestSupportedBedrockVersion
-
-    /** ticks until `done` holds, the server taking each request as the bot predicts it (a stack made new gets a stack id of its own) and answering each close */
-    function servingBy ({ internal, server, driver, inventory }: BeaconBot): (done: () => boolean) => Promise<void> {
-      let [answered, closes, nextStackId] = [0, 0, 500]
-      return async done => {
-        for (let tick = 0; tick < 300 && !done(); tick++) {
-          await driver.tick()
-          const requests = server.sentOf('item_stack_request').flatMap(({ requests }) => requests)
-          for (const { request_id: id, actions } of requests.slice(answered)) {
-            const slots = new Map(actions.flatMap(({ source, destination }) => [source, destination]).filter(info => info !== undefined).map(info => [nameOf(info), refOf(info)]))
-            inventory.respond(id, [...slots.values()].map(ref => {
-              const stack = internal._inventory.stackAt(ref)
-              return { ...ref, count: stack?.count ?? 0, stackId: stack === undefined ? 0 : stack.stackId > 0 ? stack.stackId : nextStackId++ }
-            }))
-          }
-          answered = requests.length
-          for (const { window_id: id } of server.sentOf('container_close').slice(closes)) server.send('container_close', { window_id: id, server: false })
-          closes = server.sentOf('container_close').length
-        }
-      }
-    }
-
-    /** ticks until `operation` settles, served */
-    function servedBy (testBot: BeaconBot): <Result>(operation: Promise<Result>) => Promise<Result> {
-      const serve = servingBy(testBot)
-      return async operation => {
-        let done = false
-        operation.then(() => { done = true }, () => { done = true })
-        await serve(() => done)
-        return await operation
-      }
-    }
-
-    /** an operation that opens a block, whose screen the server opens once the bot used it, served */
-    async function servedOpening<Result> (testBot: BeaconBot, operation: Promise<Result>, id: number, at: At = BEACON_AT): Promise<Result> {
-      await testBot.driver.ticks(4)
-      opensOnUse(testBot, id, at)
-      return await servedBy(testBot)(operation)
-    }
 
     it('opens the beacon given, puts the cheapest payment the inventory has, pays, and closes it; with the beacon open, keeps it open', async () => {
       const testBot = await beaconBot(version, false)
@@ -266,7 +318,47 @@ describe('bedrock beacon', () => {
       bot.end()
     })
 
-    it('rejects an effect it does not know, a secondary effect, a payment slot holding no payment, and an inventory with none, sending nothing', async () => {
+    it('lets a secondary effect be paid for at a full pyramid of the open beacon only, as the vanilla client\'s tier 4 buttons, rejecting before any click', async () => {
+      const testBot = await beaconBot(version, false, pyramidUnder(BEACON_AT))
+      const { bot, server, driver, world, inventory, errors, idOf, blockOf } = testBot
+      const served = servedBy(testBot)
+      inventory.slot('inventory', 0, { id: idOf('iron_ingot'), count: 4, stackId: 10 })
+      const requests = requestsSince(server, false)
+      const beacon = await servedOpening(testBot, bot.openBlock(blockOf(BEACON_AT)), 3)
+      const place = async (x: number, y: number, z: number, name: string): Promise<void> => {
+        server.send('update_block', { position: { x, y, z }, block_runtime_id: world.stateId(name), layer: 0 })
+        await driver.tick()
+      }
+      await served(bot.setBeaconEffects('strength', 'strength'))
+      const missing = 'setBeaconEffects: a secondary effect needs a pyramid of 4 levels, which the beacon at (2, 12, 0) has not'
+      // the 4th level's corners, the 1st level's middle
+      for (const [x, y, z] of [[-2, 8, -4], [6, 8, 4], [2, 11, 0]] as const) {
+        const name = bot.blockAt(new Vec3(x, y, z))?.name ?? 'air'
+        await place(x, y, z, 'stone')
+        await assert.rejects(served(bot.setBeaconEffects('speed', 'regeneration')), { message: missing })
+        await place(x, y, z, name)
+      }
+      await served(bot.setBeaconEffects('speed', 'regeneration'))
+      await place(6, 8, 4, 'air')
+      await served(bot.setBeaconEffects('resistance'))
+      assert.deepStrictEqual([requests(), bot.currentWindow], [[
+        'take 4 hotbar:0 → cursor:0', 'place 1 cursor:0 → beacon_payment:27', 'place 3 cursor:0 → inventory:9', 'beacon_payment 5/5 destroy 1 beacon_payment:27',
+        'take 3 inventory:9 → cursor:0', 'place 1 cursor:0 → beacon_payment:27', 'place 2 cursor:0 → inventory:9', 'beacon_payment 1/10 destroy 1 beacon_payment:27',
+        'take 2 inventory:9 → cursor:0', 'place 1 cursor:0 → beacon_payment:27', 'place 1 cursor:0 → inventory:9', 'beacon_payment 11/0 destroy 1 beacon_payment:27'
+      ], beacon])
+      await served(bot.closeWindow(beacon))
+
+      // a beacon whose pyramid the bot has not received: container_open's block counts, not the block used
+      const far = bot.openBlock(blockOf(BEACON_AT))
+      await driver.ticks(4)
+      server.send('container_open', { window_id: 4, window_type: 'beacon', coordinates: { x: 100, y: 12, z: 0 }, runtime_entity_id: -1n })
+      await served(far)
+      await assert.rejects(served(bot.setBeaconEffects('haste', 'haste')), { message: 'setBeaconEffects: a secondary effect needs a pyramid of 4 levels, which the beacon at (100, 12, 0) has not' })
+      assert.deepStrictEqual([requests(), errors], [[], []])
+      bot.end()
+    })
+
+    it('rejects an effect it does not know, a secondary effect other than regeneration and the primary\'s, a payment slot holding no payment, and an inventory with none, sending nothing', async () => {
       const testBot = await beaconBot(version, false)
       const { bot, server, inventory, errors, idOf, blockOf } = testBot
       const served = servedBy(testBot)
@@ -274,7 +366,8 @@ describe('bedrock beacon', () => {
       const requests = requestsSince(server, false)
       await assert.rejects(bot.setBeaconEffects('regeneration'), { message: 'setBeaconEffects: no primary effect is named regeneration (speed, haste, resistance, jump_boost, strength)' })
       await assert.rejects(bot.setBeaconEffects('toString'), { message: 'setBeaconEffects: no primary effect is named toString (speed, haste, resistance, jump_boost, strength)' })
-      await assert.rejects(bot.setBeaconEffects('speed', 'regeneration'), { message: 'setBeaconEffects: a secondary effect is not supported on Bedrock, which no recording chose' })
+      await assert.rejects(bot.setBeaconEffects('speed', 'haste'), { message: 'setBeaconEffects: no secondary effect is named haste (regeneration, or the primary\'s level II: speed)' })
+      await assert.rejects(bot.setBeaconEffects('speed', 'regeneration'), { message: 'setBeaconEffects needs a beacon open, or one given' })
       await assert.rejects(bot.setBeaconEffects('speed'), { message: 'setBeaconEffects needs a beacon open, or one given' })
       const beacon = await servedOpening(testBot, bot.openBlock(blockOf(BEACON_AT)), 3)
       await assert.rejects(served(bot.setBeaconEffects('speed')), { message: 'setBeaconEffects: the inventory has nothing to pay with (iron_ingot, gold_ingot, emerald, diamond, netherite_ingot)' })

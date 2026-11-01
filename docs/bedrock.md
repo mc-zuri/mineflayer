@@ -1528,20 +1528,30 @@ confirm button sends one request, which pays for the effect and uses the payment
 animation from 1.21.120 and gives back the cursor, then the payment.
 
 - **`bot.setBeaconEffects(primary, secondary, beacon)`** (Bedrock's) is the confirm button: one request of
-  `beacon_payment` (the primary effect's id, secondary 0) and `destroy` of the payment's one item, made in the input
-  pass, resolving on the server's answer. The primary is `'speed'` (1), `'haste'` (3), `'resistance'` (11),
-  `'jump_boost'` (8) or `'strength'` (5). It pays with the payment slot's item, or first puts one there with the
-  window's clicks (`bot.transfer` of one): the first the inventory has of an iron ingot, a gold ingot, an emerald, a
-  diamond and a netherite ingot. With no beacon open it opens the `beacon` block given, and closes it after, also when
-  it fails. An unknown effect, a secondary effect, a payment slot holding something else, an inventory with nothing to
-  pay with, no beacon open or given, another window open, or a block opening another screen reject naming the member,
-  before the confirm is sent.
+  `beacon_payment` (the primary and secondary effects' ids, 0 for no secondary) and `destroy` of the payment's one
+  item, made in the input pass, resolving on the server's answer. The primary is `'speed'` (1), `'haste'` (3),
+  `'resistance'` (11), `'jump_boost'` (8) or `'strength'` (5). The secondary, the tier 4 buttons, is `'regeneration'`
+  (10) or the primary's own name, its level II, written as the primary's id (as Java's). It pays with the payment
+  slot's item, or first puts one there with the window's clicks (`bot.transfer` of one): the first the inventory has of
+  an iron ingot, a gold ingot, an emerald, a diamond and a netherite ingot. With no beacon open it opens the `beacon`
+  block given, and closes it after, also when it fails. An unknown effect, a secondary other than those two, a
+  secondary without a full pyramid, a payment slot holding something else, an inventory with nothing to pay with, no
+  beacon open or given, another window open, or a block opening another screen reject naming the member, before any
+  click.
+- **The full pyramid**, which the vanilla client's tier 4 buttons need: under the block container_open names, four
+  layers of 3 × 3, 5 × 5, 7 × 7 and 9 × 9 blocks, each an iron, gold, emerald, diamond or netherite block, as the bot's
+  world has them (no packet tells a beacon's levels: its block entity holds only `primary` and `secondary`). A layer
+  in a chunk the bot has not received is not whole. The primary is sent whatever the pyramid, as the vanilla client
+  did.
 
 Recorded on every build (reduced_stations): an iron ingot taken from the hotbar and put in the payment slot, each of
-the five effects confirmed, the close; the server took the payment from a beacon with no pyramid. Not recorded: a
-secondary effect (`setBeaconEffects` rejects one, as the vanilla client's id for it is not known), the other payments
-(paid as the ingot is), and which items the vanilla client lets into the payment slot. A payment left in the slot was
-given back at the close against a scripted server (containers_beacon); the cursor's place before it is not recorded.
+the five effects confirmed, the close; the server took the payment. The beacons stood on a full pyramid of iron
+blocks; in 1.26.20's stations on stone, where the vanilla client confirmed the five primaries all the same. Not
+recorded: a secondary effect (every recorded confirm wrote 0; the field is a zigzag32 on every version, and the bot
+writes it from protocol data: which id the vanilla client writes for level II and that its tier 4 buttons need the
+full pyramid are Java's and the game's rules, not verified), the other payments (paid as the ingot is), and which
+items the vanilla client lets into the payment slot. A payment left in the slot was given back at the close against
+a scripted server (containers_beacon); the cursor's place before it is not recorded.
 
 ## Lectern
 
