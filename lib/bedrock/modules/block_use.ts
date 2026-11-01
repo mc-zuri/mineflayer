@@ -11,7 +11,7 @@ import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
 import type { BlockAction, Rotation, Vec3f } from './auth_input.ts'
 import type { Inventory } from './inventory.ts'
-import { heldItem, slotTransaction } from './items.ts'
+import { heldItem, slotTransaction, withCount } from './items.ts'
 import type { Stack } from './items.ts'
 import type { LocalPlayer } from './movement.ts'
 
@@ -22,12 +22,17 @@ const OPEN_TICKS = 100
 const HELD_TICKS = 2
 /** the vanilla client plants these, as seeds, rather than place them: where they cannot grow, the use names the block itself */
 const CROPS: readonly string[] = Object.freeze(['nether_wart'])
+/** a sign's item, whose blocks are named apart (standing_sign, wall_sign) */
+const SIGN = /_sign$/
 /** Bedrock's faces, by number: down, up, north, south, west, east */
 const FACES: readonly Vec3f[] = Object.freeze([
   { x: 0, y: -1, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: -1 }, { x: 0, y: 0, z: 1 }, { x: -1, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }
 ].map(face => Object.freeze(face)))
 const UP = 1
 const ORIGIN = Object.freeze({ x: 0, y: 0, z: 0 })
+
+/** a use of the block, or a build: the held item placed against the face, as the vanilla client predicts it */
+export type UseKind = 'use' | 'build'
 
 /** a click on a block: where the player's pick met it, and what it holds */
 export interface BlockClick {
@@ -40,8 +45,8 @@ export interface BlockClick {
   readonly result: Vec3f
   readonly hotbarSlot: number
   readonly held: Stack | undefined
-  /** whether the block takes the held item (a book a lectern does) */
-  readonly takesHeld: boolean
+  /** the slot as the click leaves it: one item fewer for a build (none taken in creative), emptied from 1.26.60 by a block that takes the item (a book a lectern does), else the held stack */
+  readonly after: Stack | undefined
   /** the eye, as the auth inputs report it */
   readonly eye: Vec3f
   /** the vanilla client draws a legacy transaction id for every item use, written only where it predicts a slot left holding an item */
@@ -59,6 +64,11 @@ export type TakesHeld = (block: Block, item: string) => boolean
 
 function atLeast (version: BedrockVersion, since: BedrockVersion): boolean {
   return isBedrockVersionAtLeast(version, since)
+}
+
+/** whether an item placed against a block's face goes beside it: a block's item but a crop's, or a sign's */
+export function placesBlock (registry: BedrockBotInternal['registry'], item: string): boolean {
+  return (item in registry.blocksByName && !CROPS.includes(item)) || SIGN.test(item)
 }
 
 /** Java's: the face a direction points out of, by the sign of y, then z, then x */
@@ -97,8 +107,8 @@ export function stopItemUseOn (runtimeId: bigint, { result }: BlockClick): Bedro
   return { runtime_entity_id: runtimeId, action: 'stop_item_use_on', position: result, result_position: ORIGIN, face: 0 }
 }
 
-/** the arm swings for a use (`interact`), a hit (`mine`) and a dropped item (`dropitem`): what for, from 1.21.130 */
-export function swingArm (version: BedrockVersion, runtimeId: bigint, source: 'interact' | 'mine' | 'dropitem' = 'interact'): BedrockServerboundPackets['animate'] {
+/** the arm swings for a use (`interact`), a build (`build`), a hit (`mine`) and a dropped item (`dropitem`): what for, from 1.21.130 */
+export function swingArm (version: BedrockVersion, runtimeId: bigint, source: 'interact' | 'build' | 'mine' | 'dropitem' = 'interact'): BedrockServerboundPackets['animate'] {
   const packet: BedrockServerboundPackets['animate'] = { action_id: 'swing_arm', runtime_entity_id: runtimeId }
   if (atLeast(version, 'bedrock_1.21.120')) packet.data = 0
   if (atLeast(version, 'bedrock_1.21.130')) {
@@ -114,7 +124,7 @@ export function breakAction (runtimeId: bigint, { action, position, face }: HitA
   return { runtime_entity_id: Number(BigInt.asIntN(32, runtimeId)), action, position, face }
 }
 
-/** the click, as an item use transaction: from 1.26.60 naming the hotbar slot a block takes the held item from */
+/** the click, as an item use transaction: naming the hotbar slot it changes (a build's; from 1.26.60 one a block takes the held item from) */
 export function clickBlock (version: BedrockVersion, click: BlockClick): BedrockServerboundPackets['inventory_transaction'] {
   const data: Record<string, unknown> = {
     action_type: 'click_block',
@@ -133,8 +143,8 @@ export function clickBlock (version: BedrockVersion, click: BlockClick): Bedrock
   }
   if (atLeast(version, 'bedrock_1.26.10')) data['client_cooldown_state'] = 'off'
   if (atLeast(version, 'bedrock_1.26.51')) data['hand'] = 'main_hand'
-  if (!click.takesHeld || !atLeast(version, 'bedrock_1.26.60')) return useTransaction(version, 'item_use', data)
-  return slotTransaction(version, { type: 'item_use', hotbarSlot: click.hotbarSlot, before: click.held, after: undefined, legacyId: click.legacyId, data })
+  if (click.after === click.held) return useTransaction(version, 'item_use', data)
+  return slotTransaction(version, { type: 'item_use', hotbarSlot: click.hotbarSlot, before: click.held, after: click.after, legacyId: click.legacyId, data })
 }
 
 /** a use of the held item in the air, its prediction failed (a book's, which opens its screen): an item use's data, which draws a legacy id as every one */
@@ -196,6 +206,21 @@ export interface UseOptions {
   readonly cursorPos?: Vec3 | undefined
   /** the ticks the use key is held after the click's: the vanilla client's held it two or three */
   readonly heldTicks?: number
+  readonly kind?: UseKind
+  /** false: no pick and no look, the click at once at `cursorPos` (the face's centre), as Java's forceLook 'ignore' */
+  readonly look?: boolean
+  /** run in the click's input pass */
+  readonly clicked?: ((click: BlockClick) => void) | undefined
+}
+
+/** a press of the use key on a block, at a face and a point */
+interface Press {
+  readonly block: Block
+  readonly face: number
+  readonly point: Vec3f
+  readonly heldTicks: number
+  readonly kind: UseKind
+  readonly clicked: ((click: BlockClick) => void) | undefined
 }
 
 interface Use {
@@ -253,20 +278,22 @@ export class BlockUse {
   }
 
   /** with the pick on the block (on the face asked for), at once; else after looking at the point, as Java's; resolves once the use ended */
-  async use (core: BedrockCore, block: Block, { direction, cursorPos, heldTicks = HELD_TICKS }: UseOptions = {}): Promise<void> {
+  async use (core: BedrockCore, block: Block, { direction, cursorPos, heldTicks = HELD_TICKS, kind = 'use', look = true, clicked }: UseOptions = {}): Promise<void> {
     const face = direction === undefined ? undefined : faceOf(direction)
-    const picked = await this.whenFree(core, pass => {
-      const pick = this.pick(block.position)
-      if (pick === undefined || (face !== undefined && pick.face !== face)) return undefined
-      return this.click(core, pass, { block, face: pick.face, point: cursorPos ?? pick.point, heldTicks })
-    })
-    if (picked !== undefined) return await picked.ended
     const aimed = face ?? UP
     const normal = FACES[aimed]!
     const point = cursorPos ?? new Vec3(0.5 + normal.x * 0.5, 0.5 + normal.y * 0.5, 0.5 + normal.z * 0.5)
-    await this.bot.lookAt(block.position.plus(point))
-    const clicked = await this.whenFree(core, pass => this.click(core, pass, { block, face: aimed, point, heldTicks }))
-    await clicked.ended
+    if (look) {
+      const picked = await this.whenFree(core, pass => {
+        const pick = this.pick(block.position)
+        if (pick === undefined || (face !== undefined && pick.face !== face)) return undefined
+        return this.click(core, pass, { block, face: pick.face, point: cursorPos ?? pick.point, heldTicks, kind, clicked })
+      })
+      if (picked !== undefined) return await picked.ended
+      await this.bot.lookAt(block.position.plus(point))
+    }
+    const pressed = await this.whenFree(core, pass => this.click(core, pass, { block, face: aimed, point, heldTicks, kind, clicked }))
+    await pressed.ended
   }
 
   /**
@@ -314,12 +341,15 @@ export class BlockUse {
   }
 
   /** the use's end, not a promise: a promise resolved with one waits for it */
-  private click (core: BedrockCore, { tick, outbox, runtimeId }: UsePass, { block, face, point, heldTicks }: { block: Block, face: number, point: Vec3f, heldTicks: number }): { ended: Promise<void> } {
+  private click (core: BedrockCore, { tick, outbox, runtimeId }: UsePass, { block, face, point, heldTicks, kind, clicked }: Press): { ended: Promise<void> } {
     const { bot } = this
+    const { version } = bot
     const held = this.inventory.usedHand(outbox)
     const item = held === undefined ? undefined : bot.registry.items[held.networkId]
-    const placesBeside = held === undefined || (item !== undefined && item.name in bot.registry.blocksByName && !CROPS.includes(item.name))
+    const placesBeside = held === undefined || (item !== undefined && placesBlock(bot.registry, item.name))
     const takesHeld = item !== undefined && (this.takers.get(block.name)?.(block, item.name) ?? false)
+    // from 1.26.60 the client shows the slot a block takes the item from emptied at once
+    const after = kind === 'build' ? this.built(held) : takesHeld && atLeast(version, 'bedrock_1.26.60') ? undefined : held
     const normal = FACES[face]!
     const { x, y, z } = block.position
     const click: BlockClick = {
@@ -330,22 +360,33 @@ export class BlockUse {
       result: placesBeside ? { x: x + normal.x, y: y + normal.y, z: z + normal.z } : { x, y, z },
       hotbarSlot: this.inventory.quickBarSlot,
       held,
-      takesHeld,
+      after,
       eye: this.player.eye,
       legacyId: core.requestIds.nextLegacyTransaction()
     }
-    const { version } = bot
     if (atLeast(version, 'bedrock_1.19.1')) outbox.queue('player_action', useItemOn(runtimeId, click))
-    outbox.queue('animate', swingArm(version, runtimeId))
+    outbox.queue('animate', swingArm(version, runtimeId, kind === 'build' ? 'build' : 'interact'))
     outbox.queue('inventory_transaction', clickBlock(version, click))
-    // from 1.26.60 the client shows the slot emptied at once, telling the server its empty hand in the tick
-    if (takesHeld && atLeast(version, 'bedrock_1.26.60')) this.inventory.predictSlot(this.inventory.inventoryRef(HOTBAR_START + click.hotbarSlot), undefined)
-    // as recorded: every block the client used but the crafting table
-    if (!atLeast(version, 'bedrock_1.19.1') && block.name !== 'crafting_table') outbox.queue('player_action', interactBlock(version, runtimeId, click))
+    // the slot shown as the click leaves it, the hand told in the tick
+    if (after !== held) this.inventory.predictSlot(this.inventory.inventoryRef(HOTBAR_START + click.hotbarSlot), after)
+    // a build that leaves the hand an item is followed by a use of it in the air, which draws its legacy id too
+    if (kind === 'build' && after !== undefined) {
+      core.requestIds.nextLegacyTransaction()
+      outbox.queue('inventory_transaction', useTransaction(version, 'item_use', clickAir(version, click.hotbarSlot, after, click.eye)))
+    }
+    // as recorded: every block the client used but the crafting table; a build sends none
+    if (kind === 'use' && !atLeast(version, 'bedrock_1.19.1') && block.name !== 'crafting_table') outbox.queue('player_action', interactBlock(version, runtimeId, click))
+    clicked?.(click)
     const ended = core.waits.untilDue()
     // the click's tick is the next to run
     this.pressed = { runtimeId, click, endsAt: tick + 1 + heldTicks, ended }
     return { ended: ended.promise }
+  }
+
+  /** the held stack as a build leaves it: one item placed, none taken in creative (not recorded) */
+  private built (held: Stack | undefined): Stack | undefined {
+    if (held === undefined || this.bot.game.gameMode === 'creative') return held
+    return held.count > 1 ? withCount(held, held.count - 1) : undefined
   }
 
   private end (tick: number, outbox: OutboxWriter): void {

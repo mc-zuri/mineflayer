@@ -1,4 +1,6 @@
+import type { Block } from 'prismarine-block'
 import type { Entity } from 'prismarine-entity'
+import type { Vec3 } from 'vec3'
 import type { BedrockCore } from '../bedrock/core/core.ts'
 import type { BlockUse } from '../bedrock/modules/block_use.ts'
 import type { EntityUse } from '../bedrock/modules/entity_use.ts'
@@ -7,6 +9,7 @@ import type { LocalPlayer } from '../bedrock/modules/movement.ts'
 import type { Session } from '../bedrock/modules/session.ts'
 import type { NetworkWorld } from '../bedrock/modules/world.ts'
 import type { BedrockBot, BedrockBotOptions, BedrockPlugin } from './api/index.ts'
+import type { PlaceOptions } from './internal.ts'
 
 export type BedrockInternalPlugin = (bot: BedrockBotInternal, options: BedrockBotOptions) => void
 
@@ -41,6 +44,10 @@ export interface BedrockBotInternal extends BedrockBot {
   _blockUse: BlockUse
   /** using an entity: the use with the pick on it, and the screen it opens */
   _entityUse: EntityUse
+  /** placing: the build against a block's face, as Java's (the off-hand unsupported); resolves with the block's position once the use ended */
+  _genericPlace: (referenceBlock: Block, faceVector: Vec3, options: PlaceOptions) => Promise<Vec3>
+  /** placing: the build, resolving once the server put a block at the destination */
+  _placeBlockWithOptions: (referenceBlock: Block, faceVector: Vec3, options: PlaceOptions) => Promise<void>
   loadPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => void
   loadPlugins: (plugins: Array<BedrockPlugin | BedrockInternalPlugin>) => void
   hasPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => boolean

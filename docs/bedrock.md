@@ -5,7 +5,7 @@ minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, sp
 the scoreboards, the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows
 and the player list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does,
 telling the server every tick, follows the server's corrections, chats, keeps the player's items and opens and closes
-its inventory, crafts, and ends; the rest of the API is Java's only so far.
+its inventory, crafts, places blocks, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -121,6 +121,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.creative` (`setInventorySlot(slot, item)`, `clearSlot(slot)`, `clearInventory()`): the creative inventory's
   items, by item stack requests (see items below).
 - `bot.writeBook(slot, pages)`, `bot.signBook(slot, pages, author, title)`: as Java's, by book_edit (see items below).
+- `bot.placeBlock(referenceBlock, faceVector)`: as Java's, as the vanilla client's build (see placing below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -144,7 +145,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   soundCategory, position, volume, pitch)` (see sounds below), `particle (particle)` (see particles below), `message
   (jsonMsg, position)`, `messagestr (message, position, jsonMsg)`, `chat` and `whisper (username, message, translate,
   jsonMsg)`, `actionBar (jsonMsg)`, `chat:<name> (matches)`, `unmatchedMessage (message, jsonMsg)` (see chat below),
-  `windowOpen (window)`, `windowClose (window)`, `heldItemChanged (item)` (see the inventory below),
+  `windowOpen (window)`, `windowClose (window)`, `heldItemChanged (item)` (see the inventory below), `blockPlaced
+  (oldBlock, newBlock)` (see placing below),
   `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`,
   `teamMemberAdded`, `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
@@ -193,7 +195,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced` | the packet pass |
 | `heldItemChanged` | where the held slot changes: the packet pass, or the input pass (a request's prediction, a response taken in) |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
@@ -1129,7 +1131,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **`bot.activateBlock(block, direction, cursorPos)`** and **`bot.openBlock(block, direction, cursorPos)`** use a
   block as the vanilla client does when the use key is pressed with the crosshair on it. In one input pass:
   `player_action start_item_use_on` (from 1.19.1: the block, the face, and where the held item would go: beside the
-  face for a block's item or an empty hand, else the block itself, nether wart's too, which is planted, not placed),
+  face for a block's item (a sign's too) or an empty hand, else the block itself, nether wart's too, which is planted, not placed),
   `animate swing_arm` (with `data` 0 from 1.21.120, the swing's source `interact` from 1.21.130, the main hand from
   1.26.60), `inventory_transaction item_use click_block`, then up to 1.18.30 `player_action interact_block` (the block
   and the face; `ineract_block` on 1.16.201), recorded for every block the client used but the crafting table. The
@@ -1192,8 +1194,8 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: using a block with an item the use places or uses up but a lectern's book and a jukebox's disc (from 1.26.60
-the client then names the slot it changes).
+A build, the held block's item placed against the face: see placing below. Not yet: using a block with an item the use
+uses up but a lectern's book and a jukebox's disc (from 1.26.60 the client then names the slot it changes).
 
 ### Screens
 
@@ -2540,6 +2542,66 @@ its codec, with the fields of the version's use (the trigger and the failed pred
 `/give` (stack id 6) as the Bedrock Dedicated Server 1.17.40.06 did in the e2e test: its use by the inventory, the book
 with an empty tag (7), and its first page by the book as it was, then edited (8); the bot uses it once.
 
+## Placing
+
+- **`bot.placeBlock(referenceBlock, faceVector)`** is Java's, as the vanilla client places a block: the use key pressed
+  with the crosshair on the reference block's face, holding a block's item, as recorded on every build placing dirt
+  against stone (1.16.201.2 – 1.26.60.5). In one input pass, as `activateBlock`'s click (see the inventory above) but a
+  build:
+  - `player_action start_item_use_on` (from 1.19.1) names where the block goes: beside the face, for a sign's item too,
+    whose blocks are named apart (`standing_sign`, `wall_sign`);
+  - the swing's source is `build` (from 1.21.130);
+  - the click predicts the hotbar slot one item fewer: it names the slot (`container`, window 0, the held stack, then
+    the one left, without stack ids) and, where the slot keeps an item, writes its legacy transaction id with the
+    player's container (28 up to 1.19.40, 29 from 1.19.50) and the slot; a slot emptied writes 0, as recorded placing a
+    sign and a painting (1.26.20 – 1.26.60);
+  - a slot that keeps an item is followed by a use of it in the air (`click_air`, the stack as the build left it,
+    triggered by nothing and predicted to fail from 1.21.20), which draws a legacy id too and writes 0 (see the
+    requests above);
+  - no `player_action interact_block` up to 1.18.30.
+
+  The slot shows the stack left at once, the hand told in the next tick (`mob_equipment`; `interact` first for an
+  emptied hand), and the use ends as `activateBlock`'s. Bedrock servers answer by an update of the destination alone
+  (update_block, or update_subchunk_blocks); none of the reference block, which Java's waits for. `placeBlock` resolves
+  once the server put a block of another type at the destination, and the use ended. `blockPlaced (oldBlock,
+  newBlock)` is emitted in that packet pass, after `blockUpdate`, with the block the update replaced: once for the
+  placements at that destination, which all resolve (Java's emits it for each). The bot does not show the block before
+  the server sends it, as Java's.
+- **Refusals**: `placeBlock` rejects with Java's message (`Server refused to place dirt at (1, -60, 0): the block is
+  still air`) when the server updates the destination to a block of the same type, or gives the item back (the slot
+  shows the stack the click took one from again). No refusal is recorded; the e2e saw both (1.19.70, 1.19.80, 1.21.0,
+  1.26.45: the destination told as air again, the dirt given back).
+  With no answer in 100 ticks from the call it rejects with `Server did not answer the placement at (1, -60, 0) in 100
+  ticks` (Java waits 5 s). An item that places no block (a stick, a painting) rejects with the refusal at once, sending
+  nothing: the vanilla client predicts the failure itself (recorded using a book on a block: the click predicted to
+  fail, then a use in the air, which could do something: an ender pearl's throw). Java sends and waits for the server's
+  refusal. An item that places a block of another name, or plants one (redstone, string, a repeater, sugar cane, seeds,
+  cocoa beans, berries, a carrot, a potato, nether wart, a banner, a bucket of powder snow, water, lava or a mob), is
+  not recorded: where its block goes and what the vanilla client predicts are not known, and it rejects (`placeBlock: redstone places a block
+  of another name, which is not supported on Bedrock yet`). `must be holding an item to place` and `invalid direction
+  vector (0, 0, 0)` are Java's.
+- **Where it clicks**: where the eye's ray meets the reference block on that face, as `activateBlock` does; else the
+  bot first looks at Java's cursor (the face's centre) and clicks there. Java's options of `bot._placeBlockWithOptions`
+  and `bot._genericPlace` (internal, as Java's): `half` (`'top'`, `'bottom'`: a side face's upper or lower quarter) and
+  `delta` (the point, from the block's corner) are clicked where they say, after looking at them unless the pick meets
+  the face, as `activateBlock`'s `cursorPos`; `forceLook: 'ignore'` clicks at once without the pick or a look (at the
+  face's centre, `half` or `delta`), true or false looks as `lookAt` does. `swingArm` and `showHand` are ignored: the
+  vanilla client swings before the click, every time. `offhand: true` rejects (`_placeBlockWithOptions: placing from
+  the off-hand is not supported on Bedrock: the vanilla client places what the main hand holds`). `_genericPlace`
+  resolves with the reference block's position once the use ended, as Java's returns it, not waiting for the server.
+- Against a block with a use (a chest, a lever, a crafting table) the vanilla client uses the block unless the player
+  sneaks: the bot builds, which the server takes as the block's use, giving the item back, so it rejects. Sneak first
+  (`bot.setControlState('sneak', true)`).
+- In creative mode a build predicts no change, as a creative build takes no item (not recorded): no slot named, legacy
+  id 0, the use in the air holding the stack.
+
+Recorded and replayed by the tests: the placement of dirt against stone, played by `placeBlock` on every build, byte for
+byte (the press, the use in the air, the hand told in the next tick and the use's end), resolving at the server's
+recorded update_block.
+
+Not yet: `placeEntity`, signs (`updateSign`, `signOpen`), a block placed by an item of another name, and the vanilla
+client's repeated builds while the use key is held.
+
 ## Tests
 
 - **Unit tests** (`npm run test:bedrock`, every supported version), which must cover `lib/bedrock` entirely (c8):
@@ -2593,7 +2655,11 @@ with an empty tag (7), and its first page by the book as it was, then edited (8)
   bot, byte for byte, and a recorded use of a barrel; using an entity: by how its transaction is written, the legacy
   wrapper 1.16.201 – 1.16.210, an Item 1.16.220 – 1.26.20, an ItemV4 and the transaction's type and actions present
   1.26.30 – 1.26.45, without them 1.26.51, the hand 1.26.60, each group playing a recorded use of a boat with the bot,
-  byte for byte; the clicks: by how a request names its containers and stacks, each
+  byte for byte; placing: by how the build's transaction and swing are written (the 1.16.201 and 1.16.210 layouts, Items
+  1.16.220 – 1.26.20, the player's container 28 up to 1.19.40 and 29 from 1.19.50, the trigger and prediction from
+  1.21.20, the swing's data from 1.21.120 and source from 1.21.130, the cooldown from 1.26.10, ItemV4s 1.26.30 – 1.26.45,
+  the hand from 1.26.51, the swing's hand 1.26.60), each group playing the recorded placement of dirt with the bot, byte
+  for byte; the clicks: by how a request names its containers and stacks, each
   group playing the recorded drop of the cursor's stack and a shield put in the offhand, with every gesture recorded on
   1.26.51 played from 1.26.40, the slots named in the click's frame from 1.26.51 and the cursor drags from 1.26.60; the
   crafting: by how crafting_data lists recipes and descriptors and how craft_recipe, craft_recipe_auto,

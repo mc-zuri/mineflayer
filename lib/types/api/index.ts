@@ -111,7 +111,8 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'playerJoined' | 'playerUpdated' | 'playerLeft' | 'entityAttach' | 'entityDetach' | 'mount' | 'dismount'
   | 'message' | 'messagestr' | 'chat' | 'whisper' | 'actionBar' | 'unmatchedMessage'
   | 'windowOpen' | 'windowClose' | 'heldItemChanged'
-  | 'chestLidMove' | 'pistonMove' | 'noteHeard' | 'resourcePack'> & BlockUpdateAtEvents & ChatPatternEvents
+  | 'chestLidMove' | 'pistonMove' | 'noteHeard' | 'resourcePack'
+  | 'blockPlaced'> & BlockUpdateAtEvents & ChatPatternEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -293,6 +294,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   activateBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<void>
   /** activateBlock, resolving with the screen the server opened (the crafting table's), once the use ended too */
   openBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<Window>
+  /** Java's, as the vanilla client's build (activateBlock's press, predicting the slot one item fewer): resolves once the server put another block at the destination, emitting blockPlaced; rejects with Java's message when it gives the item back or updates the destination to the same block, and at once, sending nothing, for an item that places no block */
+  placeBlock: (referenceBlock: Block, faceVector: Vec3) => Promise<void>
   /** Java's: uses the entity where the eye's ray meets it, else looks at its box's centre first; resolves once sent */
   activateEntity: (entity: Entity) => Promise<void>
   /** Java's: looks at `position` first, then uses the entity where the eye's ray meets it (at `position` if it does not); resolves once sent */
@@ -467,6 +470,7 @@ export interface BotEvents {
   'blockUpdate:(x, y, z)': (oldBlock: Block | null, newBlock: Block | null) => Promise<void> | void
   blockEntityData: (block: Block | null) => Promise<void> | void
   signOpen: (block: Block | null) => Promise<void> | void
+  blockPlaced: (oldBlock: Block | null, newBlock: Block) => Promise<void> | void
   chunkColumnLoad: (entity: Vec3) => Promise<void> | void
   chunkColumnUnload: (entity: Vec3) => Promise<void> | void
   soundEffectHeard: (

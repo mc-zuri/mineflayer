@@ -40,6 +40,7 @@ import jukebox from './plugins/jukebox.ts'
 import grindstone from './plugins/grindstone.ts'
 import loom from './plugins/loom.ts'
 import particle from './plugins/particle.ts'
+import place from './plugins/place.ts'
 import rain from './plugins/rain.ts'
 import scoreboard from './plugins/scoreboard.ts'
 import simpleInventory from './plugins/simple_inventory.ts'
@@ -104,7 +105,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   simple_inventory: simpleInventory,
   creative,
   book,
-  block_actions: blockActions
+  block_actions: blockActions,
+  place
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */
