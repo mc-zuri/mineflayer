@@ -1270,7 +1270,8 @@ container's, then the player's inventory and hotbar (`inventoryStart` the contai
   update_equipment of the horse's screen (its saddle in slot 0 by inventory_content), whichever entity the packet named,
   and the close as any; on 1.21.0 and 1.26.61 a donkey, a llama and a camel alike, a skeleton horse with the
   inventory's container_open. The e2e opens it on every build it starts (1.16.201 – 1.26.61; the console's `ride`
-  exists on all of them); 1.26.51.1, which it only reuses, is not checked. Tests (`test/bedrock/horseTest.ts`): each
+  exists on all of them) with a free spot beside the player: not 1.20.80, 1.21.60 and 1.21.100, whose saved players
+  stand in lava or water; 1.26.51.1, which it only reuses, is not checked. Tests (`test/bedrock/horseTest.ts`): each
   version names the horse ridden as its interact writes it and resolves with update_equipment's screen; a zombie horse
   is named from 1.21.130, the player before.
 
