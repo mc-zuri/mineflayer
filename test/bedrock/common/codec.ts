@@ -1,6 +1,7 @@
 // Every packet is written and read back with bedrock-protocol's codec, and must read back as written: bedrock-protocol
 // writes a packet, field or value its version does not have without an error, but differently.
 import assert from 'assert'
+import { createHash } from 'crypto'
 import { createDeserializer, createSerializer } from 'bedrock-protocol/src/transforms/serializer.js'
 import type { Deserializer, Serializer } from 'bedrock-protocol/src/transforms/serializer.js'
 import { bedrockProtocolVersionOf } from '../../../lib/bedrock/version.ts'
@@ -12,6 +13,8 @@ export interface BedrockCodec {
   serializer: Pick<Serializer, 'createPacketBuffer'>
   deserializer: Pick<Deserializer, 'parsePacketBuffer'>
   blanks: Map<string, object>
+  /** the shield's id the connection's start_game or item_registry named */
+  shieldItemId: () => number | undefined
 }
 
 interface Compiled {
@@ -75,7 +78,8 @@ export function bedrockCodec (version: BedrockVersion): BedrockCodec {
         return read
       }
     },
-    blanks
+    blanks,
+    shieldItemId: () => shieldItemId
   }
 }
 
@@ -126,13 +130,22 @@ export function roundTrip (codec: BedrockCodec, name: string, params: object): o
   return read.data.params
 }
 
+// a build's crafting_data is the same in each of its recordings, and bedrock-protocol writes its items in time growing
+// with the packet's size: a large packet read and written alike once is so with the same version and shield ids
+const LARGE_PACKET = 64 * 1024
+const writtenAlike = new Set<string>()
+
 export function readPacket (codec: BedrockCodec, buffer: Buffer): { name: string, params: object } {
   const where = `${codec.version} 0x${buffer.subarray(0, 64).toString('hex')}${buffer.length > 64 ? '...' : ''}`
+  const shieldBefore = codec.shieldItemId()
   const read = codec.deserializer.parsePacketBuffer(buffer)
   const { name, params } = read.data
   assert.ok(typeof name === 'string' && params !== undefined, `${where}: ${codec.version} has no packet ${name}`)
   assert.strictEqual(read.metadata.size, buffer.length, `${where}: ${buffer.length - read.metadata.size} bytes not read`)
+  const large = buffer.length >= LARGE_PACKET ? `${codec.version} ${shieldBefore} ${codec.shieldItemId()} ${createHash('sha1').update(buffer).digest('hex')}` : undefined
+  if (large !== undefined && writtenAlike.has(large)) return { name, params }
   assert.ok(codec.serializer.createPacketBuffer({ name, params }).equals(buffer), `${where}: written again, it differs`)
+  if (large !== undefined) writtenAlike.add(large)
   return { name, params }
 }
 
