@@ -60,15 +60,17 @@ interface ActionsBot extends TestBot {
   moved: () => string[]
   /** the pistonMove events since the last call, each as a line */
   pushed: () => string[]
+  /** the sound events and the noteHeard events since the last call, each as a line, in order */
+  heard: () => string[]
   /** block_event change_state `data` at `at` */
   lid: (at: At, data: number) => void
   tell: (at: At, value: Compound) => void
   setBlock: (at: At, name: string, properties?: BlockProperties) => void
 }
 
-/** joined with `blocks` in the columns around it (those with properties set after the join), the block_actions plugin only */
+/** joined with `blocks` in the columns around it (those with properties set after the join), the block_actions and sound plugins only */
 async function actionsBot (version: BedrockVersion, blocks: readonly BlockAt[]): Promise<ActionsBot> {
-  const testBot = await bedrockTestBot(bedrockCodec(version), { loadInternalPlugins: false, plugins: { block_actions: true } })
+  const testBot = await bedrockTestBot(bedrockCodec(version), { loadInternalPlugins: false, plugins: { block_actions: true, sound: true } })
   const { bot, server, driver } = testBot
   const world = new ServerWorld(server, { hashes: isBedrockVersionAtLeast(version, 'bedrock_1.20.0'), blocks: blocks.map(([x, y, z, name]): BlockAt => [x, y, z, name]) })
   await world.join(testBot)
@@ -88,12 +90,17 @@ async function actionsBot (version: BedrockVersion, blocks: readonly BlockAt[]):
   bot.on('chestLidMove', (block, isOpen, block2) => { moved.push(`${named(block)} ${isOpen} ${named(block2)}`) })
   const pushed = collected()
   bot.on('pistonMove', (block, isPulling, direction) => { pushed.push(`${named(block)} ${isPulling} ${direction}`) })
+  const heard = collected()
+  bot.on('soundEffectHeard', (name, { x, y, z }) => { heard.push(`sound '${name}' (${x}, ${y}, ${z})`) })
+  bot.on('hardcodedSoundEffectHeard', (id, _category, { x, y, z }) => { heard.push(`sound ${id} (${x}, ${y}, ${z})`) })
+  bot.on('noteHeard', (block, { id, name }, pitch) => { heard.push(`note ${named(block)} ${id} '${name}' ${pitch}`) })
   return {
     ...testBot,
     world,
     errors,
     moved: moved.take,
     pushed: pushed.take,
+    heard: heard.take,
     lid: (position, data) => { server.send('block_event', { position, type: 'change_state', data }) },
     tell: (position, value) => { server.send('block_entity_data', { position, nbt: nbtOf(value) }) },
     setBlock
@@ -409,6 +416,131 @@ describe('bedrock block actions: a piston\'s block entity', () => {
       tell(piston, { ...pistonArm(EXTENDING), id: string('MovingBlock') })
       await driver.frame(0)
       assert.deepStrictEqual([pushed(), errors], [[], []])
+      bot.end()
+    })
+  })
+})
+
+// The note block: no recording has one. A note block's sound (level_sound_event Note) is expected to carry the
+// instrument above the pitch's byte in its extra data; Bedrock's noteblock has no state telling them, as Java's
+// note_block does. Constructed per level_sound_event's layout.
+
+interface NoteLayout {
+  name: string
+  from: BedrockVersion
+  to: BedrockVersion
+  sound: number | string
+  /** the field of the extra data */
+  extra: 'block_id' | 'extra_data'
+}
+
+const NOTE_LAYOUTS: readonly NoteLayout[] = [
+  { name: 'level_sound_event\'s type a number, its extra data block_id (1.16.201 – 1.16.210)', from: oldestSupportedBedrockVersion, to: 'bedrock_1.16.210', sound: 81, extra: 'block_id' },
+  { name: 'level_sound_event\'s type minecraft-data\'s name, Note (1.16.220 – 1.26.20)', from: 'bedrock_1.16.220', to: 'bedrock_1.26.20', sound: 'Note', extra: 'extra_data' },
+  // not recorded: the server's names of its other sounds lowercased (ChestOpen as chest.open, Pop as pop)
+  { name: 'level_sound_event\'s type the server\'s name, note (1.26.30+)', from: 'bedrock_1.26.30', to: latestSupportedBedrockVersion, sound: 'note', extra: 'extra_data' }
+]
+
+const BASEDRUM = 1
+const PLING = 15
+
+/** a note's extra data */
+const noteOf = (instrument: number, pitch: number): number => instrument << 8 | pitch
+
+interface InstrumentOrder {
+  name: string
+  from: BedrockVersion
+  to: BedrockVersion
+  /** what Bedrock's instruments 4 to 9 are heard as: minecraft-data's id and name */
+  heard: ReadonlyArray<readonly [number, string]>
+}
+
+// a note block on a gold block, run against Bedrock Dedicated Server: its bell told as 5 on 1.16.210, 1.17.0 and
+// 1.21.42, as 6 on 1.26.20, 1.26.30 and 1.26.40; the others and the release the order changed in are not seen
+const INSTRUMENT_ORDERS: readonly InstrumentOrder[] = [
+  {
+    name: 'Bedrock\'s own order, bell, flute, chime and guitar 5 to 8 (1.16.201 – 1.21.42)',
+    from: oldestSupportedBedrockVersion,
+    to: 'bedrock_1.21.42',
+    heard: [[4, 'bass'], [6, 'bell'], [5, 'flute'], [8, 'chime'], [7, 'guitar'], [9, 'xylophone']]
+  },
+  {
+    name: 'Java\'s order (1.21.50+)',
+    from: 'bedrock_1.21.50',
+    to: latestSupportedBedrockVersion,
+    heard: [[4, 'bass'], [5, 'flute'], [6, 'bell'], [7, 'guitar'], [8, 'chime'], [9, 'xylophone']]
+  }
+]
+
+describe('bedrock block actions: a note block\'s sound (not recorded)', () => {
+  for (const layout of NOTE_LAYOUTS) {
+    describe(layout.name, () => {
+      for (const version of bedrockTestVersionsFrom(layout.from, layout.to)) {
+        it(`bedrock ${version}: noteHeard after the sound's own event, the instrument minecraft-data's (none named before 1.17.0)`, async () => {
+          // where the overworld starts at 0, 4
+          const y = isBedrockVersionAtLeast(version, 'bedrock_1.18.0') ? -60 : 4
+          const { bot, server, driver, heard } = await actionsBot(version, [[2, y, 0, 'noteblock']])
+          // at the block's centre, as the block sounds recorded
+          const position = { x: 2.5, y: y + 0.5, z: 0.5 }
+          server.send('level_sound_event', { sound_id: layout.sound, position, [layout.extra]: noteOf(BASEDRUM, 12) })
+          await driver.frame(0)
+          const sound = typeof layout.sound === 'number' ? `sound ${layout.sound}` : `sound '${layout.sound}'`
+          const basedrum = isBedrockVersionAtLeast(version, 'bedrock_1.17.0') ? 'basedrum' : ''
+          assert.deepStrictEqual(heard(), [`${sound} (2.5, ${y + 0.5}, 0.5)`, `note noteblock (2, ${y}, 0) 1 '${basedrum}' 12`])
+          assert.deepStrictEqual(server.batches.flat().filter(packet => packet.owner === 'block_actions'), [])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  for (const order of INSTRUMENT_ORDERS) {
+    describe(order.name, () => {
+      for (const version of bedrockTestVersionsFrom(order.from, order.to)) {
+        it(`bedrock ${version}: Bedrock's instruments 4 to 9 by minecraft-data's ids (none named before 1.17.0)`, async () => {
+          const y = isBedrockVersionAtLeast(version, 'bedrock_1.18.0') ? -60 : 4
+          const layout = NOTE_LAYOUTS.find(({ from, to }) => isBedrockVersionAtLeast(version, from) && isBedrockVersionAtLeast(to, version))!
+          const { bot, server, driver, heard } = await actionsBot(version, [[2, y, 0, 'noteblock']])
+          for (let told = 4; told <= 9; told++) server.send('level_sound_event', { sound_id: layout.sound, position: { x: 2.5, y: y + 0.5, z: 0.5 }, [layout.extra]: noteOf(told, 0) })
+          await driver.frame(0)
+          const hasInstruments = isBedrockVersionAtLeast(version, 'bedrock_1.17.0')
+          assert.deepStrictEqual(heard().filter(line => line.startsWith('note')), order.heard.map(([id, name]) => `note noteblock (2, ${y}, 0) ${id} '${hasInstruments ? name : ''}' 0`))
+          bot.end()
+        })
+      }
+    })
+  }
+
+  describe(`no version differs in: (on ${latestSupportedBedrockVersion})`, () => {
+    const version = latestSupportedBedrockVersion
+
+    it('the instrument and the pitch from the extra data, the block where the sound is; an instrument minecraft-data does not name is nameless', async () => {
+      const { bot, server, driver, heard } = await actionsBot(version, [[2, -60, 0, 'noteblock']])
+      server.send('level_sound_event', { sound_id: 'note', position: { x: 2, y: -60, z: 0 }, extra_data: noteOf(PLING, 24) })
+      server.send('level_sound_event', { sound_id: 'note', position: { x: 2.875, y: -59.125, z: 0.875 }, extra_data: noteOf(16, 0) })
+      await driver.frame(0)
+      assert.deepStrictEqual(heard(), [
+        "sound 'note' (2, -60, 0)", "note noteblock (2, -60, 0) 15 'pling' 24",
+        "sound 'note' (2.875, -59.125, 0.875)", "note noteblock (2, -60, 0) 16 '' 0"
+      ])
+      bot.end()
+    })
+
+    it('emits no noteHeard for a note sound at a block not a note block nor one the bot has, nor for another sound at a note block', async () => {
+      const { bot, server, driver, errors, heard } = await actionsBot(version, [[2, -60, 0, 'noteblock'], [4, -60, 0, 'stone']])
+      server.send('level_sound_event', { sound_id: 'note', position: { x: 4.5, y: -59.5, z: 0.5 }, extra_data: noteOf(BASEDRUM, 12) })
+      server.send('level_sound_event', { sound_id: 'note', position: { x: 100.5, y: -59.5, z: 100.5 }, extra_data: noteOf(BASEDRUM, 12) })
+      server.send('level_sound_event', { sound_id: 'block.furnace.lit', position: { x: 2.5, y: -59.5, z: 0.5 }, extra_data: noteOf(BASEDRUM, 12) })
+      await driver.frame(0)
+      assert.deepStrictEqual([heard(), errors], [["sound 'note' (4.5, -59.5, 0.5)", "sound 'note' (100.5, -59.5, 100.5)", "sound 'block.furnace.lit' (2.5, -59.5, 0.5)"], []])
+      bot.end()
+    })
+
+    it('emits no chestLidMove for the note\'s own block_event, whose type is the instrument (a basedrum\'s 1 read as change_state)', async () => {
+      const { bot, driver, errors, heard, moved, lid } = await actionsBot(version, [[2, -60, 0, 'noteblock']])
+      lid({ x: 2, y: -60, z: 0 }, 12)
+      await driver.frame(0)
+      assert.deepStrictEqual([moved(), heard(), errors], [[], [], []])
       bot.end()
     })
   })

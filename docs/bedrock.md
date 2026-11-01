@@ -680,8 +680,20 @@ server tells of a block that moves, in the packet pass; the bot sends nothing, a
   2 south, 3 north, 4 east (recorded), 5 west (not recorded; 2 and 3 seen against those servers, the stone moving
   along the side, 5 and the vertical facings not). block_entity_data's y is a varint up to 1.26.0, zigzag from
   1.26.10.
-
-Not yet: `noteHeard`.
+- **`noteHeard (block, instrument, pitch)`**: Bedrock's `noteblock` has no state telling its instrument and pitch
+  (Java's `note_block` has): the note's sound tells them (level_sound_event, observed after the sounds' own
+  `soundEffectHeard`), its extra data the instrument above the pitch's byte. The sound is type 81 up to 1.16.210 (by
+  number), minecraft-data's `Note` up to 1.26.20 and the server's name `note` from 1.26.30, its extra data `block_id`
+  up to 1.16.210 and `extra_data` later. A block_event comes with it, its type the instrument and its data the pitch,
+  as Java's block action: it emits no `chestLidMove` (a basedrum's 1 reads as `change_state`). `block` is the block
+  where the sound is, which must be a `noteblock`, as Java's. `instrument` is minecraft-data's, as Java's
+  (`{ id, name, sound }`); minecraft-data has no Bedrock instruments before 1.17.0, and none above 15, where the event
+  gives `{ id: <minecraft-data's id>, name: '' }`. Bedrock numbered its instruments its own way up to 1.21.42, bell,
+  flute, chime and guitar 5 to 8, and Java's way from 1.21.50 (flute, bell, guitar, chime), which minecraft-data's
+  ids are: the event maps them. Not recorded; a note on a gold block was heard against Bedrock Dedicated Server, at
+  pitch 0, its bell told as 5 on 1.16.210, 1.17.0 and 1.21.42 and as 6 on 1.26.20, 1.26.30 and 1.26.40, the sound
+  and block_event as above. The release the order changed in (1.21.50 is taken, between 1.21.50 and 1.26.10 not
+  seen) and the other instruments are not verified.
 
 ## Entities
 
@@ -865,7 +877,7 @@ The server's sounds act in the packet pass, as Java's sound packets; the bot ans
 - **A type the version does not name** (always up to 1.16.210, where minecraft-data names none) emits
   `hardcodedSoundEffectHeard (soundId, soundCategory, position, volume, pitch)` with its number, the category 0
   (Java's master: Bedrock has no categories), and volume and pitch 1.
-- **Not yet:** `noteHeard`, which no recording of a note block shows yet. stop_sound and the music have no Java event.
+- A note block's sound also emits `noteHeard` (see block actions). stop_sound and the music have no Java event.
 
 ## Particles
 
@@ -2551,7 +2563,9 @@ with an empty tag (7), and its first page by the book as it was, then edited (8)
   results_deprecated and crafting_event (up to 1.20.40) are written, each group playing a recorded craft with the bot,
   byte for byte; the block actions: by block_event's y, a varint 1.16.201 – 1.26.0, zigzag 1.26.10+, each group
   playing the recorded open and close of a chest, and by the columns that bring a double chest's block entities, whole
-  1.16.201 – 1.17.40, and by block_entity_data's y, each group playing a recorded piston's push and pull). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
+  1.16.201 – 1.17.40, and by block_entity_data's y, each group playing a recorded piston's push and pull, and by
+  level_sound_event's note, a number with block_id 1.16.201 – 1.16.210, `Note` 1.16.220 – 1.26.20, `note` 1.26.30+,
+  each group hearing a constructed note). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
   workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.

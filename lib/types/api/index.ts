@@ -111,7 +111,7 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'playerJoined' | 'playerUpdated' | 'playerLeft' | 'entityAttach' | 'entityDetach' | 'mount' | 'dismount'
   | 'message' | 'messagestr' | 'chat' | 'whisper' | 'actionBar' | 'unmatchedMessage'
   | 'windowOpen' | 'windowClose' | 'heldItemChanged'
-  | 'chestLidMove' | 'pistonMove'> & BlockUpdateAtEvents & ChatPatternEvents
+  | 'chestLidMove' | 'pistonMove' | 'noteHeard'> & BlockUpdateAtEvents & ChatPatternEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -964,7 +964,8 @@ export interface Effect {
 
 export interface Instrument {
   id: number
-  name: 'harp' | 'doubleBass' | 'snareDrum' | 'sticks' | 'bassDrum'
+  /** minecraft-data's name, such as `harp` or `basedrum` */
+  name: string
 }
 
 export interface FindBlockOptions {
