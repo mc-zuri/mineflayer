@@ -1379,8 +1379,8 @@ stars of cocoa beans, lapis lazuli and bone meal from 1.20.10, and the decorated
 
 Not yet: the other multi recipes (a filled map extended or cloned, banners' patterns, a book cloned, an item repaired,
 a decorated pot of sherds, a firework star of a shape or a fade: no recording crafts them, and the bot sends nothing
-for a grid only one of them makes), the recipe book's choice between recipes alike (the bot crafts the one given), the
-stonecutter, the smithing table and the other stations.
+for a grid only one of them makes), and the recipe book's choice between recipes alike (the bot crafts the one given).
+The stations have their own sections below.
 
 ## Trading
 
