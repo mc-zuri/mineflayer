@@ -2321,7 +2321,8 @@ client then asks for the locked map's pixels (`map_info_request`); the bot has n
   asked in a frame winning: a slot selected already, or the one the frame started with, selects nothing, emits nothing
   and sends nothing, as the client's key on the slot selected sends nothing. Java emits `heldItemChanged` at once, for
   each call. A block or an entity used after it in the same input pass names the new slot, as the client's key then
-  click.
+  click, and the slot is told before the use (not in the tick): the server reads the use with the slot it was told and
+  refuses it for that slot's item (traced on 1.16.201, a disc put in a jukebox refused).
 - **What is told**: the next tick tells the slot as any change of what the player holds (see the inventory above):
   `interact mouse_over_entity` then `mob_equipment` naming the slot as `slot` and `selected_slot`, as recorded on
   every build moving between an empty slot and one of dirt. The vanilla client never sends player_hotbar. A slot holding

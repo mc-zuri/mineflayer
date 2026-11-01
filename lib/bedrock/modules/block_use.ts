@@ -299,7 +299,7 @@ export class BlockUse {
   /** the use's end, not a promise: a promise resolved with one waits for it */
   private click (core: BedrockCore, { tick, outbox, runtimeId }: UsePass, { block, face, point, heldTicks }: { block: Block, face: number, point: Vec3f, heldTicks: number }): { ended: Promise<void> } {
     const { bot } = this
-    const held = this.inventory.mainHand()
+    const held = this.inventory.usedHand(outbox)
     const item = held === undefined ? undefined : bot.registry.items[held.networkId]
     const placesBeside = held === undefined || (item !== undefined && item.name in bot.registry.blocksByName && !CROPS.includes(item.name))
     const takesHeld = item !== undefined && (this.takers.get(block.name)?.(block, item.name) ?? false)

@@ -163,11 +163,12 @@ export class EntityUse {
 
   private click ({ outbox }: UsePass, entity: Entity, { x, y, z }: Vec3f): void {
     const f = Math.fround
+    const held = this.inventory.usedHand(outbox)
     outbox.queue('inventory_transaction', useEntity(this.bot.version, {
       runtimeId: BigInt(entity.id),
       point: { x: f(x), y: f(y), z: f(z) },
       hotbarSlot: this.inventory.quickBarSlot,
-      held: this.inventory.mainHand(),
+      held,
       eye: this.player.eye
     }))
   }

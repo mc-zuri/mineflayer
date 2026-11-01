@@ -335,6 +335,15 @@ export class Inventory {
     return this.slots.get(`inventory:${this.quickBarSlot}`)
   }
 
+  /**
+   * the hand a use names: a hotbar slot selected in the use's frame is told first, as the server reads the use with
+   * the slot it was told and refuses it for that slot's item (traced on 1.16.201: the jukebox's disc refused)
+   */
+  usedHand (outbox: OutboxWriter): Stack | undefined {
+    if (this.equipped !== undefined && this.equipped.slot !== this.quickBarSlot) this.equip(outbox)
+    return this.mainHand()
+  }
+
   /** the open screen that can still be clicked: none once its close handed the items back */
   get screenType (): WindowTypeName | undefined {
     return this.closing?.end === undefined ? this.screen?.definition.type : undefined

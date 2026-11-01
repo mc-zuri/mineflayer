@@ -271,6 +271,23 @@ describe('bedrock using an entity', () => {
       bot.end()
     })
 
+    it('tells a hotbar slot selected in the frame of the use before the use, which names it and its item', async () => {
+      const testBot = await joined(version)
+      const { bot, server, driver, errors } = testBot
+      const wheat = bot.registry.itemsByName['wheat']?.id ?? 0
+      new ServerInventory(server).slot('inventory', 4, { id: wheat, count: 2 })
+      const villager = await show(testBot, 2, 'minecraft:villager_v2', { x: 2.5, y: -60, z: 0.5 }, VILLAGER)
+      await driver.ticks(2)
+      const seen = server.batches.length
+      bot.setQuickBarSlot(4)
+      await settle(driver, bot.activateEntity(villager))
+      const told = server.batches.slice(seen).flat().map(({ name }) => name).filter(name => name === 'mob_equipment' || name === 'inventory_transaction')
+      const data = server.sentOf('inventory_transaction')[0]?.transaction.transaction_data
+      assert.ok(data !== undefined && 'entity_runtime_id' in data)
+      assert.deepStrictEqual([told, server.sentOf('mob_equipment').at(-1)?.selected_slot, data.hotbar_slot, data.held_item.network_id, errors], [['mob_equipment', 'inventory_transaction'], 4, 4, wheat, []])
+      bot.end()
+    })
+
     it("uses an entity once a block's use ended, as a held key cannot be pressed again", async () => {
       const testBot = await joined(version, { blocks: [[2, -60, 0, 'crafting_table']] })
       const { bot, server, driver } = testBot

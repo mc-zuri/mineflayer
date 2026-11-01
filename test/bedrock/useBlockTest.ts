@@ -2,7 +2,7 @@ import assert from 'assert'
 import prismarineBlock from 'prismarine-block'
 import type { Block } from 'prismarine-block'
 import { Vec3 } from 'vec3'
-import { isBedrockVersionAtLeast, latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
+import { isBedrockVersionAtLeast, latestSupportedBedrockVersion, oldestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
 import type { BedrockVersion } from '../../lib/types/api/index.ts'
 import { bedrockCodec } from './common/codec.ts'
 import { ServerInventory } from './common/inventory.ts'
@@ -785,6 +785,24 @@ describe('bedrock using a block', () => {
       }
     })
   }
+
+  describe(`a hotbar slot selected in the frame of the use (${oldestSupportedBedrockVersion.slice(8)} – ${latestSupportedBedrockVersion.slice(8)})`, () => {
+    for (const version of bedrockTestVersionsFrom(oldestSupportedBedrockVersion, latestSupportedBedrockVersion)) {
+      it(`bedrock ${version}: is told before the use, which names it`, async () => {
+        // as the recorded clients stood: in the world's bottom section, the table clicked in the use's frame
+        const { bot, server, driver, table, errors } = await atTable(version, { feetY: atLeast(version, 'bedrock_1.18.0') ? -60 : 4 })
+        await driver.ticks(2)
+        const seen = server.batches.length
+        bot.setQuickBarSlot(3)
+        await settle(driver, bot.activateBlock(table))
+        const told = server.batches.slice(seen).flat().map(({ name }) => name).filter(name => name === 'mob_equipment' || name === 'inventory_transaction')
+        const data = server.sentOf('inventory_transaction').at(-1)?.transaction.transaction_data
+        assert.ok(data !== undefined && 'block_position' in data)
+        assert.deepStrictEqual([told, server.sentOf('mob_equipment').at(-1)?.selected_slot, data.hotbar_slot, errors], [['mob_equipment', 'inventory_transaction'], 3, 3, []])
+        bot.end()
+      })
+    }
+  })
 
   describe(`no version differs in: (on ${latestSupportedBedrockVersion})`, () => {
     const version = latestSupportedBedrockVersion
