@@ -1027,7 +1027,7 @@ describe('bedrock inventory', () => {
       await driver.frame(10)
       assert.deepStrictEqual([bot.heldItem?.count, bot.inventory.slots[1]?.count, bot.inventory.slots[1]?.stackId, bot.inventory.selectedItem?.count], [1, 2, -3, 1])
       // a slot of a container the bot's requests do not name, and one the request left empty: no item is made there
-      respond(server, -3, 'ok', [{ container: 'crafting_input', slot: 28, count: 3, stackId: 11 }, { container: 'compcreate_input', slot: 0, count: 1, stackId: 12 }, { container: 'hotbar', slot: 5, count: 1, stackId: 13 }])
+      respond(server, -3, 'ok', [{ container: 'crafting_input', slot: 28, count: 3, stackId: 11 }, { container: 'elemconstruct_output', slot: 0, count: 1, stackId: 12 }, { container: 'hotbar', slot: 5, count: 1, stackId: 13 }])
       await driver.frame(10)
       await place
       assert.deepStrictEqual([bot.heldItem?.count, bot.inventory.slots[1]?.count, bot.inventory.slots[1]?.stackId, bot.inventory.selectedItem, bot.inventory.slots[41]], [4, 3, 11, null, null])

@@ -48,6 +48,8 @@ export interface ScreenDefinition {
   readonly playerWindow?: true
   /** the close's animation from 1.21.120: the inventory's, the crafting table's, or none */
   readonly animation: 'inventory' | 'workbench' | 'none'
+  /** what its close destroys, in order, before it gives back: a request a slot */
+  readonly destroyed?: readonly SlotRef[]
   /** what its close gives back, in order, the cursor among them */
   readonly handBack: readonly SlotRef[]
   /** the id the client's container_close names: none for trading, else the screen's own */

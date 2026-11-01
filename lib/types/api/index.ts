@@ -375,6 +375,10 @@ export interface BedrockExtensions {
   playDisc: (jukebox: Block, disc?: Item | null) => Promise<void>
   /** uses the jukebox, which the server told holds a disc, as the vanilla client does; the server drops the disc as an item; resolves once it tells the jukebox holds none */
   takeDisc: (jukebox: Block) => Promise<void>
+  /** an Education world's: a stack of the compound of the metadata (water 26) taken from the open compound creator's output to the empty cursor; the server judges the elements in its inputs */
+  createCompound: (compound: number) => Promise<void>
+  /** an Education world's: the open lab table's combine, which destroys its items, then its screen's close, as the vanilla client's */
+  combineLabTable: () => Promise<void>
 }
 
 export interface BotEvents {

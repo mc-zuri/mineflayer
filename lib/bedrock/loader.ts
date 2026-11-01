@@ -26,6 +26,7 @@ import commandBlock from './plugins/command_block.ts'
 import craft from './plugins/craft.ts'
 import enchantmentTable from './plugins/enchantment_table.ts'
 import drags from './plugins/drags.ts'
+import education from './plugins/education.ts'
 import creative from './plugins/creative.ts'
 import entities from './plugins/entities.ts'
 import experience from './plugins/experience.ts'
@@ -93,6 +94,7 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   smithing,
   loom,
   cartography,
+  education,
   simple_inventory: simpleInventory,
   creative,
   book

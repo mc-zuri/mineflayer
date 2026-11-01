@@ -719,7 +719,7 @@ describe('bedrock enchanting table', () => {
           // a screen shown at its window's first content, of a type no feature defines
           fixture: bot => {
             assert.ok(isInternal(bot))
-            bot._inventory.screens.add({ type: 'compound_creator', containers: {}, shown: 'content', layout: () => undefined, animation: 'none', handBack: [] })
+            bot._inventory.screens.add({ type: 'cauldron', containers: {}, shown: 'content', layout: () => undefined, animation: 'none', handBack: [] })
           }
         }
       })
@@ -729,7 +729,7 @@ describe('bedrock enchanting table', () => {
       sendOptions(server, ...OPTIONS)
       await driver.tick()
       const table = tableOf(bot.currentWindow)
-      server.send('container_open', { window_id: 4, window_type: 'compound_creator', coordinates: TABLE_AT, runtime_entity_id: -1n })
+      server.send('container_open', { window_id: 4, window_type: 'cauldron', coordinates: TABLE_AT, runtime_entity_id: -1n })
       await driver.tick()
       const requests = requestsSince(server)
       assert.deepStrictEqual([bot.currentWindow, await rejection(driver, table.enchant(0)), requests()], [null, 'enchant needs the enchanting table open', []])

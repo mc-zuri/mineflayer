@@ -620,6 +620,10 @@ export class Inventory {
   /** in the screen's order, as the vanilla client does; what has no room is dropped, a request a slot */
   private handBack (core: BedrockCore, ctx: FrameContext, screen: Screen): Array<Promise<void>> {
     const requests: Array<Promise<void>> = []
+    for (const from of screen.definition.destroyed ?? []) {
+      const stack = this.stackAt(from)
+      if (stack !== undefined) requests.push(this.request(core, ctx, [{ type: 'destroy', count: stack.count, from }]))
+    }
     for (const from of screen.definition.handBack) {
       const stack = this.stackAt(from)
       if (stack === undefined) continue

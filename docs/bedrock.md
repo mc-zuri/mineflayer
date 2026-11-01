@@ -108,6 +108,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   (Bedrock's): a jukebox's disc, put in and taken out by uses (see the jukebox below).
 - `bot.setCommandBlock(pos, command, options)`: Java's, as command_block_update; the command block's screen (see the
   command block below).
+- `bot.bedrock.createCompound(compound)`, `bot.bedrock.combineLabTable()` (Bedrock's, on an Education world): a
+  compound made and a lab table's combine; the Education screens (see the Education screens below).
 - `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
 - `bot.setQuickBarSlot(slot)`, `bot.QUICK_BAR_START`: selecting a hotbar slot (see items below).
 - `bot.equip(item, destination)`, `bot.unequip(destination)`, `bot.getEquipmentDestSlot(destination)`,
@@ -1103,7 +1105,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 
 Not yet: using a block with an item the use places or uses up but a lectern's book and a jukebox's disc (from 1.26.60
 the client then names the slot it changes). The
-screens no feature defines (the Education ones and the structure and jigsaw editors) are counted, not shown.
+screens no feature defines (the structure and jigsaw editors) are counted, not shown.
 
 ### Screens
 
@@ -1122,9 +1124,9 @@ feature's plugin adds (`bot._inventory.screens.add`). A definition gives:
 - when it is shown: at its opening, or at its own window's first inventory_content, which sizes it (a chest of 27 or
   54), as servers send it right after the opening; `windowOpen` comes then, and `openBlock` resolves then;
 - its close: which animation it has from 1.21.120 (the inventory's 240 ms: the inventory, the smithing table and the
-  enchanting table; the crafting table's 390 ms: every other screen recorded; or none), what it gives back and in which
-  order (a UI station's inputs, a block container only the cursor), and the id container_close names (`none` for
-  trading, whose close the server answers with the screen's id);
+  enchanting table; the crafting table's 390 ms: every other screen recorded; or none), what it destroys first (the
+  material reducer's outputs), what it gives back and in which order (a UI station's inputs, a block container only the
+  cursor), and the id container_close names (`none` for trading, whose close the server answers with the screen's id);
 - its click rules where they are not the inventory's: where a shift click sends a stack, which slot takes which item,
   or a click's moves themselves.
 
@@ -1757,6 +1759,60 @@ again; before 1.26.20 the same packets, from the protocol. Not recorded: command
 edits need an operator, so whether it sends them at the close or at each edit, and which last output it sends, is not
 known), a real server's command block entity (the field names are Bedrock's block entity format's), and a command
 block minecart's screen and update.
+
+## Education screens
+
+The compound creator, the element constructor, the material reducer and the lab table are on an Education world only
+(the world's Education features on). Java has none of them, so their members are Bedrock's. No Education world is
+tested against a server: the tests replay protocol_education, the vanilla client on an Education world of Bedrock
+Dedicated Server (1.26.20, 1.26.51 and 1.26.60, the 1.26.20 client without the screens' animations), and are written
+from the protocol before 1.26.20.
+
+Their screens (`lib/bedrock/screens/compound_creator.ts`, `element_constructor.ts`, `material_reducer.ts` and
+`lab_table.ts`, added by the `education` plugin) are shown at their opening. Each window is of Java 1.14's kind
+(`minecraft:<window type>`), its slots before the player's 36 as the vanilla client names them in requests (the
+protocol data's ContainerSlotType names, alike on every version), and each close has the crafting table's animation
+from 1.21.120 (the recorded closes left 435 to 562 ms after the escape key or the combine, on 1.26.51 and 1.26.60):
+
+- the compound creator: 0 – 8 the inputs (`ui` 18 – 26, `compcreate_input`), 9 the output (`ui` 50,
+  `creative_output`); its close gives back the cursor's item, then the inputs' (recorded: two inputs);
+- the element constructor: 0 the output (`ui` 50): its element is chosen by the screen's sliders, which the bot has
+  not, and a click on it sends nothing, as the vanilla client's with none chosen (recorded); its close gives back the
+  cursor's item;
+- the material reducer: 0 the input (`ui` 8, `matreduce_input`), 1 – 9 the outputs (`ui` 41 – 49,
+  `matreduce_output`);
+- the lab table: 0 – 8 its slots, in its own window (`labtable_input`), whose items stay in the table: its close gives
+  back only the cursor's item.
+
+- **The reduction**: a click putting an item in the reducer's empty input (a mouse button from the cursor, as recorded,
+  or a hotbar key) reduces one of it in the click's request: `non_implemented`, `results_deprecated` with the stacks
+  of crafting_data's first material reducer recipe taking the item (its network id, and its metadata but 32767), then
+  each stack's `create` and its `take` from `creative_output` to the next output from 41, then one item placed. The
+  server keeps it in the input (recorded: one stone made 33 silicon and 64 and 3 oxygen). No click puts an item in an
+  output (recorded: nothing sent); a click takes an output's stack as any slot's. It reduces nothing where the input
+  holds an item, an output does, no recipe takes the item, or a recipe has more than nine stacks; up to 1.17.10 the
+  protocol data's crafting_data has no material reducer recipe. Its close destroys each output's stack (a request
+  each), then gives back the cursor's item and the input's, and in the next tick, after those requests, tells an
+  inventory mismatch (inventory_transaction `inventory_mismatch`, no action): recorded before container_close with the
+  animation, after it without.
+- **`bot.bedrock.createCompound(compound)`** makes a stack of the compound of that metadata (water is 26) with the
+  compound creator open: `non_implemented`, `results_deprecated` with the compound (the item's stack size, 64), its
+  `take` from `creative_output` to the cursor, which must be empty; it resolves when the server answers. The vanilla
+  client knows the compounds' elements itself (crafting_data sends no chemistry recipe: recorded), so the bot leaves
+  the inputs to the server, and a click on the output sends nothing. The server keeps the inputs (recorded: water of
+  two hydrogen and an oxygen, the inputs given back at the close). It rejects, sending nothing, a metadata that is not
+  a whole number from 0 (the server judges the rest), without the screen, and with an item on the cursor.
+- **`bot.bedrock.combineLabTable()`** with the lab table open and holding items sends `lab_table_combine` and a
+  `destroy` of each slot's stack, in order, then closes the screen, as the vanilla client's button does (recorded on
+  every build); it resolves once the server answered and closed the screen. The server tells the reaction in lab_table,
+  which the bot does not read. It rejects, sending nothing, without the screen and with the table's slots empty.
+
+Recorded and replayed byte for byte on 1.26.20, 1.26.51 and 1.26.60: each screen's opening, the elements placed from
+the cursor in the creator's and the table's slots, water made, stone reduced, the combine, and the closes with their
+hand-back (the input's stone onto the hotbar's); before 1.26.20 the same requests in the version's layout. Not
+recorded: a server's chemistry recipes, the gestures but a mouse click from the cursor, an output's element taken (and
+what the server then does with the reducer's input), the cursor's place in the hand-back, an element constructed, and
+an Education world on other builds.
 
 ## Furnaces
 
