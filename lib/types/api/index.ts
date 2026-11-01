@@ -367,6 +367,12 @@ export interface BedrockExtensions {
   putBookOnLectern: (lectern: Block, book?: Item | null) => Promise<void>
   /** hits the lectern, which the server told holds a book, as the vanilla client does with no screen open; resolves once it tells the lectern holds none */
   takeBookFromLectern: (lectern: Block) => Promise<void>
+  /** the music disc the server last told the jukebox holds, null for none (and for a jukebox it told nothing of) */
+  jukeboxDisc: (jukebox: Block) => Item | null
+  /** equips the disc (the one held, as null) and uses the jukebox, which the server told holds none; resolves once it tells the jukebox holds a disc */
+  playDisc: (jukebox: Block, disc?: Item | null) => Promise<void>
+  /** uses the jukebox, which the server told holds a disc, as the vanilla client does; the server drops the disc as an item; resolves once it tells the jukebox holds none */
+  takeDisc: (jukebox: Block) => Promise<void>
 }
 
 export interface BotEvents {

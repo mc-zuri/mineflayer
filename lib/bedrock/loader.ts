@@ -31,6 +31,7 @@ import experience from './plugins/experience.ts'
 import furnace from './plugins/furnace.ts'
 import game from './plugins/game.ts'
 import lectern from './plugins/lectern.ts'
+import jukebox from './plugins/jukebox.ts'
 import grindstone from './plugins/grindstone.ts'
 import loom from './plugins/loom.ts'
 import particle from './plugins/particle.ts'
@@ -79,6 +80,7 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   brewing_stand: brewingStand,
   beacon,
   lectern,
+  jukebox,
   furnace,
   enchantment_table: enchantmentTable,
   grindstone,

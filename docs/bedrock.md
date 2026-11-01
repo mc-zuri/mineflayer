@@ -104,6 +104,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.bedrock.openGrindstone(block)` (Bedrock's): the grindstone, and its window's grind (see the grindstone below).
 - `bot.bedrock.putBookOnLectern(lectern, book)`, `bot.bedrock.takeBookFromLectern(lectern)` (Bedrock's): a book put on
   a lectern by a use, and taken by a hit (see the lectern below).
+- `bot.bedrock.jukeboxDisc(jukebox)`, `bot.bedrock.playDisc(jukebox, disc)`, `bot.bedrock.takeDisc(jukebox)`
+  (Bedrock's): a jukebox's disc, put in and taken out by uses (see the jukebox below).
 - `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
 - `bot.setQuickBarSlot(slot)`, `bot.QUICK_BAR_START`: selecting a hotbar slot (see items below).
 - `bot.equip(item, destination)`, `bot.unequip(destination)`, `bot.getEquipmentDestSlot(destination)`,
@@ -1043,8 +1045,8 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   click changes no slot: the block, the face, the hotbar slot, the held item without its stack id (an ItemV4 from
   1.26.30, a version after mob_equipment's), the eye as the auth inputs report it, the point clicked from the block's
   corner and the block's runtime id; from 1.21.20 triggered by the player's input and predicted to succeed, from 1.26.10
-  with no cooldown, from 1.26.51 by the main hand. A use whose block takes the held item (a book a lectern takes: see
-  the lectern below) changes the slot from 1.26.60: the click names the hotbar slot emptied of it (`container`, window
+  with no cooldown, from 1.26.51 by the main hand. A use whose block takes the held item (a book a lectern takes, a
+  disc a jukebox: see the lectern and the jukebox below) changes the slot from 1.26.60: the click names the hotbar slot emptied of it (`container`, window
   0, the item as `held_item` then none), and the slot shows empty at once, the empty hand told in the use's tick (the
   inventory's rule above); up to 1.26.51 the click names no slot, and the hand is told once the server sent the slot. The face and the point are where the eye's ray, along the auth input's
   rotation, first meets a block, if that is this one (on `direction`'s face, if given), the point found as a float and
@@ -1097,8 +1099,8 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: using a block with an item the use places or uses up but a lectern's book (from 1.26.60 the client then
-names the slot it changes; a jukebox's disc, recorded on 1.26.20 – 1.26.60, is used without the arm's swing). The
+Not yet: using a block with an item the use places or uses up but a lectern's book and a jukebox's disc (from 1.26.60
+the client then names the slot it changes). The
 screens no feature defines (the Education ones and the command block, structure and jigsaw editors) are counted, not
 shown.
 
@@ -1684,6 +1686,39 @@ the 1.19.50, 1.21.80 and 1.26.61 servers, `putBookOnLectern` puts the book on; 1
 lectern, so `openBlock` rejects there as for any screen not opened, and `setPage` cannot be reached: the
 vanilla client of such a build presumably shows the book screen itself, which is not recorded. In the e2e the servers
 up to 1.20.50 open none, those from 1.20.61 open it.
+
+## Jukebox
+
+Java has no jukebox helper: a Java bot plays a disc with `activateBlock` holding it. On Bedrock too the server takes
+the held disc on a use, and tells the disc in the jukebox's block entity (block_entity_data `RecordItem`, absent for
+none); a use of a jukebox holding a disc gives it back, the server dropping it as an item.
+
+- **`activateBlock(jukebox)`** holding a music disc (`music_disc_*`; a disc fragment is no disc) puts it in a jukebox
+  the server told no disc of, as the vanilla client's use does (see using a block above): the use names the hotbar slot
+  emptied from 1.26.60, none before; the server then sends the slot emptied and block_entity_data with the disc. A
+  jukebox told holding a disc (or untold: one whose block entity came only in its chunk, which the bot takes for empty)
+  is used as any block.
+- **`bot.bedrock.jukeboxDisc(jukebox)`** (Java has no jukebox helper) is the disc the last block_entity_data at the
+  jukebox's position told (a disc item of count 1), null for none and for a jukebox untold; it throws for a block that is
+  no jukebox.
+- **`bot.bedrock.playDisc(jukebox, disc)`** (Java has no jukebox helper) equips `disc` (the hand's, as null), uses the
+  jukebox, and resolves once the server told it holds a disc; it rejects, sending nothing, a block that is no jukebox, a
+  jukebox told holding a disc and a given or held item that is no music disc, and rejects when the server tells no disc
+  in 100 ticks.
+- **`bot.bedrock.takeDisc(jukebox)`** (Java has no jukebox helper) uses the jukebox again, as the vanilla client does,
+  with whatever the hand holds (a disc held is not put in, the jukebox being told holding one; no slot is named), and
+  resolves once the server told the jukebox holds no disc. The bot does not walk to the dropped disc. It rejects,
+  sending nothing, a block that is no jukebox and a jukebox told holding no disc, and rejects when the server tells the
+  disc still in 100 ticks after the use.
+
+Recorded on 1.26.20, 1.26.51 and 1.26.60 (protocol_blocks_ui): a music disc (cat) put in a jukebox by a use, byte for
+byte the bot's, the arm swinging as for any use (the slot named and the empty hand told in the use's frame on 1.26.60;
+on 1.26.20 and 1.26.51 no slot, the hand told after the server's inventory_content, with the use's end on 1.26.51),
+then the server's `jukebox_popup` text (`record.nowPlaying`), block_entity_data with `RecordItem`, the disc's sound
+(`level_sound_event RecordCat` on 1.26.20; `play_sound record.cat` and `record_started` from 1.26.51). Not recorded:
+a disc put in before 1.26.20 (taken as 1.26.20's: no slot named, as a lectern's book), and the disc taken out (the use
+is the vanilla client's of the version; whether the server answers with block_entity_data without `RecordItem` is
+not recorded).
 
 ## Furnaces
 
