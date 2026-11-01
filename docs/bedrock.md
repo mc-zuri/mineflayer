@@ -1797,6 +1797,43 @@ selections, resets, drags, crafts and hand-back of two screens, byte for byte. N
 hotbar key on the output, a shift click making more than a stack, and before 1.26.60 the selection forgotten when the
 input empties (1.26.60's reset tells it).
 
+### The smithing table
+
+Its window is `minecraft:smithing`: up to 1.19.80 Java's 1.16 layout of 39 slots, 0 the base (`ui` 51,
+`smithing_table_input` in requests), 1 the addition (`ui` 52, `smithing_table_material`), 2 the result (`ui` 50); from
+1.20.0 Java's 1.20 layout of 40, the template first (`ui` 53, `smithing_table_template`), then the base, the addition
+and the result (3). Its close gives back the cursor's item (its place is not recorded: as the crafting table's), then
+the base's, the addition's and the template's, as recorded on 1.26.51, and from 1.21.120 waits for the inventory's
+animation (240 ms), as recorded on every build.
+
+Its recipes are crafting_data's: none up to 1.18.0; the shapeless ones of block `smithing_table` (the base, then a
+netherite ingot) on 1.18.11 – 1.19.50; from 1.19.60 `smithing_transform` (a template from 1.19.80, invalid on 1.19.80,
+where an empty template slot takes it) and from 1.20.0 `smithing_trim`, of item tags (`minecraft:trim_templates`,
+`trimmable_armors`, `trim_materials`), up to 1.26.30 in the recipes' list and from 1.26.40 in lists of their own. A
+trim's names are the last `trim_data`'s: the pattern of the template's item, the material of the addition's (empty
+on 1.19.80, as recorded).
+
+- **The output** (`bot.clickWindow(2, …)`, `3` from 1.20.0) crafts the recipe the slots match; up to 1.18.0, with no
+  recipe, a diamond item and a netherite ingot make the netherite item, as the vanilla client's request names none.
+  With none matching it sends nothing. A request is, by version: up to 1.18.0 `non_implemented`; from 1.18.11
+  `craft_recipe` (the times from 1.21.20); then `results_deprecated` (the result, once); the consumes, up to 1.19.70
+  the addition then the base, from 1.19.80 the template (when the recipe has one), the base and the addition; and the
+  result moved: with a mouse button taken to the cursor, as recorded, with a hotbar key to the key's slot and with a
+  shift click to the inventory (neither recorded: as the stonecutter's), unless that slot holds an item. The result a
+  transform makes is its recipe's, a trim's the base with `Trim` (`Material`, `Pattern`); a damageable one has
+  `Damage` 0 before it (the NBT's order as recorded), an item of no durability no NBT (netherite horse armor,
+  recorded). The base's own NBT is kept, its `Damage` too (not recorded: the bases recorded had none).
+- **`bot.bedrock.smith(base, addition, template, smithingTable)`** smiths at the smithing table open, else at the one
+  given, which it opens with `bot.openBlock` and closes after, also when it fails: it puts one of each in its slot
+  with `bot.transfer` from the inventory slot holding it, in the recorded order (the template, the base, the
+  addition), and shift clicks the output. Java's null template or table is none. It rejects, sending nothing, when no
+  recipe takes the items (a template is needed from 1.20.0, none takes one before), when the inventory has not one of
+  them, with an item on the cursor or in the table's slots, and with no smithing table open or given.
+
+Recorded and replayed by the tests: a netherite upgrade to the cursor on every build, and a trim from 1.20.0, of the
+request's layout by version (one build each, byte for byte). Not recorded, so as the bot does it: a hotbar key or a
+shift click on the output, a base with NBT, and the cursor's place in the hand-back.
+
 ### The loom
 
 Its window is `minecraft:loom`, of Java's 40 slots: 0 the banner (`ui` 9, `loom_input` in requests), 1 the dye (`ui`

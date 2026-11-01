@@ -36,6 +36,7 @@ import rain from './plugins/rain.ts'
 import scoreboard from './plugins/scoreboard.ts'
 import settings, { chunkRadiusOf } from './plugins/settings.ts'
 import sound from './plugins/sound.ts'
+import smithing from './plugins/smithing.ts'
 import spawnPoint from './plugins/spawn_point.ts'
 import stonecutter from './plugins/stonecutter.ts'
 import tablist from './plugins/tablist.ts'
@@ -82,6 +83,7 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   chest,
   drags,
   stonecutter,
+  smithing,
   loom,
   cartography
 })

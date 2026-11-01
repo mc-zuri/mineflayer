@@ -337,6 +337,8 @@ export interface BedrockExtensions {
   selectStonecutterRecipe: (recipe: BedrockRecipe) => Promise<void>
   /** cuts `count` (1, as null; 0 cuts nothing) crafts of the recipe at the stonecutter open or the one given, which it opens and closes; rejects, sending nothing, without the ingredients */
   stonecut: (recipe: BedrockRecipe, count?: number | null, stonecutter?: Block | null) => Promise<void>
+  /** puts the template (from 1.20.0), the base and the addition in the smithing table open or the one given, which it opens and closes, and takes the result to the inventory; rejects, sending nothing, when no recipe takes them */
+  smith: (base: Item, addition: Item, template?: Item | null, smithingTable?: Block | null) => Promise<void>
   /** the open loom's button, by Bedrock's pattern code ('bo', 'mc', …): its output then makes the pattern; tells the server nothing, as the vanilla client */
   selectLoomPattern: (pattern: string) => Promise<void>
   /** puts the banner (the inventory's first, as null) and the dye in the loom open or the one given, which it opens and closes, and takes the patterned banner to the inventory; rejects, sending nothing, without them */
