@@ -21,9 +21,15 @@ export type EntityType = 'player' | 'mob' | 'object' | 'global' | 'orb' | 'proje
 /** a metadata entry's value as the protocol reads it */
 export type EntityMetadataValue = number | bigint | string | boolean | object | null
 
+/** what the packets' modifiers have in common: Java's and Bedrock's operations 0, 1 and 2 are the same */
+export interface EntityAttributeModifier {
+  amount: number
+  operation: number
+}
+
 export interface EntityAttribute {
   value: number
-  modifiers: object[]
+  modifiers: EntityAttributeModifier[]
 }
 
 export declare class Entity extends EventEmitter {

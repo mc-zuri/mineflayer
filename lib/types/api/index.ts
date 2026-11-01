@@ -250,6 +250,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   blockAtEntityCursor: (entity?: Entity, maxDistance?: number, matcher?: RaycastMatcher | null) => Block | null
   /** @deprecated Java's: blockAtCursor(maxSteps (256) × vectorLength (5 / 16)), undefined for none */
   blockInSight: (maxSteps?: number, vectorLength?: number) => Block | undefined
+  /** Java's: the damages of an explosion of `radius` (its power) at `position` to the entity, its exposure over the blocks blockAt shows; null without rawDamages, as Bedrock servers send no armor attribute */
+  getExplosionDamages: (targetEntity: Entity, position: Vec3, radius: number, rawDamages?: boolean) => number | null
   /** resolves once the columns around the player's are loaded; rejects after 200 ticks */
   waitForChunksToLoad: () => Promise<void>
   /** the objectives the server displayed, by name: Bedrock announces an objective only when it displays it */

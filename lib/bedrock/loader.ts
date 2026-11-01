@@ -29,6 +29,7 @@ import structureBlock from './plugins/structure_block.ts'
 import jigsaw from './plugins/jigsaw.ts'
 import craft from './plugins/craft.ts'
 import enchantmentTable from './plugins/enchantment_table.ts'
+import explosion from './plugins/explosion.ts'
 import drags from './plugins/drags.ts'
 import education from './plugins/education.ts'
 import creative from './plugins/creative.ts'
@@ -110,7 +111,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   block_actions: blockActions,
   place,
   sign,
-  blocks
+  blocks,
+  explosion
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

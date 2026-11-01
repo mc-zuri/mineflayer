@@ -85,6 +85,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.findBlocks(options)`, `bot.findBlock(options)`, `bot.canSeeBlock(block)`, `bot.blockAtCursor(maxDistance,
   matcher)`, `bot.blockAtEntityCursor(entity, maxDistance, matcher)`, `bot.blockInSight(maxSteps, vectorLength)`:
   Java's world queries (see the world below).
+- `bot.getExplosionDamages(entity, position, power, rawDamages)`: Java's (see explosion damages below).
 - `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
   server shows, the one the player looks at, and the one it rides (see below).
 - `bot.scoreboards`, `bot.scoreboard`, `bot.teams`, `bot.teamMap`, `bot.tablist`: as Java's, as Bedrock has them (see
@@ -807,6 +808,20 @@ Where they differ from Java's, and why:
 | a section the bot does not know (its column not shown, or asked for and not answered) | air, where the column is loaded | no block: the queries skip it, and the rays pass through it |
 | `block.painting` | the painting at the block | never set: Bedrock's paintings are entities (add_painting) |
 | the second layer (the water of a waterlogged block) | | not searched, as `blockAt` shows the first only |
+
+### Explosion damages
+
+`bot.getExplosionDamages(entity, position, power, rawDamages = false)` is Java's: none from `2 × power` blocks away,
+else `(impact² + impact) × 7 × power + 1` rounded down, where the impact falls with the distance and with the share of
+the samples of a 0.6 × 1.8 box at the entity's feet that the rays from `position` reach without meeting a block's
+collision shapes (the rays of the queries above: a section the bot does not know has no block). Without `rawDamages`,
+Java's reduces the damages by the entity's `generic.armor` attribute (its modifiers' operations 0, 1 and 2, which
+Bedrock's are too) and toughness, and a player's by the difficulty, and gives `null` for an entity without armor.
+Bedrock servers send no armor attribute (none of the attributes recorded on any version is one) and minecraft-data has
+no armor points for Bedrock's items, so on Bedrock it is `null` without `rawDamages`; reducing it by the armor worn
+waits for the entities' equipment. An entity given a `generic.armor` attribute all the same (by an update_attributes
+naming it, or a plugin) is reduced as Java's; but an entity without attributes yet gives `null`, and a missing
+toughness counts as none, where Java's throws.
 
 ## Entities
 
