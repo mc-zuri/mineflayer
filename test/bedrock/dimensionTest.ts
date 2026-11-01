@@ -593,6 +593,8 @@ describe('bedrock dimension changes', () => {
       const testBot = await joined(version)
       const { bot, internal, server, driver, world } = testBot
       const before = bot.world
+      const unloaded: string[] = []
+      bot.on('chunkColumnUnload', corner => { unloaded.push(corner.toString()) })
       server.send('player_action', { runtime_entity_id: 1n, action: 'dimension_change_ack', position: { x: 0, y: 0, z: 0 }, face: 0 })
       world.column(5, 5)
       await world.sendColumn(5, 5)
@@ -600,9 +602,11 @@ describe('bedrock dimension changes', () => {
       await driver.tick()
       assert.deepStrictEqual([bot.game.dimension, bot.game.minY, bot.game.height, bot.world === before, bot.world.getColumns().length], ['the_end', 0, 256, true, 0])
       assert.deepStrictEqual([internal._world.columnPresent(80, 80), bot.blockAt(new Vec3(0, 11, 0))], [false, null])
+      // the 3 × 3 shown in the join, in their order, and not the one received in the frame
+      assert.deepStrictEqual(unloaded, ['(-16, 0, -16)', '(-16, 0, 0)', '(-16, 0, 16)', '(0, 0, -16)', '(0, 0, 0)', '(0, 0, 16)', '(16, 0, -16)', '(16, 0, 0)', '(16, 0, 16)'])
       server.send('change_dimension', { dimension: 0, position: { x: 0, y: 12, z: 0 }, respawn: false })
       await driver.tick()
-      assert.deepStrictEqual([bot.game.dimension, bot.game.minY, bot.game.height, testBot.errors], ['overworld', -64, 384, []])
+      assert.deepStrictEqual([bot.game.dimension, bot.game.minY, bot.game.height, testBot.errors, unloaded.length], ['overworld', -64, 384, [], 9])
       bot.end()
     })
   })

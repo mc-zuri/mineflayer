@@ -113,7 +113,7 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'windowOpen' | 'windowClose' | 'heldItemChanged'
   | 'chestLidMove' | 'pistonMove' | 'noteHeard' | 'resourcePack'
   | 'blockPlaced' | 'entityPlaced' | 'signOpen'
-  | 'windowOpen' | 'windowClose' | 'heldItemChanged' | 'connect'> & BlockUpdateAtEvents & ChatPatternEvents
+  | 'windowOpen' | 'windowClose' | 'heldItemChanged' | 'connect' | 'chunkColumnUnload'> & BlockUpdateAtEvents & ChatPatternEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {

@@ -95,6 +95,7 @@ export class NetworkWorld {
       await core.waits.until(() => this.loadedAround(this.playerFeet(), CHUNKS_TO_LOAD_RADIUS), CHUNKS_TO_LOAD_TICKS, `Timeout waiting for ${missing} chunks to load after ${CHUNKS_TO_LOAD_TICKS} ticks`)
     }
     this.world.on('chunkColumnLoad', (corner: Vec3) => { core.emit(this.bot, 'chunkColumnLoad', corner) })
+    this.world.on('chunkColumnUnload', (corner: Vec3) => { core.emit(this.bot, 'chunkColumnUnload', corner) })
     this.world.on('blockUpdate', (oldBlock: Block, newBlock: Block) => {
       core.emit(this.bot, 'blockUpdate', oldBlock, newBlock)
       const { x, y, z } = newBlock.position
@@ -114,6 +115,7 @@ export class NetworkWorld {
       // extra is the second layer
       for (const block of packet.blocks) this.setBlock(block.position, block.runtime_id)
     })
+    core.handle(OWNER, 'network_chunk_publisher_update', packet => { this.publish(packet) })
     // after the tick's auth input, as the vanilla client asks
     core.system(OWNER, { name: 'world.requestSubchunks', place: { at: 'MolangUpdateSystem' }, gate: 'present', replay: false, run: ctx => { this.requestSections(ctx.outbox) } })
   }
@@ -183,6 +185,22 @@ export class NetworkWorld {
     for (const { x, z } of this.shown.values()) this.world.unloadColumn(x, z)
     this.shown.clear()
     this.latest.clear()
+  }
+
+  /**
+   * unloads every column farther from the publisher's, along x or z, than its radius (in blocks) in columns, but those
+   * it saves: servers send their columns within that square, and forget those that leave it (as recorded); its y is
+   * not read, servers fill it with anything
+   */
+  private publish ({ coordinates, radius, saved_chunks: saved = [] }: BedrockClientboundPackets['network_chunk_publisher_update']): void {
+    const [x, z, reach] = [coordinates.x >> 4, coordinates.z >> 4, radius >> 4]
+    const kept = new Set(saved.map(column => keyOf(column.x, column.z)))
+    for (const [key, column] of this.latest) {
+      if (Math.max(Math.abs(column.x - x), Math.abs(column.z - z)) <= reach || kept.has(key)) continue
+      // one staged in the frame then never shows, nor emits
+      this.latest.delete(key)
+      if (this.shown.delete(key)) this.world.unloadColumn(column.x, column.z)
+    }
   }
 
   private startRegistry (registry: RegistryBedrock, packet: BedrockClientboundPackets['start_game']): void {

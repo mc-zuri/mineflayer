@@ -33,16 +33,19 @@ function namesAt (bot: BedrockBot, points: readonly Point[]): Array<string | nul
 async function eventsOf (bot: BedrockBot, step: () => Promise<void>): Promise<string[]> {
   const events: string[] = []
   const chunkColumnLoad = (corner: Vec3): void => { events.push(`chunkColumnLoad ${corner.toString()}`) }
+  const chunkColumnUnload = (corner: Vec3): void => { events.push(`chunkColumnUnload ${corner.toString()}`) }
   const physicsTick = (): void => { events.push('physicsTick') }
   const blockUpdate = (oldBlock: Block | null, newBlock: Block): void => { events.push(`blockUpdate ${oldBlock?.name} -> ${newBlock.name}`) }
   const blockUpdateAt = ['blockUpdate:(1, 12, 0)', 'blockUpdate:(0, 20, 0)', 'blockUpdate:(17, 12, -2)'] as const
   const blockUpdatedAt = blockUpdateAt.map(at => (oldBlock: Block, newBlock: Block): void => { events.push(`${at} ${oldBlock.name} -> ${newBlock.name}`) })
   bot.on('chunkColumnLoad', chunkColumnLoad)
+  bot.on('chunkColumnUnload', chunkColumnUnload)
   bot.on('physicsTick', physicsTick)
   bot.on('blockUpdate', blockUpdate)
   blockUpdateAt.forEach((at, index) => { bot.on(at, blockUpdatedAt[index]!) })
   await step()
   bot.off('chunkColumnLoad', chunkColumnLoad)
+  bot.off('chunkColumnUnload', chunkColumnUnload)
   bot.off('physicsTick', physicsTick)
   bot.off('blockUpdate', blockUpdate)
   blockUpdateAt.forEach((at, index) => { bot.off(at, blockUpdatedAt[index]!) })
@@ -77,6 +80,44 @@ async function showsAnsweredSectionsNextTick ({ bot, internal, driver }: TestBot
 /** the heightmap fields of a section of a subchunk, as the version's servers write them (none sent) */
 function noHeightmaps (version: BedrockVersion): { heightmap_type: 'no_data', render_heightmap_type?: 'no_data' } {
   return isBedrockVersionAtLeast(version, 'bedrock_1.21.90') ? { heightmap_type: 'no_data', render_heightmap_type: 'no_data' } : { heightmap_type: 'no_data' }
+}
+
+/** the shown columns of `columns` */
+function shownOf ({ internal }: TestBot, columns: ReadonlyArray<readonly [number, number]>): string[] {
+  return columns.filter(([x, z]) => internal._world.columnPresent(x * 16, z * 16)).map(([x, z]) => `${x},${z}`)
+}
+
+/**
+ * the recorded publisher update (blocks (0, 10), radius 64: column (0, 0), 4 columns) unloads in the packet pass the
+ * columns out of its square, by one along x or z; then one at blocks (-17, 62), radius 112 (column (-2, 3), 7 columns,
+ * the radius recorded on 1.26.60) those out of its, but column (6, 0) when the version's update can save it
+ */
+async function unloadsOutOfTheSquare (codec: BedrockCodec, recorded: string, saves: boolean): Promise<void> {
+  const testBot = await bedrockTestBot(codec)
+  const { bot, server, driver } = testBot
+  const world = new ServerWorld(server)
+  world.startGame()
+  world.spawn()
+  const first = [[0, 0], [4, -4], [5, 0], [-4, 4], [0, -5], [4, 4], [-5, 4], [-4, -4], [4, 5]] as const
+  for (const [x, z] of first) world.column(x, z)
+  await world.load(driver, first)
+  const unloaded = await eventsOf(bot, async () => {
+    server.receive(Buffer.from(recorded, 'hex'))
+    await driver.frame(0)
+  })
+  assert.deepStrictEqual(unloaded, ['chunkColumnUnload (80, 0, 0)', 'chunkColumnUnload (0, 0, -80)', 'chunkColumnUnload (-80, 0, 64)', 'chunkColumnUnload (64, 0, 80)'])
+  assert.deepStrictEqual(shownOf(testBot, first), ['0,0', '4,-4', '-4,4', '4,4', '-4,-4'])
+  assert.deepStrictEqual([bot.world.getColumns().length, ...namesAt(bot, [[80, 11, 0], [64, 11, 64]])], [5, null, 'stone'])
+  const second = [[6, 0], [-9, 10], [-10, 0], [0, 11], [5, -4], [-9, -5]] as const
+  for (const [x, z] of second) world.column(x, z)
+  await world.load(driver, second)
+  const saved = saves ? { saved_chunks: [{ x: 6, z: 0 }] } : {}
+  const moved = await eventsOf(bot, async () => {
+    server.send('network_chunk_publisher_update', { coordinates: { x: -17, y: 70, z: 62 }, radius: 112, ...saved })
+    await driver.frame(0)
+  })
+  assert.deepStrictEqual(moved, [...saves ? [] : ['chunkColumnUnload (96, 0, 0)'], 'chunkColumnUnload (-160, 0, 0)', 'chunkColumnUnload (0, 0, 176)', 'chunkColumnUnload (-144, 0, -80)'])
+  assert.deepStrictEqual(shownOf(testBot, [...first, ...second]), ['0,0', '4,-4', '-4,4', '4,4', '-4,-4', ...saves ? ['6,0'] : [], '-9,10', '5,-4'])
 }
 
 describe('bedrock world', () => {
@@ -316,6 +357,24 @@ describe('bedrock world', () => {
         })
         assert.deepStrictEqual(changes, ['blockUpdate stone -> dirt', 'blockUpdate:(1, 12, 0) stone -> dirt'])
         assert.deepStrictEqual(namesAt(bot, [[1, 12, 0], [0, 12, 0]]), ['dirt', 'air'])
+      })
+    }
+  })
+
+  describe('servers publishing their columns without saving any (1.16.201 – 1.19.10)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.19.10')) {
+      it(`bedrock ${version}: unloads in the packet pass the columns out of the square of the publisher's radius around its column`, async () => {
+        // 1.16.201.2: blocks (0, 28, 10), radius 64
+        await unloadsOutOfTheSquare(bedrockCodec(version), '79001c1440', false)
+      })
+    }
+  })
+
+  describe('servers publishing their columns and those saved (1.19.20+; the y a zigzag from 1.26.10, never read)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.19.20')) {
+      it(`bedrock ${version}: unloads in the packet pass the columns out of the square of the publisher's radius around its column, but those it saves`, async () => {
+        // 1.19.20.2 and 1.26.60.5: blocks (0, 28 or 14, 10), radius 64, none saved
+        await unloadsOutOfTheSquare(bedrockCodec(version), '79001c144000000000', true)
       })
     }
   })
@@ -655,6 +714,44 @@ describe('bedrock world', () => {
       assert.deepStrictEqual(changes, ['physicsTick'])
       assert.strictEqual(internal._world.stats.unknownColumn, 2)
       assert.strictEqual(internal._world.sectionKnown(0, 0, 0), false)
+    })
+
+    it('drops a column staged out of the publisher\'s square without an event, and what follows for a column it unloaded', async () => {
+      const { bot, internal, server, driver } = await bedrockTestBot(codec)
+      const world = new ServerWorld(server)
+      world.startGame()
+      world.spawn()
+      const publish = (x: number): void => { server.send('network_chunk_publisher_update', { coordinates: { x, y: 0, z: 0 }, radius: 64, saved_chunks: [] }) }
+      // as from 1.20.80, before any column
+      const joined = await eventsOf(bot, async () => {
+        publish(0)
+        for (const [x, z] of [[0, 0], [5, 0]] as const) {
+          world.column(x, z, [])
+          await world.sendColumn(x, z)
+        }
+        await driver.tick()
+      })
+      assert.deepStrictEqual(joined, ['chunkColumnLoad (0, 0, 0)', 'chunkColumnLoad (80, 0, 0)', 'physicsTick'])
+      world.column(6, 0, [])
+      const unloaded = await eventsOf(bot, async () => {
+        await world.sendColumn(6, 0)
+        publish(0)
+        server.send('subchunk', { cache_enabled: false, dimension: 0, origin: { x: 5, y: 0, z: 0 }, entries: [{ dx: 0, dy: 0, dz: 0, result: 'success_all_air', heightmap_type: 'no_data', render_heightmap_type: 'no_data' }] })
+        server.send('update_block', { position: { x: 80, y: 12, z: 0 }, block_runtime_id: 0, layer: 0 })
+        server.send('update_block', { position: { x: 96, y: 12, z: 0 }, block_runtime_id: 0, layer: 0 })
+        await driver.frame(0)
+      })
+      assert.deepStrictEqual(unloaded, ['chunkColumnUnload (80, 0, 0)'])
+      assert.strictEqual(internal._world.stats.unknownColumn, 3)
+      assert.deepStrictEqual(await eventsOf(bot, async () => { await driver.tick() }), ['physicsTick'])
+      assert.deepStrictEqual([internal._world.columnPresent(80, 0), internal._world.columnPresent(96, 0), bot.world.getColumns().length], [false, false, 1])
+      assert.deepStrictEqual([...new Set(world.asked().map(({ x, z }) => `${x},${z}`))], ['0,0'])
+      const back = await eventsOf(bot, async () => {
+        publish(80)
+        await world.sendColumn(5, 0)
+        await driver.tick()
+      })
+      assert.deepStrictEqual(back, ['chunkColumnUnload (0, 0, 0)', 'chunkColumnLoad (80, 0, 0)', 'physicsTick'])
     })
 
     it('reports a column sent before start_game', async () => {

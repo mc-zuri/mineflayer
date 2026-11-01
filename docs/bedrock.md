@@ -144,7 +144,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   health), `experience`, `breath` (see experience and breath), `spawnReset`, `rain`, `weatherUpdate` (see spawn point
   and weather), `abilities (abilities)` (see abilities), `time`, `physicsTick` (`physicTick`: every tick, from
   start_game), `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the
-  server moved the player), `chunkColumnLoad (corner)`, `blockUpdate (oldBlock, newBlock)`, `blockUpdate:(x, y, z)
+  server moved the player), `chunkColumnLoad (corner)`, `chunkColumnUnload (corner)` (see the world below),
+  `blockUpdate (oldBlock, newBlock)`, `blockUpdate:(x, y, z)
   (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities below),
   `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`, `scoreUpdated`, `scoreRemoved`,
   `scoreboardPosition` (see scoreboards below), `title (text, type)`, `title_times (fadeIn, stay, fadeOut)`,
@@ -204,7 +205,7 @@ Events come at their point in the frame:
 | Event | When |
 | --- | --- |
 | `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced`, `entityPlaced`, `signOpen` | the packet pass |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `connect`, in the packet pass after bedrock-protocol told the connection is up | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `connect`, in the packet pass after bedrock-protocol told the connection is up; `chunkColumnUnload` | the packet pass |
 | `heldItemChanged` | where the held slot changes: the packet pass, or the input pass (a request's prediction, a response taken in) |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
@@ -648,9 +649,18 @@ Java's; around where the player is then) are shown with every section, and rejec
 10 s). The server's packets act at their point in the frame:
 
 - **A column** (level_chunk) is read in the packet pass, and shown from the start of the next tick, which emits
-  `chunkColumnLoad`: always the next tick, with no random delay. The bot keeps every column: it unloads none. A
-  column sent again replaces the shown one there too: the block changes and answers that follow it go to it, and the
-  bot asks for its sections again, but for those answered in between.
+  `chunkColumnLoad`: always the next tick, with no random delay. A column sent again replaces the shown one there
+  too: the block changes and answers that follow it go to it, and the bot asks for its sections again, but for those
+  answered in between.
+- **The publisher** (network_chunk_publisher_update) unloads in the packet pass every column farther from its column
+  (its position's) along x or z than its radius in columns (the radius is in blocks: servers send 16 times the chunk
+  radius), but those it names saved, emitting `chunkColumnUnload (corner)` (the column's corner at y 0, as Java's) for
+  each shown one; a column received but not shown yet is dropped without an event, and the sections and block changes
+  that follow for a column unloaded are dropped as those of a column never sent, until it is sent again. Bedrock has no
+  packet unloading a column (Java's unload_chunk): every recorded server sent its columns within that square, and
+  sent a column again only after it left it; the vanilla client keeps some a little beyond it (it asked for their
+  sections), so the square is the smallest area that holds every column the recorded servers keep. The position's y
+  is not read: servers fill it with anything.
 - **A section** (subchunk) answering the bot is read in the packet pass too, and `blockAt` shows it from the start of
   the next tick (`bot.world` has it already).
 - **A block change** (update_block, and update_subchunk_blocks from 1.17.30; the first layer only) changes a shown block
@@ -661,6 +671,14 @@ Java's; around where the player is then) are shown with every section, and rejec
 - **start_game** gives the dimension, and whether the block states are numbered by their hash
   (`block_network_ids_are_hashes`, from 1.19.80: true from 1.20.0, false on 1.19.80, as recorded): the registry takes
   it (`registry.handleStartGame`).
+
+The publisher's layout depends on the version:
+
+| Versions | network_chunk_publisher_update |
+| --- | --- |
+| 1.16.201 – 1.19.10 | the position (block coordinates) and the radius (blocks) |
+| 1.19.20 – 1.26.0 | + the columns saved (x, z), none in any recording |
+| 1.26.10+ | as 1.19.20, the position's y a zigzag varint |
 
 How a column comes depends on the version:
 
@@ -685,9 +703,9 @@ Dropped (and counted): a column of another dimension (level_chunk names it from 
 client cache, which the bot keeps none of, and a section or block change of a column the bot was not sent. A column
 sent without its sections before 1.18.0 (a negative count) cannot be asked for, and is an error.
 
-A dimension change (change_dimension) unloads every column in the packet pass, in the same `bot.world`, as Java's: the
-bot asks for the new dimension's sections from then (see dimension changes), and a column received before the change
-is not shown.
+A dimension change (change_dimension) unloads every column in the packet pass, in the same `bot.world`, emitting
+`chunkColumnUnload` for each one shown, as Java's: the bot asks for the new dimension's sections from then (see
+dimension changes), and a column received before the change is not shown.
 
 ## Block actions
 
