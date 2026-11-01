@@ -1,6 +1,8 @@
 import type { Block } from 'prismarine-block'
 import prismarineChunk from 'prismarine-chunk'
 import type { BedrockChunk } from 'prismarine-chunk'
+import nbt from 'prismarine-nbt'
+import type { NBT } from 'prismarine-nbt'
 import type { World } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { RegistryBedrock } from 'prismarine-registry'
 import prismarineWorld from 'prismarine-world'
@@ -26,6 +28,7 @@ const DIMENSIONS = Object.freeze(['overworld', 'nether', 'end'])
 const OVERWORLD_SECTIONS = sectionsFrom(-4, 19)
 const NETHER_SECTIONS = sectionsFrom(0, 7)
 const END_SECTIONS = sectionsFrom(0, 15)
+const COMPOUND_TAG = 0x0a
 /** what the physics take a cell the bot does not know below the player for */
 const UNSENT_FLOOR = Object.freeze({ name: 'unsent', shapes: Object.freeze([Object.freeze([0, 0, 0, 1, 1, 1])]) })
 
@@ -54,6 +57,65 @@ interface Column {
 
 function keyOf (x: number, z: number): string {
   return `${x},${z}`
+}
+
+/** the key of a block's block entity in its column: x and z in the column, y in the world */
+function blockEntityKey ({ x, y, z }: { x: number, y: number, z: number }): string {
+  return `${x & 15},${y},${z & 15}`
+}
+
+/** forgets the column's block entities of a section */
+function dropBlockEntities (chunk: BedrockChunk, sectionY: number): void {
+  for (const key of Object.keys(chunk.blockEntities)) {
+    if (chunkCoordinate(Number(key.split(',')[1])) === sectionY) Reflect.deleteProperty(chunk.blockEntities, key)
+  }
+}
+
+/** the length of the network section a subchunk payload starts with: the section's block entities follow it */
+function sectionLength (payload: Buffer): number {
+  const version = payload.readUInt8(0)
+  // version 1 has one layer and no count; 9 adds the section's y
+  const layers = version === 1 ? 1 : payload.readUInt8(1)
+  let offset = version === 1 ? 1 : version === 9 ? 3 : 2
+  for (let layer = 0; layer < layers; layer++) {
+    const bits = payload.readUInt8(offset++) >> 1
+    // a layer of 0 bits is one block state
+    let states = 1
+    if (bits > 0) {
+      offset += Math.ceil(4096 / Math.floor(32 / bits)) * 4
+      let size: number
+      [size, offset] = readVarint(payload, offset)
+      // a zigzag varint, positive
+      states = size >>> 1
+    }
+    for (let state = 0; state < states; state++) offset = readVarint(payload, offset)[1]
+  }
+  return offset
+}
+
+/** a varint's value, and the offset after it */
+function readVarint (buffer: Buffer, offset: number): [number, number] {
+  let value = 0
+  let shift = 0
+  let byte: number
+  do {
+    byte = buffer.readUInt8(offset++)
+    value |= (byte & 0x7f) << shift
+    shift += 7
+  } while ((byte & 0x80) !== 0)
+  return [value, offset]
+}
+
+/** the NBT compounds from `offset` of a payload on */
+function readBlockEntities (payload: Buffer, offset: number): NBT[] {
+  const tags: NBT[] = []
+  while (payload[offset] === COMPOUND_TAG) {
+    // prismarine-nbt types its protocols as any
+    const { data, metadata }: { data: NBT, metadata: { size: number } } = nbt.protos.littleVarint.parsePacketBuffer('nbt', payload, offset)
+    tags.push(data)
+    offset += metadata.size
+  }
+  return tags
 }
 
 /** the column (or section) holding a block coordinate */
@@ -116,6 +178,7 @@ export class NetworkWorld {
       for (const block of packet.blocks) this.setBlock(block.position, block.runtime_id)
     })
     core.handle(OWNER, 'network_chunk_publisher_update', packet => { this.publish(packet) })
+    core.handle(OWNER, 'block_entity_data', packet => { this.receiveBlockEntity(core, packet) })
     // after the tick's auth input, as the vanilla client asks
     core.system(OWNER, { name: 'world.requestSubchunks', place: { at: 'MolangUpdateSystem' }, gate: 'present', replay: false, run: ctx => { this.requestSections(ctx.outbox) } })
   }
@@ -262,9 +325,20 @@ export class NetworkWorld {
     }
     // answered, also where the column was sent again since it asked: the answer came after it
     column.unrequested.delete(y)
+    // the answer gives the section's block entities: those after its blocks, none for air
+    dropBlockEntities(column.chunk, y)
     // from 1.26.40 a section of air has no payload; before, an empty one
     if (result === 'success' && payload !== undefined) column.chunk.newSection(y, RUNTIME_STORAGE, payload)
+    // staged before the block entities are read: a section whose block entities fail to read still shows
     core.stage(() => { column.known.add(y) })
+    if (result === 'success' && payload !== undefined) {
+      for (const tag of readBlockEntities(payload, sectionLength(payload))) column.chunk.addBlockEntity(tag)
+    }
+  }
+
+  /** whether the block shows where the column was last received: its column is shown, and its section known */
+  private shows (key: string, column: Column, y: number): boolean {
+    return this.shown.get(key) === column && this.knows(column, chunkCoordinate(y))
   }
 
   private setBlock (position: { x: number, y: number, z: number }, stateId: number): void {
@@ -274,9 +348,28 @@ export class NetworkWorld {
       this.stats.unknownColumn++
       return
     }
-    if (this.shown.get(key) === column && this.knows(column, chunkCoordinate(position.y))) this.world.setBlockStateId(new Vec3(position.x, position.y, position.z), stateId)
+    // a block's entity goes with it (a furnace lit keeps the furnace's): servers tell a new one after its block
+    if (stateId === this.bot.registry.blocksByName['air']?.defaultState) Reflect.deleteProperty(column.chunk.blockEntities, blockEntityKey(position))
+    if (this.shows(key, column, position.y)) this.world.setBlockStateId(new Vec3(position.x, position.y, position.z), stateId)
     // a column takes a block by its world coordinates: it keeps their low bits
     else column.chunk.setBlockStateId(position, stateId)
+  }
+
+  /**
+   * a block entity told: one naming its id replaces the one held, one without (a furnace's fuel, a crafter's slots)
+   * adds its fields to it; where the block shows, `blockEntityData` is emitted with it
+   */
+  private receiveBlockEntity (core: BedrockCore, { position, nbt: told }: BedrockClientboundPackets['block_entity_data']): void {
+    const key = keyOf(chunkCoordinate(position.x), chunkCoordinate(position.z))
+    const column = this.latest.get(key)
+    if (column === undefined) {
+      this.stats.unknownColumn++
+      return
+    }
+    const { blockEntities } = column.chunk
+    const held: NBT | undefined = blockEntities[blockEntityKey(position)]
+    blockEntities[blockEntityKey(position)] = told.value['id'] !== undefined || held === undefined ? told : { ...held, value: { ...held.value, ...told.value } }
+    if (this.shows(key, column, position.y)) core.emit(this.bot, 'blockEntityData', this.bot.blockAt(new Vec3(position.x, position.y, position.z)))
   }
 
   requestSections (outbox: OutboxWriter): void {

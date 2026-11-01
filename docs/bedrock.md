@@ -144,8 +144,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   health), `experience`, `breath` (see experience and breath), `spawnReset`, `rain`, `weatherUpdate` (see spawn point
   and weather), `abilities (abilities)` (see abilities), `time`, `physicsTick` (`physicTick`: every tick, from
   start_game), `move (previousPosition)` (the auth input reported another position or rotation), `forcedMove` (the
-  server moved the player), `chunkColumnLoad (corner)`, `chunkColumnUnload (corner)` (see the world below),
-  `blockUpdate (oldBlock, newBlock)`, `blockUpdate:(x, y, z)
+  server moved the player), `chunkColumnLoad (corner)`, `chunkColumnUnload (corner)`, `blockEntityData (block)` (see
+  the world below), `blockUpdate (oldBlock, newBlock)`, `blockUpdate:(x, y, z)
   (oldBlock, newBlock)`, the entities' events and `mount`, `dismount (vehicle)` (see entities below),
   `scoreboardCreated`, `scoreboardDeleted`, `scoreboardTitleChanged`, `scoreUpdated`, `scoreRemoved`,
   `scoreboardPosition` (see scoreboards below), `title (text, type)`, `title_times (fadeIn, stay, fadeOut)`,
@@ -204,8 +204,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced`, `entityPlaced`, `signOpen` | the packet pass |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `connect`, in the packet pass after bedrock-protocol told the connection is up; `chunkColumnUnload` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced`, `entityPlaced`, `signOpen`; `connect`, in the packet pass after bedrock-protocol told the connection is up; `chunkColumnUnload`; `blockEntityData` | the packet pass |
 | `heldItemChanged` | where the held slot changes: the packet pass, or the input pass (a request's prediction, a response taken in) |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
@@ -666,6 +665,16 @@ Java's; around where the player is then) are shown with every section, and rejec
 - **A block change** (update_block, and update_subchunk_blocks from 1.17.30; the first layer only) changes a shown block
   in the packet pass, emitting `blockUpdate` and `blockUpdate:(x, y, z)`. In a column not shown yet, or a section not
   answered yet, it changes the column only, without an event.
+- **A block entity** (block_entity_data) is set in the packet pass, and where its block shows, `blockEntityData
+  (block)` is emitted with `bot.blockAt` there, whose `entity` (the NBT) and `blockEntity` (simplified) carry it, as
+  Java's. In a column not shown yet, or a section not answered yet, it is set in the column only, without an event, as
+  a block change. One naming its `id` replaces the block entity held, as Java's; one without (as recorded: a furnace's
+  `CustomName` and `LastFuel`, a crafter's `crafting_ticks_remaining` and `disabled_slots`) adds its fields to it, or
+  is held as told where there is none. A whole column (up to 1.17.40) gives its block entities after its blocks; a
+  section answered gives those of the section after its blocks, replacing those held there (a section of air has
+  none). A block changed to air loses its block entity, before `blockUpdate` (so neither block of the event has it); a
+  block changed to another keeps it (a furnace lit is told its fuel only), and servers tell a new block's after the
+  block, as recorded.
 - Each listener of these events is called apart: one that throws is reported (`error`), and the other listeners and
   the rest of the packet go on.
 - **start_game** gives the dimension, and whether the block states are numbered by their hash
@@ -679,6 +688,13 @@ The publisher's layout depends on the version:
 | 1.16.201 – 1.19.10 | the position (block coordinates) and the radius (blocks) |
 | 1.19.20 – 1.26.0 | + the columns saved (x, z), none in any recording |
 | 1.26.10+ | as 1.19.20, the position's y a zigzag varint |
+
+block_entity_data's layout depends on the version too:
+
+| Versions | block_entity_data |
+| --- | --- |
+| 1.16.201 – 1.26.0 | the position (its y a varint) and the block entity (little-endian NBT, its lengths varints) |
+| 1.26.10+ | as 1.16.201, the position's y a zigzag varint |
 
 How a column comes depends on the version:
 
@@ -723,8 +739,7 @@ server tells of a block that moves, in the packet pass; the bot sends nothing, a
   The two halves share one count, so one event comes whether the server tells one half or both: `block` the half told
   first and `block2` the other (Java's `block` is always the right half); a single chest's `block2` is null. The pair
   is the one block_entity_data told last (observed; a replaced half forgets its own), else the block entity its column
-  brought: up to 1.17.40, whose columns come whole with their block entities (from 1.18.0 the world keeps no block
-  entity of a section yet). Not recorded: no recording has a double chest. Against Bedrock Dedicated Server 1.16.210,
+  (up to 1.17.40) or its section (from 1.18.0) brought. Not recorded: no recording has a double chest. Against Bedrock Dedicated Server 1.16.210,
   1.17.0 and 1.21.42, two chests set side by side along x were told paired by block_entity_data (`pairlead` 1 on the
   half set first), their window 54 slots, and the lead half's block_event alone opened and closed the lid; along z,
   on 1.26.20 to 1.26.40, they stayed single chests.
@@ -1757,7 +1772,7 @@ For a lectern the server told no book of, the close sends nothing, as the vanill
 - **`openBlock(lectern)`** resolves with a **`BedrockLectern`**: **`book`** (the book as an item, null for a lectern
   the server told no book of), **`page`** and **`totalPages`** read the last block_entity_data the bot received at the
   lectern's position, while the screen is open too (0 untold). A lectern whose block entity came only in its chunk is
-  untold: the bot reads no block entity of a chunk.
+  untold: the lectern reads only block_entity_data.
 - **`setPage(page)`** (Java has no lectern helper) turns the book to `page` (from 0, below `totalPages`) in the next
   frame: it sends `lectern_update` with that page (`drop_book: false` up to 1.20.61) and shows it at once in `page`,
   which the close then tells, until the server tells another; it resolves once sent. It rejects, sending nothing, a
@@ -2802,6 +2817,11 @@ What was found getting here, beyond mineflayer:
     `networkDecodeNoCache` throws on a count of −1, and reads −2 as no sections.
   - `newSection(y)`, a section of air, is given its options as its `y`; the tests' server makes a section of air by
     setting a block of air instead.
+  - `newSection(y, storage, payload)` reads a subchunk payload's blocks only, not the block entities after them, and
+    does not tell where the blocks end; `networkDecodeSubChunkNoCache` reads both, but is async (a bad payload would
+    reject outside the frame) and keeps the section's old block entities. The world module reads the section's length
+    itself (section versions 1, 8 and 9), then the block entities. Block entities that fail to read are reported
+    (`error`) and the section still shows, without them.
 - **Bedrock Dedicated Server 1.26.30+** with `enable-lan-visibility=false` answers no unconnected ping, so a version
   cannot be asked for there; older builds answer.
 - **minecraft-data**'s typings name the features of Java's `features.json` only (`SupportsFeature`): a Bedrock-only
