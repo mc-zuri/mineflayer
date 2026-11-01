@@ -1689,7 +1689,8 @@ disenchanted, each group playing the client's requests with the bot, byte for by
 table's, with 1.17.10 apart (`RepairCost`); on 1.26.60 the items given back on close. Not recorded, so as the bot does
 it: the second slot alone, the name of a first slot a request emptied (the request's), curses, books and the other
 items the vanilla client takes, the cursor's place in the hand-back. The experience a grindstone gives comes as orbs
-the server spawns.
+the server spawns; up to 1.17.40 the vanilla client also asks for one before the take (spawn_experience_orb, an
+experience it rolls at random, recorded on every disenchant there), which the bot does not send, as for the furnaces'.
 
 ## Anvil
 
