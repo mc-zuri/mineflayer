@@ -1,6 +1,8 @@
 import assert from 'assert'
 import prismarineBlock from 'prismarine-block'
 import prismarineItem from 'prismarine-item'
+import { simplify } from 'prismarine-nbt'
+import type { Tags, TagType } from 'prismarine-nbt'
 import type { Block } from 'prismarine-block'
 import type { Item } from 'prismarine-item'
 import type { Window } from 'prismarine-windows'
@@ -28,7 +30,10 @@ const HOTBAR = 30
 const RESULT_SLOT = 2
 const DROP = 4
 const SHARPNESS = 9
+// on 1.26.60 an enchantment newer than the registry
+const UNKNOWN_ENCHANTMENT = 38
 const BINDING_CURSE = 27
+const VANISHING_CURSE = 28
 
 interface RecordedGrind {
   windowId: number
@@ -646,7 +651,9 @@ function atLeast (version: BedrockVersion, since: BedrockVersion): boolean {
 }
 
 type SentRequest = BedrockServerboundPackets['item_stack_request']['requests'][number]
-type SentSlot = NonNullable<SentRequest['actions'][number]['source']>
+type SentAction = SentRequest['actions'][number]
+type SentSlot = NonNullable<SentAction['source']>
+type ResultItem = NonNullable<SentAction['result_items']>[number]
 
 function refOf (info: SentSlot): SlotRef {
   const type = info.slot_type
@@ -684,6 +691,23 @@ function requestsSince (server: FakeBedrockClient): () => string[] {
   }
 }
 
+/** the item each craft's results_deprecated wrote since the last call: its name, count, data and NBT as written */
+function resultsSince ({ server, bot }: Pick<TestBot, 'server' | 'bot'>): () => string[] {
+  const resultOf = (item: ResultItem): string => {
+    const [count, metadata] = 'auxiliary_value' in item && item.auxiliary_value !== undefined ? [item.auxiliary_value & 0xff, item.auxiliary_value >> 8] : [Number(item.count), Number(item.metadata)]
+    const name = 'network_id' in item ? bot.registry.items[Number(item.network_id)]?.name : item.name?.replace('minecraft:', '')
+    const nbt = ('extra' in item ? item.extra?.nbt : 'nbt' in item ? item.nbt : undefined)?.nbt
+    return `${String(name)} ${count}:${metadata} ${nbt === undefined ? 'none' : JSON.stringify(simplify(nbt))}`
+  }
+  let seen = server.sentOf('item_stack_request').length
+  return () => {
+    const sent = server.sentOf('item_stack_request')
+    const fresh = sent.slice(seen).flatMap(({ requests }) => requests).flatMap(({ actions }) => actions)
+    seen = sent.length
+    return fresh.flatMap(action => (action.result_items ?? []).map(resultOf))
+  }
+}
+
 function isGrindstone (window: Window | null): window is BedrockGrindstone {
   return window !== null && 'grind' in window
 }
@@ -699,8 +723,22 @@ function itemAt (window: Window, slot: number): Item {
   return item
 }
 
+/** an ench list of [id, level] pairs */
+function enchList (enchantments: ReadonlyArray<readonly [number, number]>): Tags[TagType] {
+  return { type: 'list', value: { type: 'compound', value: enchantments.map(([id, level]) => ({ id: { type: 'short', value: id }, lvl: { type: 'short', value: level } })) } }
+}
+
 function ench (enchantments: readonly number[]): NbtValue {
-  return { ench: { type: 'list', value: { type: 'compound', value: enchantments.map(id => ({ id: { type: 'short', value: id }, lvl: { type: 'short', value: 1 } })) } } }
+  return { ench: enchList(enchantments.map(id => [id, 1])) }
+}
+
+function idOf (bot: TestBot['bot'], name: string): number {
+  return bot.registry.itemsByName[name]?.id ?? 0
+}
+
+/** the NBT of the item, as JSON in its order */
+function nbtJson (item: Item): string {
+  return item.nbt == null ? 'none' : JSON.stringify(simplify(item.nbt))
 }
 
 /** the result as the vanilla client predicts it: RepairCost from 1.17.10 */
@@ -859,6 +897,39 @@ describe('bedrock grindstone', () => {
     }
   })
 
+  // Not recorded: an enchanted book and curses, ground as Java's grindstone grinds them, the prior work written from 1.17.10
+  // as the recorded results'. Versions alike in what the result's NBT is are a group, each group's test run on each of
+  // its versions (their requests' layouts are the recorded ones above).
+  const GROUND: ReadonlyArray<{ from: BedrockVersion, to: BedrockVersion, book: string, sword: string }> = [
+    { from: 'bedrock_1.16.201', to: 'bedrock_1.17.0', book: '{}', sword: '{"Damage":0,"ench":[{"id":27,"lvl":1},{"id":28,"lvl":1}]}' },
+    { from: 'bedrock_1.17.10', to: latestSupportedBedrockVersion, book: '{"RepairCost":0}', sword: '{"Damage":0,"RepairCost":3,"ench":[{"id":27,"lvl":1},{"id":28,"lvl":1}]}' }
+  ]
+  for (const { from, to, book, sword: cursed } of GROUND) {
+    describe(`an enchanted book and curses ground (not recorded; ${from.slice(8)} – ${to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(from, to)) {
+        it(`bedrock ${version}: a book of Sharpness I into a book, a sword of Sharpness I and both curses keeping its curses`, async () => {
+          const testBot = await grindstoneBot(version)
+          const { bot, server, driver, inventory, errors, sword } = testBot
+          inventory.slot('inventory', 0, { id: idOf(bot, 'enchanted_book'), count: 1, stackId: 20, nbt: { ench: enchList([[SHARPNESS, 1]]) } })
+          inventory.slot('inventory', 1, { ...sword(21, 0), nbt: { ench: enchList([[SHARPNESS, 1], [BINDING_CURSE, 1], [VANISHING_CURSE, 1]]) } })
+          openGrindstone(server, 3)
+          await driver.tick()
+          const grindstone = grindstoneOf(bot.currentWindow)
+          const results = resultsSince(testBot)
+          const made = [
+            await served(testBot, grindstone.grind(itemAt(grindstone, HOTBAR)), 30),
+            await served(testBot, grindstone.grind(itemAt(grindstone, HOTBAR + 1)), 31)
+          ]
+          const keptNbt = made[1]?.nbt
+          assert.ok(keptNbt?.type === 'compound')
+          assert.deepStrictEqual([results(), made.map(item => `${item.name} ${nbtJson(item)}`), keptNbt.value['ench'], errors],
+            [[`book 1:0 ${book}`, `iron_sword 1:0 ${cursed}`], [`book ${book}`, `iron_sword ${cursed}`], enchList([[BINDING_CURSE, 1], [VANISHING_CURSE, 1]]), []])
+          bot.end()
+        })
+      }
+    })
+  }
+
   describe('the vanilla client closing the grindstone: its second item, then its first given back, the close after the crafting table\'s animation (1.26.60)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.26.60')) {
       it(`bedrock ${version}: 18 and 17 iron ingots, both to hotbar slot 0`, async () => {
@@ -901,10 +972,6 @@ describe('bedrock grindstone', () => {
       return prismarineBlock(bot.registry).fromStateId(state, 0)
     }
 
-    function idOf (bot: TestBot['bot'], name: string): number {
-      return bot.registry.itemsByName[name]?.id ?? 0
-    }
-
     it('opens the grindstone with openBlock, rejecting a window that is no grindstone\'s', async () => {
       const { bot, internal, server, driver } = await grindstoneBot(version)
       const used: Block[] = []
@@ -934,21 +1001,34 @@ describe('bedrock grindstone', () => {
       inventory.slot('inventory', 0, sword(20, 0))
       inventory.slot('inventory', 1, { id: idOf(bot, 'diamond_sword'), count: 1, stackId: 21, ints: { Damage: 0 } })
       inventory.slot('inventory', 2, { id: idOf(bot, 'enchanted_book'), count: 1, stackId: 22 })
-      inventory.slot('inventory', 3, sword(23, 0))
+      const enchantedBook = { id: idOf(bot, 'enchanted_book'), count: 1, nbt: { ench: enchList([[SHARPNESS, 1]]) } }
+      const compass = { id: idOf(bot, 'compass'), count: 1, nbt: { ench: enchList([[VANISHING_CURSE, 1]]) } }
+      inventory.slot('inventory', 3, { ...enchantedBook, stackId: 23 })
+      inventory.slot('inventory', 4, { ...enchantedBook, stackId: 24 })
+      inventory.slot('inventory', 5, { ...compass, stackId: 25 })
+      inventory.slot('inventory', 6, { ...compass, stackId: 26 })
+      inventory.slot('inventory', 7, { ...compass, count: 2, stackId: 27 })
+      inventory.slot('inventory', 8, sword(28, 0))
       openGrindstone(server, 3)
       await driver.tick()
-      enchant({ container: 'hotbar', slot: 3 }, SHARPNESS, BINDING_CURSE)
+      enchant({ container: 'hotbar', slot: 8 }, SHARPNESS, UNKNOWN_ENCHANTMENT)
       const grindstone = grindstoneOf(bot.currentWindow)
       const requests = requestsSince(server)
-      const [plain, diamond, book, cursed] = [0, 1, 2, 3].map(slot => itemAt(grindstone, HOTBAR + slot))
-      assert.ok(plain !== undefined && diamond !== undefined && book !== undefined && cursed !== undefined)
+      const [plain, diamond, book, bookOne, bookTwo, compassOne, compassTwo, compasses, unknown] = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(slot => itemAt(grindstone, HOTBAR + slot))
+      assert.ok(plain !== undefined && diamond !== undefined && book !== undefined && bookOne !== undefined && bookTwo !== undefined)
+      assert.ok(compassOne !== undefined && compassTwo !== undefined && compasses !== undefined && unknown !== undefined)
       const messages = [
         await rejection(driver, grindstone.grind(plain)),
         await rejection(driver, grindstone.grind(plain, null)),
         await rejection(driver, grindstone.grind(plain, diamond)),
         await rejection(driver, grindstone.grind(book)),
-        await rejection(driver, grindstone.grind(plain, book)),
-        await rejection(driver, grindstone.grind(cursed)),
+        await rejection(driver, grindstone.grind(plain, bookOne)),
+        await rejection(driver, grindstone.grind(bookOne, bookTwo)),
+        await rejection(driver, grindstone.grind(compassOne, compassTwo)),
+        await rejection(driver, grindstone.grind(compasses)),
+        await rejection(driver, grindstone.grind(compassOne, compasses)),
+        await rejection(driver, grindstone.grind(unknown)),
+        await rejection(driver, grindstone.grind(plain, unknown)),
         await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 0))
       ]
       server.send('container_close', { window_id: 3, window_type: 'none', server: true })
@@ -958,9 +1038,16 @@ describe('bedrock grindstone', () => {
         'the grindstone makes nothing of iron_sword without enchantments',
         'the grindstone makes nothing of iron_sword without enchantments',
         'the grindstone makes nothing of iron_sword and diamond_sword',
-        'grinding enchanted_book is not supported on Bedrock yet',
-        'grinding enchanted_book is not supported on Bedrock yet',
-        'grinding iron_sword with a curse is not supported on Bedrock yet',
+        'the grindstone makes nothing of enchanted_book without enchantments',
+        'the grindstone makes nothing of iron_sword and enchanted_book',
+        // Java's: an item one to a stack makes nothing of two
+        'the grindstone makes nothing of enchanted_book and enchanted_book',
+        // Java's makes two of them, not recorded
+        'grinding two compass is not supported on Bedrock yet',
+        'the grindstone makes nothing of a stack of compass',
+        'the grindstone makes nothing of a stack of compass',
+        'grinding iron_sword with an enchantment it does not know is not supported on Bedrock yet',
+        'grinding iron_sword with an enchantment it does not know is not supported on Bedrock yet',
         'the grindstone holds nothing to grind',
         'grind needs the grindstone open'
       ], []])
@@ -1026,6 +1113,45 @@ describe('bedrock grindstone', () => {
         '-15, place 1 cursor:0#31 → hotbar:2#0',
         '-17, craft_grindstone_request -13, results_deprecated, consume 1 grindstone_additional:17#32, take 1 creative_output:50#-17 → cursor:0#0'
       ], { type: 'compound', name: '', value: { Damage: { type: 'int', value: 100 }, RepairCost: { type: 'int', value: 0 } } }])
+      bot.end()
+    })
+
+    it('grinds as Java\'s grindstone (not recorded): curses kept, the second\'s the first has not after the first\'s, prior work a level for each, an enchanted book left without one a book keeping its name', async () => {
+      const testBot = await grindstoneBot(version)
+      const { bot, server, driver, inventory, errors, sword } = testBot
+      const book = (stackId: number, enchantments: ReadonlyArray<readonly [number, number]>, tags: Readonly<Record<string, Tags[TagType]>> = {}): Given =>
+        ({ id: idOf(bot, 'enchanted_book'), count: 1, stackId, nbt: { ...tags, ench: enchList(enchantments) } })
+      inventory.slot('inventory', 0, { ...sword(20, 200), nbt: { ench: enchList([[BINDING_CURSE, 1]]) } })
+      // levels as given, though the game's curses have one
+      inventory.slot('inventory', 1, { ...sword(21, 200), nbt: { ench: enchList([[SHARPNESS, 2], [VANISHING_CURSE, 2], [BINDING_CURSE, 2]]) } })
+      inventory.slot('inventory', 2, book(22, [[BINDING_CURSE, 1]]))
+      inventory.slot('inventory', 3, book(23, [[SHARPNESS, 1], [VANISHING_CURSE, 1]]))
+      inventory.slot('inventory', 4, { id: idOf(bot, 'compass'), count: 1, stackId: 24, nbt: { ench: enchList([[VANISHING_CURSE, 1]]) } })
+      inventory.slot('inventory', 5, book(25, [[SHARPNESS, 1]], { display: { type: 'compound', value: { Name: { type: 'string', value: 'Old' } } } }))
+      inventory.slot('inventory', 6, { ...sword(26, 0), nbt: { ench: enchList([[BINDING_CURSE, 1]]) } })
+      openGrindstone(server, 3)
+      await driver.tick()
+      const grindstone = grindstoneOf(bot.currentWindow)
+      const [first, second, binding, vanishing, compass, named, cursed] = [0, 1, 2, 3, 4, 5, 6].map(slot => itemAt(grindstone, HOTBAR + slot))
+      assert.ok(first !== undefined && second !== undefined && binding !== undefined && vanishing !== undefined && compass !== undefined && named !== undefined && cursed !== undefined)
+      const results = resultsSince(testBot)
+      const made = [
+        await served(testBot, grindstone.grind(first, second), 30),
+        await served(testBot, grindstone.grind(binding), 31),
+        await served(testBot, grindstone.grind(vanishing), 32),
+        await served(testBot, grindstone.grind(compass), 33),
+        await served(testBot, grindstone.grind(named), 34),
+        await served(testBot, grindstone.grind(cursed), 35)
+      ]
+      const expected = [
+        'iron_sword {"Damage":138,"RepairCost":3,"ench":[{"id":27,"lvl":1},{"id":28,"lvl":2}]}',
+        'enchanted_book {"RepairCost":1,"ench":[{"id":27,"lvl":1}]}',
+        'enchanted_book {"RepairCost":1,"ench":[{"id":28,"lvl":1}]}',
+        'compass {"RepairCost":1,"ench":[{"id":28,"lvl":1}]}',
+        'book {"RepairCost":0,"display":{"Name":"Old"}}',
+        'iron_sword {"Damage":0,"RepairCost":1,"ench":[{"id":27,"lvl":1}]}'
+      ]
+      assert.deepStrictEqual([results(), made.map(item => `${item.name} ${nbtJson(item)}`), errors], [expected.map(result => result.replace(' ', ' 1:0 ')), expected, []])
       bot.end()
     })
 

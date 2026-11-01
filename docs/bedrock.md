@@ -1733,14 +1733,22 @@ recorded), and from 1.21.120 waits for the crafting table's animation (390 ms), 
   holding its stack, else, as Java's `bot.transfer`, the first of its type, metadata and NBT in the window's inventory,
   so an item of `bot.inventory` works (its `slot` is the inventory's, not the window's). It resolves with the result
   once the server took the craft. It rejects before sending where the vanilla client shows no result: one item without
-  enchantments, two items of different kinds; and, not recorded, an item that is not damageable (an enchanted book) or
-  has a curse. It rejects when the grindstone is not the screen open, and an item in no slot of the window.
+  enchantments, two items of different kinds; and, as Java's grindstone (not recorded), two of an item without
+  durability one to a stack (two enchanted books) and an item of a stack of more than one. It rejects two of an item
+  without durability that stacks, which Java's makes two of (not recorded), an item with an enchantment the registry
+  does not know (newer than it, its curse unknown), when the grindstone is not the screen open, and an item in no slot of
+  the window.
 - **A click on the result** (`bot.clickWindow(2, button, 0)`) makes the vanilla client's request, which leaves in the
   next tick: the grindstone's action (`non_implemented` up to 1.17.30, whose protocol has none;
   `craft_grindstone_request` with a cost of 0 after, the times from 1.21.20), `results_deprecated` with the result, a
   `consume` of each item, the first's first, and a `take` of the result to the cursor. The result is the first item
   without its enchantments and, from 1.17.10, with `RepairCost` 0; of two items, its `Damage` leaves what both had left
-  and 5 % of the durability (`Damage` 138 of two iron swords of `Damage` 200). The action names no recipe but the grindstone's
+  and 5 % of the durability (`Damage` 138 of two iron swords of `Damage` 200). Not recorded, as Java's grindstone: its
+  curses (binding and vanishing) stay, the second item's the first has not after the first's, and from 1.17.10 its
+  `RepairCost` is one level of prior work for each (1, 3); an enchanted book left without an enchantment becomes a
+  `book`, keeping the rest of its NBT (its name), and one left with a curse stays an enchanted book; an enchanted item
+  without durability (a compass of vanishing) is ground too. Its NBT's keys are written in their byte order, as every
+  recorded item's. The action names no recipe but the grindstone's
   slots as the last request putting an item in or taking one out left them: up to 1.19.80 that request's id, from
   1.20.0 the first item's name right after it (its stack id, or the request's while that was not answered), as
   recorded on every build. A shift click (`bot.clickWindow(2, button, 1)`, either button) places the result in the
@@ -1752,9 +1760,13 @@ Recorded and replayed by the tests on every build: two iron swords of `Damage` 2
 disenchanted, each group playing the client's requests with the bot, byte for byte. The groups are the enchanting
 table's, with 1.17.10 apart (`RepairCost`); on 1.26.60 the items given back on close; on 1.26.51 two swords combined by
 a shift left click, a shift right click and the key 1, played on every version (byte for byte on 1.26.51). Not
-recorded, so as the bot does
-it: the second slot alone, the name of a first slot a request emptied (the request's), curses, books and the other
-items the vanilla client takes, the cursor's place in the hand-back. The experience a grindstone gives comes as orbs
+recorded (no enchanted book or curse is in any recorded grindstone), so as Java's grindstone and tested on every
+version in two groups (1.16.201 – 1.17.0 without `RepairCost`, 1.17.10 on with it): an enchanted book into a book, and
+a sword keeping both curses. Not recorded either, so as the bot does it: the second slot alone, the name of a first
+slot a request emptied (the request's), the other items the vanilla client takes, the cursor's place in the
+hand-back; whether the vanilla client writes the book's `RepairCost` 0 (Java's book has none to show) or an empty NBT
+up to 1.17.0, and whether Bedrock's grindstone takes a single item with only curses, as Java's does. The experience a
+grindstone gives comes as orbs
 the server spawns; up to 1.17.40 the vanilla client also asks for one before the take (spawn_experience_orb, an
 experience it rolls at random, recorded on every disenchant there), which the bot does not send, as for the furnaces'.
 

@@ -7,7 +7,7 @@ import type { WindowClick } from '../modules/clicks.ts'
 import type { Move } from '../modules/inventory.ts'
 import { stackAction } from '../modules/items.ts'
 import type { RequestText, SlotRef, Stack } from '../modules/items.ts'
-import { nbtOf, withOnlyNbt } from '../modules/recipes.ts'
+import { inOrder, nbtOf, withOnlyNbt } from '../modules/recipes.ts'
 import type { NbtValue } from '../modules/recipes.ts'
 import { CURSOR, OUTPUT } from '../modules/screens.ts'
 import type { OpenScreen } from '../modules/screens.ts'
@@ -110,11 +110,6 @@ function int (value: number): NbtValue[string] {
 
 function short (value: number): NbtValue[string] {
   return { type: 'short', value }
-}
-
-/** the vanilla client writes a compound's keys in their byte order, as every recorded item's NBT */
-function inOrder (value: NbtValue): NbtValue {
-  return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]))
 }
 
 /** Java's anvil on Bedrock's: openAnvil, and its window's combine and rename, the vanilla client's clicks and request */

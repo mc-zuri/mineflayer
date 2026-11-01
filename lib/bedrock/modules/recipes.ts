@@ -447,6 +447,11 @@ export function withOnlyNbt (stack: Stack, value: NbtValue): Stack {
   return { ...stack, wire: { ...wire, extra: { can_place_on: [], can_destroy: [], ...wire.extra, has_nbt: true, nbt } } }
 }
 
+/** the vanilla client writes a compound's keys in their byte order, as every recorded item's NBT */
+export function inOrder (value: NbtValue): NbtValue {
+  return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]))
+}
+
 export function nbtOf (stack: Stack): NbtValue {
   const { wire } = stack
   return ('auxiliary_value' in wire ? wire : wire.extra)?.nbt?.nbt.value ?? {}

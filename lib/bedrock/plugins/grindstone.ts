@@ -7,7 +7,7 @@ import type { WindowClick } from '../modules/clicks.ts'
 import type { Move } from '../modules/inventory.ts'
 import { resultsAction, stackAction } from '../modules/items.ts'
 import type { SlotRef, Stack } from '../modules/items.ts'
-import { Ingredients, nbtOf, withOnlyNbt, writtenResult } from '../modules/recipes.ts'
+import { Ingredients, inOrder, nbtOf, withOnlyNbt, writtenResult } from '../modules/recipes.ts'
 import type { NbtValue } from '../modules/recipes.ts'
 import { CURSOR, OUTPUT } from '../modules/screens.ts'
 import { GRINDSTONE_ADDITIONAL, GRINDSTONE_INPUT, GRINDSTONE_SCREEN } from '../screens/grindstone.ts'
@@ -23,6 +23,17 @@ const HOTBAR_KEY = 2
 // Java's grindstone adds 5 % of the durability to what both items have left
 const BONUS_PERCENT = 5
 const GRINDSTONE_SLOTS: readonly SlotRef[] = Object.freeze([GRINDSTONE_INPUT, GRINDSTONE_ADDITIONAL])
+
+interface Curse {
+  readonly id: number
+  readonly level: number
+}
+
+/** the vanilla client's result: what its NBT changes on the first item's, its enchantments removed, and whether it is a book */
+interface Ground {
+  readonly book: boolean
+  readonly changes: NbtValue
+}
 
 function isGrindstone (window: Window): window is BedrockGrindstone {
   return 'grind' in window
@@ -73,28 +84,49 @@ export default function inject (bot: BedrockBotInternal): void {
     }
   }
 
-  /** the item a slot's damage is out of; throws for one the grindstone does not take, as far as recorded */
-  function maxDurabilityOf (item: Item): number {
-    const max = registry.items[item.type]?.maxDurability
-    if (max === undefined) throw new Error(`grinding ${item.name} is not supported on Bedrock yet`)
-    if (item.enchants.some(({ name }) => registry.enchantmentsByName[name]?.curse === true)) throw new Error(`grinding ${item.name} with a curse is not supported on Bedrock yet`)
-    return max
+  /** the item's curses, as Java's grindstone keeps them; throws for an enchantment the registry does not know, newer than it */
+  function cursesOf (item: Item): Curse[] {
+    return item.enchants.flatMap(({ name, lvl }) => {
+      const enchantment = registry.enchantmentsByName[name]
+      if (enchantment === undefined) throw new Error(`grinding ${item.name} with an enchantment it does not know is not supported on Bedrock yet`)
+      return enchantment.curse ? [{ id: enchantment.id, level: lvl }] : []
+    })
   }
 
-  /** what the result's NBT changes on the first item's, its enchantments removed; throws where the vanilla client shows no result */
-  function changesOf (items: ReadonlyArray<Item | null | undefined>): NbtValue {
+  /** Java's grindstone: the first item, else a book of an enchanted book left without enchantments, its curses kept and its prior work one level for each; throws where the vanilla client shows no result */
+  function groundOf (items: ReadonlyArray<Item | null | undefined>): Ground {
     const [one, two] = items.filter(item => item != null)
     if (one === undefined) throw new Error('the grindstone holds nothing to grind')
-    const max = maxDurabilityOf(one)
-    const repairCost: NbtValue = atLeast('bedrock_1.17.10') ? { RepairCost: { type: 'int', value: 0 } } : {}
+    const stacked = [one, two].find(item => item !== undefined && item.count > 1)
+    if (stacked !== undefined) throw new Error(`the grindstone makes nothing of a stack of ${stacked.name}`)
+    const curses = cursesOf(one)
     if (two === undefined) {
       if (one.enchants.length === 0) throw new Error(`the grindstone makes nothing of ${one.name} without enchantments`)
-      return repairCost
+      return groundWith(one, curses, {})
     }
-    maxDurabilityOf(two)
     if (two.type !== one.type) throw new Error(`the grindstone makes nothing of ${one.name} and ${two.name}`)
+    const max = registry.items[one.type]?.maxDurability
+    if (max === undefined) {
+      // Java's makes two of an item that stacks, its two alike
+      if (one.stackSize > 1) throw new Error(`grinding two ${one.name} is not supported on Bedrock yet`)
+      throw new Error(`the grindstone makes nothing of ${one.name} and ${two.name}`)
+    }
+    // as Java's, the second's curses the first has not join the first's
+    const added = cursesOf(two).filter(({ id }) => !curses.some(curse => curse.id === id))
     const left = max - one.durabilityUsed + max - two.durabilityUsed + Math.floor(max * BONUS_PERCENT / 100)
-    return { Damage: { type: 'int', value: Math.max(max - left, 0) }, ...repairCost }
+    return groundWith(one, [...curses, ...added], { Damage: { type: 'int', value: Math.max(max - left, 0) } })
+  }
+
+  function groundWith (one: Item, curses: readonly Curse[], damage: NbtValue): Ground {
+    const ench: NbtValue = curses.length === 0 ? {} : { ench: { type: 'list', value: { type: 'compound', value: curses.map(({ id, level }) => ({ id: { type: 'short', value: id }, lvl: { type: 'short', value: level } })) } } }
+    const repairCost: NbtValue = atLeast('bedrock_1.17.10') ? { RepairCost: { type: 'int', value: 2 ** curses.length - 1 } } : {}
+    return { book: one.name === 'enchanted_book' && curses.length === 0, changes: { ...damage, ...ench, ...repairCost } }
+  }
+
+  function bookId (): number {
+    const book = registry.itemsByName['book']
+    assert.ok(book !== undefined, 'the registry has no book')
+    return book.id
   }
 
   /** where the vanilla client moves the result: a mouse button to the cursor, a hotbar key to its slot unless that holds an item, a shift click to the first slot of the inventory with room */
@@ -107,12 +139,14 @@ export default function inject (bot: BedrockBotInternal): void {
 
   /** a click on the result: the vanilla client's request */
   async function craft (ctx: FrameContext, click: WindowClick, window: Window): Promise<void> {
-    const changes = changesOf([window.slots[INPUT_SLOT], window.slots[ADDITIONAL_SLOT]])
+    const { book, changes } = groundOf([window.slots[INPUT_SLOT], window.slots[ADDITIONAL_SLOT]])
     const filled = GRINDSTONE_SLOTS.filter(ref => inventory.stackAt(ref) !== undefined)
     const [first] = filled.map(ref => inventory.stackAt(ref))
     assert.ok(first)
     const kept = Object.fromEntries(Object.entries(nbtOf(first)).filter(([key]) => key !== 'ench'))
-    const result = withOnlyNbt(first, { ...kept, ...changes })
+    const ground = withOnlyNbt(first, inOrder({ ...kept, ...changes }))
+    const networkId = book ? bookId() : ground.networkId
+    const result: Stack = { ...ground, networkId, wire: { ...ground.wire, network_id: networkId } }
     // the cost is 0 on every recorded build: the experience comes as orbs
     const action = !atLeast('bedrock_1.17.40')
       ? stackAction(version, 'non_implemented', {})
@@ -131,7 +165,7 @@ export default function inject (bot: BedrockBotInternal): void {
   /** as the vanilla client: each item into its slot by two clicks, a click on the result, one putting it away */
   async function grind (window: Window, itemOne: Item, itemTwo: Item | null): Promise<Item> {
     if (bot.currentWindow !== window) throw new Error('grind needs the grindstone open')
-    changesOf([itemOne, itemTwo])
+    groundOf([itemOne, itemTwo])
     await bot.moveSlotItem(slotOf(window, itemOne, 'grind'), INPUT_SLOT)
     if (itemTwo !== null) await bot.moveSlotItem(slotOf(window, itemTwo, 'grind'), ADDITIONAL_SLOT)
     await bot.clickWindow(RESULT_SLOT, 0, 0)
