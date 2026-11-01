@@ -646,6 +646,32 @@ A dimension change (change_dimension) unloads every column in the packet pass, i
 bot asks for the new dimension's sections from then (see dimension changes), and a column received before the change
 is not shown.
 
+## Block actions
+
+The block_actions plugin (`lib/bedrock/plugins/block_actions.ts`) emits Java's block action events from what the
+server tells of a block that moves, in the packet pass; the bot sends nothing, as the vanilla client.
+
+- **`chestLidMove (block, isOpen, block2)`**: block_event `change_state`, its data the number of players with the lid
+  open (0 closed). Recorded on every version (dump_layouts, reduced_stations) for the chest, the barrel (with its
+  `open_bit` update_block in the same batch; Java's server tells no barrel's lid), the undyed shulker box and the
+  ender chest, in the batch of the screen's opening and of its close; none for a hopper, a dispenser, a dropper or a
+  crafter. It is emitted when the count changes, as Java's, and a lid not told open counts 0: a close of one emits
+  nothing (Java's emits it), so that a double chest's two closes emit once. A block replaced by another forgets its
+  count, as Java's (the server tells no close of a lid that is gone); the barrel's `open_bit` keeps it.
+- **A double chest**: a Bedrock chest has no state telling its half, its block entity pairs it (`pairx`, `pairz`).
+  The two halves share one count, so one event comes whether the server tells one half or both: `block` the half told
+  first and `block2` the other (Java's `block` is always the right half); a single chest's `block2` is null. The pair
+  is the one block_entity_data told last (observed; a replaced half forgets its own), else the block entity its column
+  brought: up to 1.17.40, whose columns come whole with their block entities (from 1.18.0 the world keeps no block
+  entity of a section yet). Not recorded: no recording has a double chest. Against Bedrock Dedicated Server 1.16.210,
+  1.17.0 and 1.21.42, two chests set side by side along x were told paired by block_entity_data (`pairlead` 1 on the
+  half set first), their window 54 slots, and the lead half's block_event alone opened and closed the lid; along z,
+  on 1.26.20 to 1.26.40, they stayed single chests.
+- Nothing is emitted for block_event's `sound` type (never recorded, and Java has no such event), nor for a block the
+  bot does not have. block_event's y is a varint up to 1.26.0, zigzag from 1.26.10.
+
+Not yet: `pistonMove`, `noteHeard`.
+
 ## Entities
 
 `bot.entities` holds the entities the server shows, each a prismarine-entity `Entity`, by runtime id; the local
@@ -1282,7 +1308,7 @@ container's, then the player's inventory and hotbar (`inventoryStart` the contai
   version names the horse ridden as its interact writes it and resolves with update_equipment's screen; a zombie horse
   is named from 1.21.130, the player before.
 
-Not yet: a donkey's, a mule's or a llama's chest slots; `chestLidMove` (block_event).
+Not yet: a donkey's, a mule's or a llama's chest slots. A lid's opening and closing: see block actions.
 
 ### Drags and double clicks
 
@@ -2512,7 +2538,9 @@ with an empty tag (7), and its first page by the book as it was, then edited (8)
   1.26.51 played from 1.26.40, the slots named in the click's frame from 1.26.51 and the cursor drags from 1.26.60; the
   crafting: by how crafting_data lists recipes and descriptors and how craft_recipe, craft_recipe_auto,
   results_deprecated and crafting_event (up to 1.20.40) are written, each group playing a recorded craft with the bot,
-  byte for byte). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
+  byte for byte; the block actions: by block_event's y, a varint 1.16.201 – 1.26.0, zigzag 1.26.10+, each group
+  playing the recorded open and close of a chest, and by the columns that bring a double chest's block entities, whole
+  1.16.201 – 1.17.40). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
   workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.

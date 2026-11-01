@@ -110,7 +110,8 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'entityUncrouch' | 'entitySleep' | 'entityElytraFlew' | 'entityEffect' | 'entityEffectEnd' | 'entityAttributes' | 'itemDrop' | 'playerCollect'
   | 'playerJoined' | 'playerUpdated' | 'playerLeft' | 'entityAttach' | 'entityDetach' | 'mount' | 'dismount'
   | 'message' | 'messagestr' | 'chat' | 'whisper' | 'actionBar' | 'unmatchedMessage'
-  | 'windowOpen' | 'windowClose' | 'heldItemChanged'> & BlockUpdateAtEvents & ChatPatternEvents
+  | 'windowOpen' | 'windowClose' | 'heldItemChanged'
+  | 'chestLidMove'> & BlockUpdateAtEvents & ChatPatternEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {

@@ -53,6 +53,7 @@ import time from './plugins/time.ts'
 import title from './plugins/title.ts'
 import villager from './plugins/villager.ts'
 import windows from './plugins/windows.ts'
+import blockActions from './plugins/block_actions.ts'
 import { connectBedrockProtocol } from './transport/adapter.ts'
 import { bedrockProtocolVersionOf, isBedrockVersion, isSupportedBedrockVersion, latestSupportedBedrockVersion, oldestSupportedBedrockVersion } from './version.ts'
 import type { BedrockBot, BedrockBotOptions, Bot } from '../types/api/index.ts'
@@ -101,7 +102,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   education,
   simple_inventory: simpleInventory,
   creative,
-  book
+  book,
+  block_actions: blockActions
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */
