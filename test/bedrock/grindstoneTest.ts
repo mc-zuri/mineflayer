@@ -603,6 +603,44 @@ const RECORDED: readonly RecordedGrinds[] = [
   },
 ]
 
+/** the vanilla client's other gestures on the result, two iron swords of Damage 200 in the grindstone, hotbar slot 0 empty (recorded on 1.26.51.1) */
+interface RecordedGesture {
+  what: string
+  mode: number
+  button: number
+  requestId: number
+  swords: readonly [number, number]
+  /** the request, as the client sent it */
+  told: string
+}
+
+const GESTURES: readonly RecordedGesture[] = [
+  {
+    what: 'a shift left click',
+    mode: 1,
+    button: 0,
+    requestId: -6149,
+    swords: [1583, 1584],
+    told: '9301018960050e102f06000001001113010101146d696e6563726166743a69726f6e5f73776f7264000100002dffff010a000003060044616d6167658a000000030a00526570616972436f737400000000000000000000000000010505013200102f060000050501330011300600000101013c0032fbe7ffff0c00000000000000ffffffff'
+  },
+  {
+    what: 'a shift right click',
+    mode: 1,
+    button: 1,
+    requestId: -5521,
+    swords: [1428, 1429],
+    told: '930101a156050e109405000001001113010101146d696e6563726166743a69726f6e5f73776f7264000100002dffff010a000003060044616d6167658a000000030a00526570616972436f7374000000000000000000000000000105050132001094050000050501330011950500000101013c00326feaffff0c00000000000000ffffffff'
+  },
+  {
+    what: 'the key 1',
+    mode: 2,
+    button: 0,
+    requestId: -4795,
+    swords: [1254, 1255],
+    told: '930101f54a050e10e604000001001113010101146d696e6563726166743a69726f6e5f73776f7264000100002dffff010a000003060044616d6167658a000000030a00526570616972436f73740000000000000000000000000001050501320010e6040000050501330011e70400000000013c003245edffff1c00000000000000ffffffff'
+  }
+]
+
 function atLeast (version: BedrockVersion, since: BedrockVersion): boolean {
   return isBedrockVersionAtLeast(version, since)
 }
@@ -739,6 +777,34 @@ async function rejection (driver: TestBot['driver'], promise: Promise<unknown>):
   return message
 }
 
+interface Gestured {
+  /** the click's request */
+  request: string | undefined
+  told: string | undefined
+  /** the stack id hotbar slot 0 holds after */
+  held: number | null | undefined
+  errors: string[]
+}
+
+/** the gesture's swords put in by clicks from hotbar slots 1 and 2, as the vanilla client's, then the click on the result, each answered as the server does */
+async function gestured (version: BedrockVersion, { mode, button, requestId, swords: [one, two] }: RecordedGesture): Promise<Gestured> {
+  const testBot = await grindstoneBot(version)
+  const { bot, internal, server, driver, inventory, errors, sword } = testBot
+  // the four requests of the two moves before
+  internal._core.requestIds.continueProcess(requestId + 8)
+  inventory.slot('inventory', 1, sword(one, 200))
+  inventory.slot('inventory', 2, sword(two, 200))
+  openGrindstone(server, 3)
+  await driver.tick()
+  await served(testBot, bot.moveSlotItem(HOTBAR + 1, 0), 0)
+  await served(testBot, bot.moveSlotItem(HOTBAR + 2, 1), 0)
+  const [requests, told] = [requestsSince(server), bytesSince(server, 'item_stack_request')]
+  await served(testBot, bot.clickWindow(RESULT_SLOT, button, mode), 30)
+  const result = { request: requests().at(-1), told: told().at(-1), held: bot.inventory.slots[36]?.stackId, errors }
+  bot.end()
+  return result
+}
+
 describe('bedrock grindstone', () => {
   for (const { from, to, combine, disenchant } of RECORDED) {
     describe(`the vanilla client grinding iron swords (${from.slice(8)} – ${to.slice(8)})`, () => {
@@ -776,6 +842,22 @@ describe('bedrock grindstone', () => {
       }
     })
   }
+
+  describe('a shift click (either button) places the result in the inventory\'s first slot with room, the key 1 takes it to hotbar slot 0 (every version: recorded on 1.26.51.1, byte for byte there)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201')) {
+      it(`bedrock ${version}: two iron swords of Damage 200 combined by ${GESTURES.map(({ what }) => what).join(', ')}`, async () => {
+        const results: Gestured[] = []
+        for (const gesture of GESTURES) results.push(await gestured(version, gesture))
+        assert.deepStrictEqual(results.map(({ told, ...rest }) => rest), GESTURES.map(({ mode, requestId: id, swords: [one, two] }) => {
+          // up to 1.19.80 the craft names the last request putting a sword in, from 1.20.0 the first sword
+          const craft = atLeast(version, 'bedrock_1.17.40') ? `craft_grindstone_request ${atLeast(version, 'bedrock_1.20.0') ? one : id + 2}` : 'non_implemented'
+          const moved = mode === 1 ? 'place 1 creative_output:50#' + id + ' → hotbar_and_inventory:0#0' : 'take 1 creative_output:50#' + id + ' → hotbar:0#0'
+          return { request: `${id}, ${craft}, results_deprecated, consume 1 grindstone_input:16#${one}, consume 1 grindstone_additional:17#${two}, ${moved}`, held: 30, errors: [] }
+        }))
+        if (version === 'bedrock_1.26.51') assert.deepStrictEqual(results.map(({ told }) => told), GESTURES.map(({ told }) => told))
+      })
+    }
+  })
 
   describe('the vanilla client closing the grindstone: its second item, then its first given back, the close after the crafting table\'s animation (1.26.60)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.26.60')) {
@@ -867,8 +949,7 @@ describe('bedrock grindstone', () => {
         await rejection(driver, grindstone.grind(book)),
         await rejection(driver, grindstone.grind(plain, book)),
         await rejection(driver, grindstone.grind(cursed)),
-        await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 0)),
-        await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 1))
+        await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 0))
       ]
       server.send('container_close', { window_id: 3, window_type: 'none', server: true })
       await driver.tick()
@@ -881,9 +962,30 @@ describe('bedrock grindstone', () => {
         'grinding enchanted_book is not supported on Bedrock yet',
         'grinding iron_sword with a curse is not supported on Bedrock yet',
         'the grindstone holds nothing to grind',
-        'clickWindow: mode 1 on the grindstone\'s result is not supported on Bedrock yet',
         'grind needs the grindstone open'
       ], []])
+      bot.end()
+    })
+
+    it('sends nothing for a shift click with no room in the inventory, nor for a hotbar key over a slot holding an item; a key over an empty one takes the result there (neither recorded)', async () => {
+      const testBot = await grindstoneBot(version)
+      const { bot, internal, server, driver, inventory, sword, errors } = testBot
+      internal._core.requestIds.continueProcess(-3)
+      inventory.content('inventory', Array.from({ length: 36 }, (_, slot) => ({ id: idOf(bot, 'stick'), count: 1, stackId: 100 + slot })))
+      openGrindstone(server, 3)
+      inventory.slot('ui', 16, sword(20, 200))
+      inventory.slot('ui', 17, sword(21, 200))
+      await driver.tick()
+      const requests = requestsSince(server)
+      const messages = [await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 1)), await rejection(driver, bot.clickWindow(RESULT_SLOT, 3, 2))]
+      await driver.tick()
+      const none = requests()
+      inventory.slot('inventory', 3, null)
+      await driver.tick()
+      await served(testBot, bot.clickWindow(RESULT_SLOT, 3, 2), 30)
+      assert.deepStrictEqual([messages, none, requests().map(request => request.split(', ').at(-1)), bot.inventory.slots[39]?.stackId, errors], [
+        ['resolved', 'resolved'], [], ['take 1 creative_output:50#-3 → hotbar:3#0'], 30, []
+      ])
       bot.end()
     })
 

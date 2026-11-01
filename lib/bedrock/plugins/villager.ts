@@ -5,9 +5,9 @@ import type { Window } from 'prismarine-windows'
 import type { FrameContext } from '../core/types.ts'
 import { HOTBAR_AND_INVENTORY, placesFor } from '../modules/clicks.ts'
 import type { WindowClick } from '../modules/clicks.ts'
-import type { Move } from '../modules/inventory.ts'
+import type { Draft, Move } from '../modules/inventory.ts'
 import { craftRecipeAction, resultsAction, sameItem } from '../modules/items.ts'
-import type { SlotRef } from '../modules/items.ts'
+import type { SlotRef, Stack } from '../modules/items.ts'
 import { Ingredients, writtenResult } from '../modules/recipes.ts'
 import { CURSOR, OUTPUT } from '../modules/screens.ts'
 import type { OpenScreen } from '../modules/screens.ts'
@@ -24,6 +24,8 @@ const ORIGIN = Object.freeze({ x: 0, y: 0, z: 0 })
 const NONE = -1
 const [FIRST, SECOND] = TRADE_INGREDIENTS
 const RESULT_SLOT = 2
+const SHIFT = 1
+const HOTBAR_KEY = 2
 
 interface Entry {
   readonly offer: Offer
@@ -139,9 +141,21 @@ export default function villager (bot: BedrockBotInternal): void {
     await Promise.all(moves.map(made => inventory.request(core, ctx, [made])))
   }
 
-  /** a mouse click on the result trades once, to the cursor, while the ingredient slots hold the price and the cursor has room */
-  async function take (ctx: FrameContext, { mode }: WindowClick): Promise<void> {
-    if (mode !== 0) throw new Error(`clickWindow: on Bedrock the trading result takes a mouse click only, not mode ${mode}`)
+  /** where a trade's sale goes, as the stations' results (not recorded on the trading screen): a mouse button to the cursor, a hotbar key to its slot, unless that holds another item or has no room; a shift click to the inventory if all fits */
+  function movedTo (draft: Draft, sell: Stack, { mode, mouseButton }: WindowClick): Move[] {
+    if (mode === SHIFT) {
+      const places = placesFor(sell, HOTBAR_AND_INVENTORY, draft)
+      const fits = places.reduce((sum, { count }) => sum + count, 0) === sell.count
+      return fits ? places.map(({ to, count }) => ({ type: 'place', count, from: OUTPUT, to })) : []
+    }
+    const to: SlotRef = mode === HOTBAR_KEY ? { container: 'hotbar', slot: mouseButton } : CURSOR
+    const held = draft.stackAt(to)
+    if (held !== undefined && (!sameItem(held, sell) || held.count + sell.count > draft.stackSize(held))) return []
+    return [{ type: 'take', count: sell.count, from: OUTPUT, to }]
+  }
+
+  /** a click on the result trades once while the ingredient slots hold the price and where the sale goes has room */
+  async function take (ctx: FrameContext, click: WindowClick): Promise<void> {
     const entry = trading?.entries[trading.selected]
     if (entry === undefined || entry.trade.tradeDisabled) return
     const { offer, trade } = entry
@@ -152,14 +166,14 @@ export default function villager (bot: BedrockBotInternal): void {
     }
     if (!holds(offer.buyA, FIRST, offer.countA) || (offer.buyB !== undefined && !holds(offer.buyB, SECOND, offer.countB))) return
     const sell = offer.sell.stack
-    const cursor = draft.stackAt(CURSOR)
-    if (cursor !== undefined && (!sameItem(cursor, sell) || cursor.count + sell.count > draft.stackSize(cursor))) return
+    const moved = movedTo(draft, sell, click)
+    if (moved.length === 0) return
     await inventory.request(core, ctx, [
       { type: 'action', action: craftRecipeAction(version, offer.netId, 1), output: sell },
       { type: 'action', action: resultsAction(version, [writtenResult(ingredients, version, sell)], 1) },
       { type: 'consume', count: offer.countA, from: FIRST },
       ...offer.buyB === undefined ? [] : [{ type: 'consume' as const, count: offer.countB, from: SECOND }],
-      { type: 'take', count: sell.count, from: OUTPUT, to: CURSOR }
+      ...moved
     ])
     // the server sends the offers again only when they change otherwise (recorded)
     trade.nbTradeUses++

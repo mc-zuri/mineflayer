@@ -2,6 +2,7 @@ import assert from 'assert'
 import type { Item } from 'prismarine-item'
 import type { Window } from 'prismarine-windows'
 import type { FrameContext } from '../core/types.ts'
+import { HOTBAR_AND_INVENTORY, placesFor } from '../modules/clicks.ts'
 import type { WindowClick } from '../modules/clicks.ts'
 import type { Move } from '../modules/inventory.ts'
 import { resultsAction, stackAction } from '../modules/items.ts'
@@ -17,6 +18,8 @@ import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 const INPUT_SLOT = 0
 const ADDITIONAL_SLOT = 1
 const RESULT_SLOT = 2
+const SHIFT = 1
+const HOTBAR_KEY = 2
 // Java's grindstone adds 5 % of the durability to what both items have left
 const BONUS_PERCENT = 5
 const GRINDSTONE_SLOTS: readonly SlotRef[] = Object.freeze([GRINDSTONE_INPUT, GRINDSTONE_ADDITIONAL])
@@ -102,9 +105,16 @@ export default function inject (bot: BedrockBotInternal): void {
     return { Damage: { type: 'int', value: Math.max(max - left, 0) }, ...repairCost }
   }
 
-  /** a click on the result: the vanilla client's request, taking it to the cursor */
-  async function craft (ctx: FrameContext, { mode }: WindowClick, window: Window): Promise<void> {
-    if (mode !== 0) throw new Error(`clickWindow: mode ${mode} on the grindstone's result is not supported on Bedrock yet`)
+  /** where the vanilla client moves the result: a mouse button to the cursor, a hotbar key to its slot unless that holds an item, a shift click to the first slot of the inventory with room */
+  function movedTo (result: Stack, { mode, mouseButton }: WindowClick): Move[] {
+    if (mode === SHIFT) return placesFor(result, HOTBAR_AND_INVENTORY, inventory.draft()).map(({ to, count }) => ({ type: 'place', count, from: OUTPUT, to }))
+    if (mode !== HOTBAR_KEY) return [{ type: 'take', count: 1, from: OUTPUT, to: CURSOR }]
+    const to: SlotRef = { container: 'hotbar', slot: mouseButton }
+    return inventory.stackAt(to) === undefined ? [{ type: 'take', count: 1, from: OUTPUT, to }] : []
+  }
+
+  /** a click on the result: the vanilla client's request */
+  async function craft (ctx: FrameContext, click: WindowClick, window: Window): Promise<void> {
     const changes = changesOf([window.slots[INPUT_SLOT], window.slots[ADDITIONAL_SLOT]])
     const filled = GRINDSTONE_SLOTS.filter(ref => inventory.stackAt(ref) !== undefined)
     const [first] = filled.map(ref => inventory.stackAt(ref))
@@ -115,11 +125,13 @@ export default function inject (bot: BedrockBotInternal): void {
     const action = !atLeast('bedrock_1.17.40')
       ? stackAction(version, 'non_implemented', {})
       : stackAction(version, 'craft_grindstone_request', { recipe_network_id: recipeNetworkId, ...atLeast('bedrock_1.21.20') ? { times_crafted: 1 } : {}, cost: 0 })
+    const moved = movedTo(result, click)
+    if (moved.length === 0) return
     const moves: Move[] = [
       { type: 'action', action, output: result },
       { type: 'action', action: resultsAction(version, [writtenResult(ingredients, version, result)], 1) },
       ...filled.map(from => ({ type: 'consume' as const, count: 1, from })),
-      { type: 'take', count: 1, from: OUTPUT, to: CURSOR }
+      ...moved
     ]
     await inventory.request(core, ctx, moves)
   }

@@ -161,16 +161,15 @@ export default function inject (bot: BedrockBotInternal): void {
     return { template: stackAt(SMITHING_TEMPLATE), base: stackAt(SMITHING_INPUT), addition: stackAt(SMITHING_MATERIAL) }
   }
 
-  /** a mouse button takes the result to the cursor, a hotbar key to its slot, a shift click to the inventory (neither recorded); a slot holding an item blocks it */
+  /** a mouse button takes the result to the cursor unless it holds an item, a shift click to the inventory; a hotbar key does nothing, as recorded on 1.26.51 */
   async function outputClick (ctx: FrameContext, click: WindowClick): Promise<void> {
     const draft = inventory.draft()
     const craft = craftOf(slotsOf(ref => draft.stackAt(ref)))
-    if (craft === undefined) return
+    if (craft === undefined || click.mode === HOTBAR_KEY) return
     const { networkId, result, consumed } = craft
-    const to: SlotRef = click.mode === HOTBAR_KEY ? { container: 'hotbar', slot: click.mouseButton } : CURSOR
     const moved: Move[] = click.mode === SHIFT
       ? placesFor(result, HOTBAR_AND_INVENTORY, draft).map(({ to, count }) => ({ type: 'place', count, from: OUTPUT, to }))
-      : draft.stackAt(to) === undefined ? [{ type: 'take', count: result.count, from: OUTPUT, to }] : []
+      : draft.stackAt(CURSOR) === undefined ? [{ type: 'take', count: result.count, from: OUTPUT, to: CURSOR }] : []
     if (moved.length === 0) return
     await inventory.request(core, ctx, [
       { type: 'action', action: networkId === undefined ? stackAction(version, 'non_implemented', {}) : craftRecipeAction(version, networkId, 1), output: result },
@@ -216,7 +215,7 @@ export default function inject (bot: BedrockBotInternal): void {
       for (const [destStart, source] of placed.entries()) {
         if (source !== undefined) await bot.transfer({ itemType: source.stack.networkId, metadata: source.stack.metadata, sourceStart: playerStart + source.index, destStart, count: 1 })
       }
-      // to the inventory, as the crafting table's and the stonecutter's shift click (not recorded on the smithing table)
+      // to the inventory, as the vanilla client's shift click (recorded on 1.26.51)
       await bot.clickWindow(inputs.length, 0, SHIFT)
     } catch (error) {
       if (opened !== undefined) await bot.closeWindow(opened).catch(() => {})

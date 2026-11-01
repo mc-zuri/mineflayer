@@ -531,6 +531,26 @@ describe('bedrock trading with villagers', () => {
         )
         bot.end()
       })
+
+      it(`bedrock ${version}: a shift click places the sale in the inventory's first slot with room, the key 1 takes it onto hotbar slot 0's, a trade each (not recorded: as the stations' results)`, async () => {
+        const testBot = await joined(version)
+        const { bot, server, inventory, idOf, errors } = testBot
+        inventory.slot('inventory', 0, { id: idOf('wheat'), count: 64, stackId: 25 })
+        const villager = await trader(testBot)
+        const requests = requestsSince(server)
+        const window = await opened(testBot, villager, RECORDED_OFFERS)
+        const answer = answerer(testBot, inventory)
+        answer()
+        const filled = requests()
+        await play(testBot, answer, bot.clickWindow(2, 0, 1))
+        await play(testBot, answer, bot.clickWindow(2, 0, 2))
+        const traded = ['craft_recipe 4769', 'results_deprecated', 'consume 1 trade2_ingredient1:4']
+        assert.deepStrictEqual([filled.length, requests(), window.trades[0]?.nbTradeUses, countsOf(window, 0, 30), errors], [1, [
+          [...traded, 'place 1 creative_output:50 → hotbar_and_inventory:0'],
+          [...traded, 'take 1 creative_output:50 → hotbar:0']
+        ], 2, [['wheat', 62], ['emerald', 2]], []])
+        bot.end()
+      })
     }
   })
 
@@ -616,12 +636,12 @@ describe('bedrock trading with villagers', () => {
       bot.end()
     })
 
-    it('a result click sends nothing with no trade selected, a trade used up or unmet, the cursor holding another item or no room; a shift click rejects, a refusal too, counting no use', async () => {
+    it('a result click sends nothing with no trade selected, a trade used up or unmet, the cursor holding another item or no room; a refusal rejects, counting no use', async () => {
       const testBot = await joined(version)
       const { bot, server, driver, inventory, idOf } = testBot
       const villager = await trader(testBot)
       const requests = requestsSince(server)
-      const click = async (mode = 0): Promise<void> => { await ticked(testBot, async () => { await bot.clickWindow(2, 0, mode) }) }
+      const click = async (): Promise<void> => { await ticked(testBot, async () => { await bot.clickWindow(2, 0, 0) }) }
       // no trades, then none again: none selected
       await opened(testBot, villager, undefined)
       await click()
@@ -643,7 +663,6 @@ describe('bedrock trading with villagers', () => {
       await click()
       inventory.slot('ui', 0, { id: idOf('emerald'), count: 64, stackId: 10 })
       await click()
-      await assert.rejects(click(1), { message: 'clickWindow: on Bedrock the trading result takes a mouse click only, not mode 1' })
       assert.deepStrictEqual(requests(), [])
 
       // the last one the cursor has room for
@@ -659,6 +678,32 @@ describe('bedrock trading with villagers', () => {
       await shownOver(testBot, [EMERALD_AND_WHEAT_FOR_BREAD], { windowId: 9 })
       await click()
       assert.deepStrictEqual(requests(), [['place 1 trade2_ingredient1:4 → hotbar_and_inventory:0'], ['place 1 hotbar_and_inventory:0 → trade2_ingredient1:4']])
+      bot.end()
+    })
+
+    it('a shift click on the result sends nothing unless the inventory has room for the whole sale, put onto its stacks first; a hotbar key nothing while its slot holds another item or has no room (not recorded)', async () => {
+      const testBot = await joined(version)
+      const { bot, server, inventory, idOf, errors } = testBot
+      inventory.content('inventory', Array.from({ length: 36 }, (_, slot) => ({ id: idOf(slot === 1 ? 'emerald' : 'stone'), count: slot === 1 ? 63 : 64, stackId: 100 + slot })))
+      const villager = await trader(testBot)
+      const requests = requestsSince(server)
+      const window = await opened(testBot, villager, [{ ...WHEAT_FOR_EMERALD, sell: { name: 'emerald', count: 2, damage: 0 } }])
+      inventory.slot('ui', 4, { id: idOf('wheat'), count: 5, stackId: 9 })
+      const answer = answerer(testBot, inventory)
+      const clicks = [[0, 1], [1, 2], [0, 2]].map(([button = 0, mode = 0]) => async () => { await play(testBot, answer, bot.clickWindow(2, button, mode)) })
+      for (const click of clicks) await click()
+      const none = requests()
+      inventory.slot('inventory', 2, null)
+      await play(testBot, answer, bot.clickWindow(2, 0, 1))
+      // the key 3 onto the emerald the shift click put there
+      await play(testBot, answer, bot.clickWindow(2, 2, 2))
+      await play(testBot, answer, bot.clickWindow(2, 1, 1))
+      const traded = ['craft_recipe 4769', 'results_deprecated', 'consume 1 trade2_ingredient1:4']
+      assert.deepStrictEqual([none, requests(), window.trades[0]?.nbTradeUses, countsOf(window, 31, 32), errors], [[], [
+        [...traded, 'place 1 creative_output:50 → hotbar_and_inventory:1', 'place 1 creative_output:50 → hotbar_and_inventory:2'],
+        [...traded, 'take 2 creative_output:50 → hotbar:2'],
+        [...traded, 'place 2 creative_output:50 → hotbar_and_inventory:2']
+      ], 3, [['emerald', 64], ['emerald', 5]], []])
       bot.end()
     })
 

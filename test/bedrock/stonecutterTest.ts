@@ -280,6 +280,38 @@ describe('bedrock stonecutter', () => {
     })
   }
 
+  describe('the vanilla client\'s shift clicks place the result in the inventory\'s first slot with room, its key 1 takes it to hotbar slot 0 (recorded on 1.26.51.1)', () => {
+    // one stone, cobblestone selected, hotbar slot 0 empty
+    const gestures: ReadonlyArray<{ what: string, mode: number, button: number, request: number, stone: number, told: string }> = [
+      { what: 'a shift left click', mode: 1, button: 0, request: -6521, stone: 1674, told: '930101f165030a0cc203010505013500038a0600000101013c003287e6ffff0c00000000000000ffffffff' },
+      { what: 'a shift right click', mode: 1, button: 1, request: -6527, stone: 1676, told: '930101fd65030a0cc203010505013500038c0600000101013c003281e6ffff0c00000000000000ffffffff' },
+      { what: 'the key 1', mode: 2, button: 0, request: -6495, stone: 1668, told: '930101bd65030a0cc20301050501350003840600000000013c0032a1e6ffff1c00000000000000ffffffff' }
+    ]
+    for (const version of bedrockTestVersionsFrom('bedrock_1.26.51', 'bedrock_1.26.51')) {
+      it(`bedrock ${version}: ${gestures.map(({ what }) => what).join(', ')}`, async () => {
+        const told: string[][] = []
+        for (const { mode, button, request, stone } of gestures) {
+          const cutting = await joined(version)
+          const { bot, internal, server, driver, inventory, recipes, idOf } = cutting
+          recipes.send([cut('minecraft:stonecutter_cobblestone', 450, { item: 'stone' }, { item: 'cobblestone', count: 1 })])
+          openStonecutter(server)
+          inventory.slot('ui', 3, { id: idOf('stone'), count: 1, stackId: stone })
+          await driver.tick()
+          const selected = bot.bedrock.selectStonecutterRecipe(recipeOf(bot.bedrock.stonecutterRecipes(idOf('stone'), null)))
+          await driver.tick()
+          await selected
+          internal._core.requestIds.continueProcess(request)
+          const sent = toldSince(server)
+          bot.clickWindow(OUTPUT, button, mode).catch(() => {})
+          await driver.tick()
+          told.push(sent())
+          bot.end()
+        }
+        assert.deepStrictEqual(told, gestures.map(({ told }) => [told]))
+      })
+    }
+  })
+
   // recorded in reduced_stations' pick_shift: 4 stone, the second button, a shift click on the output
   const STAIRS = cut('minecraft:stonecutter_stone_stairs', 1037, { item: 'stone' }, { item: 'stone_stairs', count: 1 })
   const SLABS = cut('minecraft:stonecutter_cobblestone_slab_from_stone', 3323, { item: 'stone' }, { item: 'stone_block_slab4', count: 2 })

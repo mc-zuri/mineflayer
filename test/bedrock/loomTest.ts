@@ -217,7 +217,62 @@ const PATTERNS: readonly RecordedPattern[] = [
   }
 ]
 
+/** the vanilla client's other gestures on the result, a white banner, red dye and the first pattern, hotbar slot 0 empty (recorded on 1.26.51.1) */
+const GESTURES: ReadonlyArray<{ what: string, mode: number, button: number, request: number, banner: number, dye: number, told: string }> = [
+  {
+    what: 'a shift left click',
+    mode: 1,
+    button: 0,
+    request: -4931,
+    banner: 1289,
+    dye: 1290,
+    told: '930101854d050f1102626f011113010101106d696e6563726166743a62616e6e65721e01000045ffff010a00000908005061747465726e730a01000000030500436f6c6f72010000000807005061747465726e0200626f00030400547970650000000000000000000000000001050501290009090500000505012a000a0a0500000101013c0032bdecffff0c00000000000000ffffffff'
+  },
+  {
+    what: 'a shift right click',
+    mode: 1,
+    button: 1,
+    request: -6291,
+    banner: 1619,
+    dye: 1620,
+    told: '930101a562050f1102626f011113010101106d696e6563726166743a62616e6e65721e01000045ffff010a00000908005061747465726e730a01000000030500436f6c6f72010000000807005061747465726e0200626f00030400547970650000000000000000000000000001050501290009530600000505012a000a540600000101013c00326de7ffff0c00000000000000ffffffff'
+  },
+  {
+    what: 'the key 1',
+    mode: 2,
+    button: 0,
+    request: -6269,
+    banner: 1614,
+    dye: 1615,
+    told: '930101f961050f1102626f011113010101106d696e6563726166743a62616e6e65721e01000045ffff010a00000908005061747465726e730a01000000030500436f6c6f72010000000807005061747465726e0200626f000304005479706500000000000000000000000000010505012900094e0600000505012a000a4f0600000000013c003283e7ffff1c00000000000000ffffffff'
+  }
+]
+
 describe('bedrock loom', () => {
+  describe('the vanilla client\'s shift clicks place the banner in the inventory\'s first slot with room, its key 1 takes it to hotbar slot 0 (recorded on 1.26.51.1)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.26.51', 'bedrock_1.26.51')) {
+      it(`bedrock ${version}: ${GESTURES.map(({ what }) => what).join(', ')}`, async () => {
+        const told: string[][] = []
+        for (const { mode, button, request, banner, dye } of GESTURES) {
+          const loom = await joined(version)
+          const { bot, internal, server, driver, inventory, idOf } = loom
+          openLoom(server)
+          inventory.slot('ui', 9, { id: idOf('banner'), count: 1, metadata: WHITE, stackId: banner, ...bannerNbt(version) })
+          inventory.slot('ui', 10, { id: idOf('red_dye'), count: 1, stackId: dye })
+          await driver.tick()
+          await selected(loom, 'bo')
+          internal._core.requestIds.continueProcess(request)
+          const sent = toldSince(server)
+          bot.clickWindow(3, button, mode).catch(() => {})
+          await driver.tick()
+          told.push(sent())
+          bot.end()
+        }
+        assert.deepStrictEqual(told, GESTURES.map(({ told }) => [told]))
+      })
+    }
+  })
+
   for (const recorded of PATTERNS) {
     describe(`the vanilla client patterning a banner, the result taken to the cursor (${recorded.from.slice(8)} – ${recorded.to.slice(8)})`, () => {
       for (const version of bedrockTestVersionsFrom(recorded.from, recorded.to)) {

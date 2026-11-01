@@ -1445,8 +1445,13 @@ trader by its unique id, zigzag on the wire (see the notes).
   when the selected trade has a use left, its ingredient slots hold its price (`buyCountA`, `buyCountB`) and the
   cursor holds nothing or its item with room: one request, `craft_recipe` (the offer's `netId`, the times from 1.21.20),
   `results_deprecated` (the sale, as crafting writes a result), a `consume` of each price, then the sale taken from
-  the created output to the cursor. Otherwise nothing is sent, as recorded for an unmet trade. A shift click or a hotbar
-  key on it rejects: the vanilla client's are not recorded.
+  the created output to the cursor. Otherwise nothing is sent, as recorded for an unmet trade. A hotbar key
+  (`bot.clickWindow(2, key, 2)`) makes the same request with the sale taken to the key's hotbar slot, unless that holds
+  another item or has no room for it; a shift click (`bot.clickWindow(2, button, 1)`, Java's way to trade) places the
+  sale in the inventory (`hotbar_and_inventory`), onto its stacks with room first, then the first empty slot, if all of
+  it fits, else sends nothing. A shift click trades once, as the stations' results do: whether the vanilla client's
+  trades again while the price lasts, as Java's does, is not recorded, nor are its shift click and hotbar key here;
+  they are written as the stations' results recorded on 1.26.51 (see Stations).
 - **`bot.trade(villager, tradeIndex, times)`** and **`window.trade(tradeIndex, times)`** are Java's code over these
   clicks: `tradeIndex` parsed as Java's, `times` (0 or none: the uses left); it rejects as Java's (`trade blocked`,
   `Not enough item 1 to trade`, `Not enough item 2 to trade`) counting what the ingredient slots, the inventory part
@@ -1471,12 +1476,13 @@ the positions the server sent, and by the bot where the server last put it: the 
 the bot does it: versions before 1.26.20 (written from the protocol data: one update_trade layout, the requests and the
 close each the version's), which count a trade consumes when `buyCountA` is not `buyA`'s `Count` (the bot consumes
 `buyCountA`; every recorded one is 1), a select with several stacks of an item, a wandering trader's screen, an item
-sold with NBT, and whether the screen closes when the trader is removed without dying.
+sold with NBT, a shift click or a hotbar key on the result, and whether the screen closes when the trader is removed
+without dying.
 
 Tests (`test/bedrock/villagerTest.ts`): the recorded session played with the bot on 1.26.20, 1.26.51 and 1.26.60;
 on every version the screen update_trade opens, its trades, the opening's select, a trade and the close at the
-trader's death, each request read back; on the latest, `bot.trade` and its rejections, the result's rules, the select's
-and the offers' edge cases.
+trader's death, a shift click and a hotbar key on the result, each request read back; on the latest, `bot.trade` and
+its rejections, the result's rules, the select's and the offers' edge cases.
 
 Not yet: `bot.openEntity` (the containers' feature), the trades' locked tiers, the villager's level and experience
 (`trade_tier`, `TierExpRequirements`: Java has no API for them), the mouse-over naming the entity under the
@@ -1727,11 +1733,16 @@ recorded), and from 1.21.120 waits for the crafting table's animation (390 ms), 
   and 5 % of the durability (`Damage` 138 of two iron swords of `Damage` 200). The action names no recipe but the grindstone's
   slots as the last request putting an item in or taking one out left them: up to 1.19.80 that request's id, from
   1.20.0 the first item's name right after it (its stack id, or the request's while that was not answered), as
-  recorded on every build. A click of another mode on the result rejects (not recorded).
+  recorded on every build. A shift click (`bot.clickWindow(2, button, 1)`, either button) places the result in the
+  first slot of the inventory with room (`hotbar_and_inventory`), a hotbar key (`bot.clickWindow(2, key, 2)`) takes
+  it to the key's slot, each in the same request, as recorded on 1.26.51; with no room, or the key's slot holding an
+  item, they send nothing (not recorded).
 
 Recorded and replayed by the tests on every build: two iron swords of `Damage` 200 combined, and one of Sharpness I
 disenchanted, each group playing the client's requests with the bot, byte for byte. The groups are the enchanting
-table's, with 1.17.10 apart (`RepairCost`); on 1.26.60 the items given back on close. Not recorded, so as the bot does
+table's, with 1.17.10 apart (`RepairCost`); on 1.26.60 the items given back on close; on 1.26.51 two swords combined by
+a shift left click, a shift right click and the key 1, played on every version (byte for byte on 1.26.51). Not
+recorded, so as the bot does
 it: the second slot alone, the name of a first slot a request emptied (the request's), curses, books and the other
 items the vanilla client takes, the cursor's place in the hand-back. The experience a grindstone gives comes as orbs
 the server spawns; up to 1.17.40 the vanilla client also asks for one before the take (spawn_experience_orb, an
@@ -1769,8 +1780,11 @@ recorded), and from 1.21.120 waits for the crafting table's animation (390 ms), 
   filter_text_packet with the new name (the vanilla client sends one for each letter typed too, which the bot does
   not), on 1.16.201 outside creative entity_event `player_add_xp_levels` with the levels taken (negative, as
   recorded; in creative not recorded), and anvil_damage with the anvil's position on every version but 1.17.0 and
-  from 1.26.40. A click that makes no result, a level below the cost outside creative and a click of another mode
-  reject, sending nothing.
+  from 1.26.40. A click that makes no result and a level below the cost outside creative reject, sending nothing.
+- **A shift click** (`bot.clickWindow(2, button, 1)`, either button) makes the same request with the result placed in
+  the first slot of the inventory with room, as a mouse click from 1.19.50 (recorded on 1.26.51; up to 1.19.40, where a
+  mouse click takes it to the cursor, not recorded); **a hotbar key** (`bot.clickWindow(2, key, 2)`) takes it to the
+  key's slot (recorded on 1.26.51), and sends nothing while that slot holds an item (not recorded).
 - **The anvil's damage**: the vanilla client rolls whether its use damages the anvil and tells it in anvil_damage
   (`damage` 1 in 28 of 159 recorded uses), and up to 1.26.30 the server applies what it is told. The bot always sends
   0, so that its use of an anvil does not depend on chance: it never breaks an anvil itself. On 1.17.0 and from
@@ -1788,7 +1802,9 @@ Recorded and replayed by the tests on every build: an iron sword of `Damage` 200
 combined, and one renamed, each group playing the client's packets with the bot, byte for byte (the anvil's damage as
 0), and from 1.19.50 its tell of the result in the hand. The groups are the grindstone's, with 1.17.0 (no
 anvil_damage), 1.18.11 (the last with filter_text_packet) and 1.26.10 (the anvil's position written anew) apart; on
-1.26.60 the item and the material given back on close. Not recorded, so as the bot does it
+1.26.60 the item and the material given back on close; on 1.26.51 a sword of `Damage` 200 repaired with an ingot by a
+shift left click, a shift right click and the key 1, played on every version in two groups (up to 1.19.40 and from
+1.19.50; byte for byte on 1.26.51). Not recorded, so as the bot does it
 or rejecting: enchantments and enchanted books on either item, an empty name, more material than needed, prior work,
 40 levels and the rename's cap (Java's rules), the result with no room in the inventory, the cursor's place in the
 hand-back, how long a name Bedrock's box takes (Java's 35 kept).
@@ -1799,6 +1815,12 @@ Java's bot has no helper for these stations: it opens one with `openBlock` and c
 the recipe a button selected. Each station's screen is a window of Java's layout, its slots in the `ui` window; a click
 on its output crafts as the vanilla client's does, in the click's request; and the members Java's bot has not are
 Bedrock's own, under `bot.bedrock`.
+
+On 1.26.51 the vanilla client's shift clicks (left and right) and key 1 on the results of the anvil, the grindstone,
+the stonecutter, the loom, the cartography table and the smithing table are recorded, one craft each with hotbar slot 0
+empty: a shift click makes the mouse click's request with the result placed (`place`) in the first slot of the
+inventory with room, the key 1 with the result taken (`take`) to hotbar slot 0, but on the smithing table, where the
+key sent nothing. The tests play them on 1.26.51 byte for byte; the trading result's are written by the same rule.
 
 ### The stonecutter
 
@@ -1826,7 +1848,7 @@ crafting table's animation (390 ms), as recorded on every build. Its recipes are
   `non_implemented` (naming no recipe) and `results_deprecated` (the recipe's output, once); 1.18.0 – 1.18.11
   `craft_recipe` and `results_deprecated`; from 1.18.30 `craft_recipe` alone (the times from 1.21.20); then a `consume`
   of the input, and the result moved: with a mouse button (either) taken to the cursor, with a hotbar key to the key's
-  slot (not recorded: as the crafting grid's), unless that slot holds another item or has no room for it; with a shift
+  slot (recorded on 1.26.51), unless that slot holds another item or has no room for it; with a shift
   click to the inventory as a shift click moves a stack, as often as the input allows while there is room, up to
   1.21.2 a request a craft, from 1.21.20 a stack's worth a request (4 stone: four requests of a stair each, one of 8
   slabs). Up to 1.21.2 the vanilla client then takes one request id more, which it never sends, and the bot does too.
@@ -1845,9 +1867,10 @@ crafting table's animation (390 ms), as recorded on every build. Its recipes are
   fits when the inventory has no room for all.
 
 Recorded and replayed by the tests: a craft to the cursor on every build, of the request's layout by version (one
-build each, byte for byte); 4 stone shift clicked to stairs (1.21.2) and to slabs (1.21.20, 1.26.51); on 1.26.60 the
-selections, resets, drags, crafts and hand-back of two screens, byte for byte. Not recorded, so as the bot does it: a
-hotbar key on the output, a shift click making more than a stack, and before 1.26.60 the selection forgotten when the
+build each, byte for byte); 4 stone shift clicked to stairs (1.21.2) and to slabs (1.21.20, 1.26.51); on 1.26.51 one
+stone cut to cobblestone by a shift left click, a shift right click and the key 1; on 1.26.60 the selections, resets,
+drags, crafts and hand-back of two screens, byte for byte. Not recorded, so as the bot does it: a hotbar key over a
+slot holding an item, a shift click making more than a stack, and before 1.26.60 the selection forgotten when the
 input empties (1.26.60's reset tells it).
 
 ### The smithing table
@@ -1871,8 +1894,9 @@ on 1.19.80, as recorded).
   With none matching it sends nothing. A request is, by version: up to 1.18.0 `non_implemented`; from 1.18.11
   `craft_recipe` (the times from 1.21.20); then `results_deprecated` (the result, once); the consumes, up to 1.19.70
   the addition then the base, from 1.19.80 the template (when the recipe has one), the base and the addition; and the
-  result moved: with a mouse button taken to the cursor, as recorded, with a hotbar key to the key's slot and with a
-  shift click to the inventory (neither recorded: as the stonecutter's), unless that slot holds an item. The result a
+  result moved: with a mouse button taken to the cursor, as recorded, unless it holds an item, and with a shift click
+  placed in the inventory as a shift click moves a stack (recorded on 1.26.51). A hotbar key on it sends nothing, as
+  the vanilla client's key 1 over it did on 1.26.51 with hotbar slot 0 empty (unlike the other stations'). The result a
   transform makes is its recipe's, a trim's the base with `Trim` (`Material`, `Pattern`); a damageable one has
   `Damage` 0 before it (the NBT's order as recorded), an item of no durability no NBT (netherite horse armor,
   recorded). The base's own NBT is kept, its `Damage` too (not recorded: the bases recorded had none).
@@ -1884,8 +1908,9 @@ on 1.19.80, as recorded).
   them, with an item on the cursor or in the table's slots, and with no smithing table open or given.
 
 Recorded and replayed by the tests: a netherite upgrade to the cursor on every build, and a trim from 1.20.0, of the
-request's layout by version (one build each, byte for byte). Not recorded, so as the bot does it: a hotbar key or a
-shift click on the output, a base with NBT, and the cursor's place in the hand-back.
+request's layout by version (one build each, byte for byte); on 1.26.51 an upgrade by a shift left click and a shift
+right click, and the key 1 sending nothing. Not recorded, so as the bot does it: a base with NBT, and the cursor's
+place in the hand-back.
 
 ### The loom
 
@@ -1908,8 +1933,8 @@ recorded on every build. It has no recipe: a request names the pattern.
   result is `{Patterns, Type}`, as recorded. A request is, by version: up to 1.17.30 `non_implemented` (naming no
   pattern), from 1.17.40 `craft_loom_request` (the times from 1.21.20); then `results_deprecated` (the result, once),
   a `consume` of the banner then of the dye, and the result moved: with a mouse button taken to the cursor, as recorded,
-  with a hotbar key to the key's slot (neither while the slot holds an item), with a shift click to the inventory as a
-  shift click moves a stack, onto a banner of the same patterns first (neither recorded).
+  with a hotbar key to the key's slot (not while the slot holds an item), with a shift click to the inventory as a
+  shift click moves a stack, onto a banner of the same patterns first (both recorded on 1.26.51 into empty slots).
 - **`bot.bedrock.applyBannerPattern(pattern, dye, banner, loom)`** patterns a banner at the loom open, else at the one
   given, which it opens with `bot.openBlock` and closes after, also when it fails: it puts the banner (the inventory's
   first, as null) and then one dye in their slots with `bot.transfer`, as recorded, selects the pattern and shift
@@ -1918,10 +1943,11 @@ recorded on every build. It has no recipe: a request names the pattern.
   it rejects after the transfers when the inventory has no room for the result.
 
 Recorded and replayed by the tests: the first pattern on a white banner with red dye, to the cursor, on every build, of
-the request's layout by version (one build each, byte for byte). Not recorded, so as the bot does it: the other dyes'
-colors, a banner with patterns already (no limit to their number is checked: the server's), the selection after a
-craft, a hotbar key or a shift click on the output, the patterns of a banner pattern item, and the cursor's place in
-the hand-back.
+the request's layout by version (one build each, byte for byte); on 1.26.51 by a shift left click, a shift right click
+and the key 1. Not recorded, so as the bot does it: the other dyes' colors, a banner with patterns already (no limit to
+their number is checked: the server's), the selection after a craft, a hotbar key over a slot holding an item, a shift
+click onto a banner of the same patterns, the patterns of a banner pattern item, and the cursor's place in the
+hand-back.
 
 ### The cartography table
 
@@ -1938,13 +1964,14 @@ member of its own: `bot.openBlock`, `bot.clickWindow` and `bot.closeWindow` driv
   locking and renaming a map are not crafting_data's recipes and not supported. A request is `optional` (the recipe,
   the text 0), a `consume` of the input, then of the addition, and the result moved: with a mouse button taken to the
   cursor, as recorded, with a hotbar key to the key's slot, unless that slot holds another item or has no room for it,
-  with a shift click to the inventory as a shift click moves a stack (neither recorded). Its custom names are `[""]`,
+  with a shift click to the inventory as a shift click moves a stack (both recorded on 1.26.51 into empty slots). Its
+  custom names are `[""]`,
   the map's name unchanged, and from 1.19.30 its cause `cartography_text`; from 1.26.40 each action's legacy type.
 
 Recorded and replayed by the tests: an empty map and a locator map to the cursor on every build, of the request's
-layout by version (byte for byte on 1.16.201, 1.16.210, 1.19.30, 1.21.20, 1.21.30, 1.26.40 and 1.26.60). Not
-recorded, so as the bot does it: a hotbar key or a shift click on the output, the slots' items in the other order, and
-the cursor's place in the hand-back.
+layout by version (byte for byte on 1.16.201, 1.16.210, 1.19.30, 1.21.20, 1.21.30, 1.26.40 and 1.26.60); on 1.26.51
+an empty map by a shift left click, a shift right click and the key 1. Not recorded, so as the bot does it: a hotbar
+key over a slot holding an item, the slots' items in the other order, and the cursor's place in the hand-back.
 
 ## Items
 

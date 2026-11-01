@@ -207,7 +207,37 @@ const GROUPS: readonly Group[] = [
   }
 ]
 
+/** the vanilla client's other gestures on the result, an empty map of one paper, hotbar slot 0 empty (recorded on 1.26.51.1) */
+const GESTURES: ReadonlyArray<{ what: string, mode: number, button: number, request: number, paper: number, told: string }> = [
+  { what: 'a shift left click', mode: SHIFT, button: 0, request: -5981, paper: 1541, told: '930101b95d030d0f94090000000005050137000c050600000101013c0032a3e8ffff0c00000000000001000a000000' },
+  { what: 'a shift right click', mode: SHIFT, button: 1, request: -4603, paper: 1205, told: '930101f547030d0f94090000000005050137000cb50400000101013c003205eeffff0c00000000000001000a000000' },
+  { what: 'the key 1', mode: HOTBAR_KEY, button: 0, request: -4591, paper: 1202, told: '930101dd47030d0f94090000000005050137000cb20400000000013c003211eeffff1c00000000000001000a000000' }
+]
+
 describe('bedrock cartography table', () => {
+  describe('the vanilla client\'s shift clicks place the map in the inventory\'s first slot with room, its key 1 takes it to hotbar slot 0 (recorded on 1.26.51.1)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.26.51', 'bedrock_1.26.51')) {
+      it(`bedrock ${version}: ${GESTURES.map(({ what }) => what).join(', ')}`, async () => {
+        const told: string[][] = []
+        for (const { mode, button, request, paper } of GESTURES) {
+          const table = await joined(version)
+          const { bot, internal, server, driver, inventory, recipes, idOf } = table
+          recipes.send(tableRecipes(1172, 1171))
+          openTable(server)
+          inventory.slot('ui', 12, { id: idOf('paper'), count: 1, stackId: paper })
+          await driver.tick()
+          internal._core.requestIds.continueProcess(request)
+          const sent = toldSince(server)
+          bot.clickWindow(OUTPUT, button, mode).catch(() => {})
+          await driver.tick()
+          told.push(sent())
+          bot.end()
+        }
+        assert.deepStrictEqual(told, GESTURES.map(({ told }) => [told]))
+      })
+    }
+  })
+
   for (const group of GROUPS) {
     describe(`the vanilla client making an empty map of paper, then a locator map of paper and a compass, each to the cursor: ${group.title}`, () => {
       for (const version of bedrockTestVersionsFrom(group.from, group.to)) {

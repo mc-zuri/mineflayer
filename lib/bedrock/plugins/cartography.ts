@@ -37,7 +37,7 @@ export default function inject (bot: BedrockBotInternal): void {
     return book.all().find(({ recipe, cells }) => recipe.block === BLOCK && SLOTS.every((ref, index) => holds(cells[index], stackAt(ref))))
   }
 
-  /** a mouse button takes the result to the cursor, a hotbar key to its slot, unless what it holds blocks it; a shift click moves it to the inventory (neither recorded) */
+  /** a mouse button takes the result to the cursor, a hotbar key to its slot, unless what it holds blocks it; a shift click moves it to the inventory (as recorded on 1.26.51) */
   async function outputClick (ctx: FrameContext, click: WindowClick): Promise<void> {
     const draft = inventory.draft()
     const found = recipeFor(ref => draft.stackAt(ref))

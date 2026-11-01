@@ -1372,6 +1372,24 @@ const RECORDED: readonly RecordedUses[] = [
   },
 ]
 
+/** the vanilla client's other gestures on the result, an iron sword of Damage 200 and an iron ingot in the anvil, hotbar slot 0 empty (recorded on 1.26.51.1) */
+interface RecordedGesture {
+  what: string
+  mode: number
+  button: number
+  requestId: number
+  /** the stack ids of the sword and the ingot */
+  stacks: readonly [number, number]
+  /** the request, as the client sent it */
+  told: string
+}
+
+const GESTURES: readonly RecordedGesture[] = [
+  { what: 'a shift left click', mode: 1, button: 0, requestId: -1255, stacks: [309, 310], told: '930101cd13040d0f000000000005050101000236010000050501000001350100000101013c003219fbffff0c00000000000000ffffffff' },
+  { what: 'a shift right click', mode: 1, button: 1, requestId: -1265, stacks: [312, 313], told: '930101e113040d0f000000000005050101000239010000050501000001380100000101013c00320ffbffff0c00000000000000ffffffff' },
+  { what: 'the key 1', mode: 2, button: 0, requestId: -2405, stacks: [618, 619], told: '930101c925040d0f00000000000505010100026b0200000505010000016a0200000000013c00329bf6ffff1c00000000000000ffffffff' }
+]
+
 function atLeast (version: BedrockVersion, since: BedrockVersion): boolean {
   return isBedrockVersionAtLeast(version, since)
 }
@@ -1551,6 +1569,32 @@ async function replay (version: BedrockVersion, { player, at }: RecordedUses, re
   return replayed
 }
 
+interface Gestured {
+  requests: string[]
+  /** the requests' bytes */
+  told: string[]
+  /** the stack id hotbar slot 0 holds after */
+  held: number | null | undefined
+  errors: string[]
+}
+
+/** the gesture's sword and ingot in the anvil, at level 30, the click on the result answered as the server does */
+async function gestured (version: BedrockVersion, { mode, button, requestId, stacks: [sword, ingot] }: RecordedGesture): Promise<Gestured> {
+  const testBot = await anvilBot(version)
+  const { bot, internal, server, driver, inventory, errors } = testBot
+  internal._core.requestIds.continueProcess(requestId)
+  testBot.level(30)
+  openAnvil(server, 3)
+  inventory.slot('ui', 1, testBot.sword(sword, 200))
+  inventory.slot('ui', 2, testBot.given('iron_ingot', ingot))
+  await driver.tick()
+  const [requests, packets] = [requestsSince(server), packetsSince(server)]
+  await served(testBot, bot.clickWindow(RESULT_SLOT, button, mode), 30)
+  const result = { requests: requests(), told: packets().filter(packet => packet.startsWith('item_stack_request')), held: bot.inventory.slots[36]?.stackId, errors }
+  bot.end()
+  return result
+}
+
 describe('bedrock anvil', () => {
   for (const recordedUses of RECORDED) {
     const { from, to, repair, combine, rename } = recordedUses
@@ -1656,6 +1700,29 @@ describe('bedrock anvil', () => {
     }
   })
 
+  const gestureGroups: ReadonlyArray<readonly [BedrockVersion, BedrockVersion, string]> = [
+    ['bedrock_1.16.201', 'bedrock_1.19.40', 'where a mouse click takes the result to the cursor (not recorded: as from 1.19.50)'],
+    ['bedrock_1.19.50', latestSupportedBedrockVersion, 'a shift click as a mouse click (recorded on 1.26.51.1, byte for byte there)']
+  ]
+  for (const [from, to, how] of gestureGroups) {
+    describe(`a shift click (either button) places the result in the inventory's first slot with room, the key 1 takes it to hotbar slot 0, ${how} (${from.slice(8)} – ${to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(from, to)) {
+        it(`bedrock ${version}: an iron sword of Damage 200 repaired with an iron ingot by ${GESTURES.map(({ what }) => what).join(', ')}`, async () => {
+          const results: Gestured[] = []
+          for (const gesture of GESTURES) results.push(await gestured(version, gesture))
+          // up to 1.19.40 the item's name is told always, its cause from 1.19.30
+          const names = atLeast(version, 'bedrock_1.19.50') ? '[] -1' : `["Iron Sword"] ${atLeast(version, 'bedrock_1.19.30') ? 'anvil_text' : 'undefined'}`
+          assert.deepStrictEqual(results.map(({ told, ...rest }) => rest), GESTURES.map(({ mode, requestId: id, stacks: [sword, ingot] }) => ({
+            requests: [`${id}, optional, consume 1 anvil_material:2#${ingot}, consume 1 anvil_input:1#${sword}, ${mode === 1 ? 'place' : 'take'} 1 creative_output:50#${id} → ${mode === 1 ? 'hotbar_and_inventory' : 'hotbar'}:0#0, ${names}`],
+            held: 30,
+            errors: []
+          })))
+          if (version === 'bedrock_1.26.51') assert.deepStrictEqual(results.map(({ told }) => told), GESTURES.map(({ told }) => [`item_stack_request ${told}`]))
+        })
+      }
+    })
+  }
+
   describe(`no version differs in: (on ${latestSupportedBedrockVersion})`, () => {
     const version = latestSupportedBedrockVersion
 
@@ -1720,8 +1787,7 @@ describe('bedrock anvil', () => {
         await rejection(driver, anvil.rename(plain, '')),
         await rejection(driver, anvil.combine(enchanted, ingots)),
         await rejection(driver, anvil.combine(damaged, book)),
-        await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 0)),
-        await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 1))
+        await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 0))
       ]
       inventory.slot('ui', 1, sword(27, 100))
       inventory.slot('ui', 2, given('iron_ingot', 28, 2))
@@ -1744,7 +1810,6 @@ describe('bedrock anvil', () => {
         'the anvil with enchantments is not supported on Bedrock yet',
         'the anvil with enchantments is not supported on Bedrock yet',
         'the anvil holds nothing to repair or name',
-        'clickWindow: mode 1 on the anvil\'s result is not supported on Bedrock yet',
         'clickWindow: the anvil\'s result costs 2 levels, and the player has 0',
         'combine needs the anvil open',
         'rename needs the anvil open'
@@ -1952,6 +2017,30 @@ describe('bedrock anvil', () => {
       await driver.tick()
       const requests = requestsSince(server)
       assert.deepStrictEqual([await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 0)), requests()], ['the anvil\'s result with no room in the inventory is not supported on Bedrock yet', []])
+      bot.end()
+    })
+
+    it('a shift click with no room in the inventory rejects as a mouse click; a hotbar key over a slot holding an item sends nothing, over an empty one takes the result there (neither recorded)', async () => {
+      const testBot = await anvilBot(version)
+      const { bot, internal, server, driver, inventory, sword, given, errors } = testBot
+      internal._core.requestIds.continueProcess(-3)
+      inventory.content('inventory', Array.from({ length: 36 }, (_, slot) => given('stick', 100 + slot)))
+      openAnvil(server, 3)
+      inventory.slot('ui', 1, sword(20, 100))
+      inventory.slot('ui', 2, given('iron_ingot', 21, 2))
+      testBot.level(30)
+      await driver.tick()
+      const [packets, requests] = [packetsSince(server), requestsSince(server)]
+      const shifted = await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 1))
+      const keyed = await rejection(driver, bot.clickWindow(RESULT_SLOT, 4, 2))
+      await driver.tick()
+      const none = packets()
+      inventory.slot('inventory', 4, null)
+      await driver.tick()
+      await served(testBot, bot.clickWindow(RESULT_SLOT, 4, 2), 30)
+      assert.deepStrictEqual([shifted, keyed, none, requests(), bot.inventory.slots[40]?.stackId, errors], ['the anvil\'s result with no room in the inventory is not supported on Bedrock yet', 'resolved', [], [
+        '-3, optional, consume 2 anvil_material:2#21, consume 1 anvil_input:1#20, take 1 creative_output:50#-3 → hotbar:4#0, [] -1'
+      ], 30, []])
       bot.end()
     })
 

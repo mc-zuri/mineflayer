@@ -75,7 +75,7 @@ export default function inject (bot: BedrockBotInternal): void {
     return stackAction(version, 'craft_loom_request', { pattern, ...times })
   }
 
-  /** a mouse button takes the banner to the cursor, a hotbar key to its slot, unless that slot holds an item; a shift click moves it to the inventory (neither recorded) */
+  /** a mouse button takes the banner to the cursor, a hotbar key to its slot, unless that slot holds an item; a shift click moves it to the inventory (as recorded on 1.26.51) */
   async function outputClick (ctx: FrameContext, click: WindowClick): Promise<void> {
     const draft = inventory.draft()
     const banner = draft.stackAt(LOOM_INPUT)
@@ -145,7 +145,7 @@ export default function inject (bot: BedrockBotInternal): void {
         await bot.transfer({ itemType: stack.networkId, metadata: stack.metadata, sourceStart: RESULT_SLOT + 1 + index, destStart, count: 1 })
       }
       await core.call(async () => { select('applyBannerPattern', pattern) })
-      // to the inventory, as the stonecutter's shift click (not recorded on the loom)
+      // to the inventory, as the vanilla client's shift click (recorded on 1.26.51)
       await bot.clickWindow(RESULT_SLOT, 0, SHIFT)
       if (inventory.stackAt(LOOM_INPUT) !== undefined) throw new Error('the inventory has no room for the patterned banner')
     } catch (error) {

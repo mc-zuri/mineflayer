@@ -392,7 +392,54 @@ function upgradeRecipe (networkId: number, base = 'diamond_sword', result = 'net
   return { type: 'shapeless', id: `minecraft:smithingtable_${base}_to_${result}`, networkId, uuid: `00000000-0000-0000-0000-${String(networkId).padStart(12, '0')}`, block, priority: 2, input: [{ item: base }, { item: 'netherite_ingot' }], output: [{ item: result, count: 1 }] }
 }
 
+/** the vanilla client's other gestures on the result, a netherite upgrade's template, diamond sword and ingot in the table, hotbar slot 0 empty (recorded on 1.26.51.1): its key 1 sent nothing */
+const GESTURES: ReadonlyArray<{ what: string, mode: number, button: number, request: number, stacks: readonly [number, number, number], told: string | undefined }> = [
+  {
+    what: 'a shift left click',
+    mode: 1,
+    button: 0,
+    request: -5067,
+    stacks: [1320, 1321, 1322],
+    told: '930101954f060a0c9f0c011113010101196d696e6563726166743a6e65746865726974655f73776f7264000100001cffff010a000003060044616d61676500000000000000000000000000010505013d003528050000050501030033290500000505010400342a0500000101013c003235ecffff0c00000000000000ffffffff'
+  },
+  {
+    what: 'a shift right click',
+    mode: 1,
+    button: 1,
+    request: -5721,
+    stacks: [1480, 1481, 1482],
+    told: '930101b159060a0c9f0c011113010101196d696e6563726166743a6e65746865726974655f73776f7264000100001cffff010a000003060044616d61676500000000000000000000000000010505013d0035c8050000050501030033c9050000050501040034ca0500000101013c0032a7e9ffff0c00000000000000ffffffff'
+  },
+  { what: 'the key 1', mode: 2, button: 0, request: -5031, stacks: [1314, 1315, 1316], told: undefined }
+]
+
 describe('bedrock smithing table', () => {
+  describe('the vanilla client\'s shift clicks place the result in the inventory\'s first slot with room; its key 1 over it sends nothing (recorded on 1.26.51.1)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.26.51', 'bedrock_1.26.51')) {
+      it(`bedrock ${version}: ${GESTURES.map(({ what }) => what).join(', ')}`, async () => {
+        const told: string[][] = []
+        for (const { mode, button, request, stacks: [template, base, addition] } of GESTURES) {
+          const smithing = await joined(version)
+          const { bot, internal, server, driver, inventory, idOf } = smithing
+          sendSmithing(smithing, [{ ...SWORD, networkId: 1567, template: UPGRADE }])
+          sendTrims(server)
+          openTable(server)
+          inventory.slot('ui', 53, { id: idOf(UPGRADE), count: 1, stackId: template })
+          inventory.slot('ui', 51, { id: idOf('diamond_sword'), count: 1, stackId: base })
+          inventory.slot('ui', 52, { id: idOf('netherite_ingot'), count: 1, stackId: addition })
+          await driver.tick()
+          internal._core.requestIds.continueProcess(request)
+          const sent = toldSince(server)
+          bot.clickWindow(3, button, mode).catch(() => {})
+          await driver.tick()
+          told.push(sent())
+          bot.end()
+        }
+        assert.deepStrictEqual(told, GESTURES.map(({ told }) => told === undefined ? [] : [told]))
+      })
+    }
+  })
+
   for (const recorded of SMITHS) {
     describe(`the vanilla client smithing, the result taken to the cursor (${recorded.from.slice(8)} – ${recorded.to.slice(8)})`, () => {
       for (const version of bedrockTestVersionsFrom(recorded.from, recorded.to)) {
@@ -615,33 +662,28 @@ describe('bedrock smithing table', () => {
       ])
     })
 
-    it('takes the result to a hotbar key\'s slot, or shift clicks it to the inventory (neither recorded); sends nothing while the slot holds an item or the inventory is full', async () => {
+    it('shift clicks the result to the inventory; sends nothing while the cursor holds an item or the inventory is full, and for a hotbar key, over an empty slot too (recorded on 1.26.51)', async () => {
       const smithing = await table([NETHERITE_SWORD], UPGRADE, 'diamond_sword', 'netherite_ingot')
       const { inventory, idOf, described } = smithing
       inventory.slot('inventory', 0, { id: idOf('dirt'), count: 1, stackId: 20 })
+      await smithing.driver.tick()
+      await clicked(smithing, 4, 2)
+      await clicked(smithing, 0, 2)
       inventory.slot('ui', 0, { id: idOf('dirt'), count: 1, stackId: 21 })
       await smithing.driver.tick()
-      await clicked(smithing, 0, 2)
       await clicked(smithing, 0, 0)
       const blocked = described()
-      const refill = async (): Promise<void> => {
-        inventory.slot('ui', 53, { id: idOf(UPGRADE), count: 1, stackId: 10 })
-        inventory.slot('ui', 51, { id: idOf('diamond_sword'), count: 1, stackId: 11 })
-        inventory.slot('ui', 52, { id: idOf('netherite_ingot'), count: 1, stackId: 12 })
-        await smithing.driver.tick()
-      }
-      await clicked(smithing, 4, 2)
-      inventory.respond(-3, [{ container: 'hotbar', slot: 4, count: 1, stackId: 13 }])
-      await refill()
       await clicked(smithing, 0, 1)
       const moved = described()
-      inventory.respond(-5, [{ container: 'hotbar_and_inventory', slot: 1, count: 1, stackId: 14 }])
+      inventory.respond(-3, [{ container: 'hotbar_and_inventory', slot: 1, count: 1, stackId: 14 }])
       inventory.content('inventory', Array.from({ length: 36 }, (_, slot) => ({ id: idOf('dirt'), count: 64, stackId: 30 + slot })))
-      await refill()
+      inventory.slot('ui', 53, { id: idOf(UPGRADE), count: 1, stackId: 10 })
+      inventory.slot('ui', 51, { id: idOf('diamond_sword'), count: 1, stackId: 11 })
+      inventory.slot('ui', 52, { id: idOf('netherite_ingot'), count: 1, stackId: 12 })
+      await smithing.driver.tick()
       await clicked(smithing, 0, 1)
       assert.deepStrictEqual([blocked, moved, described()], [[], [
-        '-3 craft_recipe/12 1 ×1, results_deprecated/20 netherite_sword 1:0 {"Damage":0}, consume/5 1 smithing_table_template:53#10, consume/5 1 smithing_table_input:51#11, consume/5 1 smithing_table_material:52#12, take/0 1 creative_output:50#-3 → hotbar:4#0',
-        '-5 craft_recipe/12 1 ×1, results_deprecated/20 netherite_sword 1:0 {"Damage":0}, consume/5 1 smithing_table_template:53#10, consume/5 1 smithing_table_input:51#11, consume/5 1 smithing_table_material:52#12, place/1 1 creative_output:50#-5 → hotbar_and_inventory:1#0'
+        '-3 craft_recipe/12 1 ×1, results_deprecated/20 netherite_sword 1:0 {"Damage":0}, consume/5 1 smithing_table_template:53#10, consume/5 1 smithing_table_input:51#11, consume/5 1 smithing_table_material:52#12, place/1 1 creative_output:50#-3 → hotbar_and_inventory:1#0'
       ], []])
       smithing.bot.end()
     })

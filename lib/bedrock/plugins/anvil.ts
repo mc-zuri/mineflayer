@@ -19,6 +19,8 @@ const OWNER = 'anvil'
 const INPUT_SLOT = 0
 const MATERIAL_SLOT = 1
 const RESULT_SLOT = 2
+const SHIFT = 1
+const HOTBAR_KEY = 2
 // Java's anvil: its longest name, the cost it refuses, what a unit of material repairs and two items combined add of the durability
 const MAX_NAME_LENGTH = 35
 const TOO_EXPENSIVE = 40
@@ -175,17 +177,20 @@ export default function inject (bot: BedrockBotInternal): void {
     }
   }
 
-  /** where the vanilla client puts the result: from 1.19.50 the first slot of the inventory with room, before on the cursor */
-  function destinationOf (made: Stack): SlotRef {
-    if (!placesResult) return CURSOR
+  /** where the vanilla client moves the result: a hotbar key to its slot, unless that holds an item; a shift click, and from 1.19.50 a mouse button, to the first slot of the inventory with room; up to 1.19.40 a mouse button to the cursor */
+  function movedTo (made: Stack, { mode, mouseButton }: WindowClick): Move[] {
+    if (mode === HOTBAR_KEY) {
+      const to: SlotRef = { container: 'hotbar', slot: mouseButton }
+      return inventory.stackAt(to) === undefined ? [{ type: 'take', count: 1, from: OUTPUT, to }] : []
+    }
+    if (mode !== SHIFT && !placesResult) return [{ type: 'take', count: 1, from: OUTPUT, to: CURSOR }]
     const [place] = placesFor(made, HOTBAR_AND_INVENTORY, inventory.draft())
     if (place === undefined) throw new Error('the anvil\'s result with no room in the inventory is not supported on Bedrock yet')
-    return place.to
+    return [{ type: 'place', count: 1, from: OUTPUT, to: place.to }]
   }
 
   /** a click on the result: the vanilla client's request, sent with the name and the anvil's damage before it */
-  async function craft (ctx: FrameContext, { mode }: WindowClick, { window, opening }: OpenScreen): Promise<void> {
-    if (mode !== 0) throw new Error(`clickWindow: mode ${mode} on the anvil's result is not supported on Bedrock yet`)
+  async function craft (ctx: FrameContext, click: WindowClick, { window, opening }: OpenScreen): Promise<void> {
     const one = window.slots[INPUT_SLOT]
     const input = inventory.stackAt(ANVIL_INPUT)
     if (one == null || input === undefined) throw new Error('the anvil holds nothing to repair or name')
@@ -201,11 +206,13 @@ export default function inject (bot: BedrockBotInternal): void {
       RepairCost: int(result.repairCost),
       ...result.name === undefined ? {} : { display: { type: 'compound', value: { ...shown, Name: { type: 'string', value: result.name } } } }
     })
+    const moved = movedTo(made, click)
+    if (moved.length === 0) return
     const moves: Move[] = [
       { type: 'action', action: stackAction(version, 'optional', { recipe_network_id: 0, filtered_string_index: 0 }), output: made },
       ...two === null ? [] : [{ type: 'consume' as const, count: result.used, from: ANVIL_MATERIAL }],
       { type: 'consume', count: 1, from: ANVIL_INPUT },
-      { type: placesResult ? 'place' : 'take', count: 1, from: OUTPUT, to: destinationOf(made) }
+      ...moved
     ]
     // up to 1.19.40 the name is told always, its cause from 1.19.30; from 1.19.50 only a new one
     const text: RequestText = !placesResult ? { customNames: [result.name ?? nameOf(one)], cause: 'anvil_text' } : result.name === undefined ? {} : { customNames: [result.name], cause: 'anvil_text' }
