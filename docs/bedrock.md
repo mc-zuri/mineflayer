@@ -1537,8 +1537,16 @@ For a lectern the server told no book of, the close sends nothing, as the vanill
   the server told no book of), **`page`** and **`totalPages`** read the last block_entity_data the bot received at the
   lectern's position, while the screen is open too (0 untold). A lectern whose block entity came only in its chunk is
   untold: the bot reads no block entity of a chunk.
-- **`setPage(page)`** and **`takeBook()`** are unsupported: they reject naming the member, as no recording turns a
-  page or takes the book.
+- **`setPage(page)`** (Java has no lectern helper) turns the book to `page` (from 0, below `totalPages`) in the next
+  frame: it sends `lectern_update` with that page (`drop_book: false` up to 1.20.61) and shows it at once in `page`,
+  which the close then tells, until the server tells another; it resolves once sent. It rejects, sending nothing, a
+  page the book has not (a book and quill's 0 pages have none), a lectern told holding no book and a window that is
+  not the one open.
+- **`takeBook()`** up to 1.20.61 sends `lectern_update` with the page and `drop_book: true` in the next frame, and
+  resolves once the server told the lectern holds no book, rejecting when it tells none in 100 ticks; it rejects as
+  `setPage` a lectern told holding no book and a window not open. From 1.20.71 it rejects naming the member:
+  `lectern_update` has no `drop_book` there and no other serverbound field names a lectern, so the take's packet is
+  not known.
 - **`activateBlock(lectern)`** holding a book and quill or a written book puts it on a lectern the server told no book
   of, as the vanilla client's use does (see using a block above): the use names the hotbar slot emptied from 1.26.60,
   none before; the server then sends the slot emptied and block_entity_data with the book. A lectern told holding a
@@ -1553,9 +1561,15 @@ byte the bot's (the slot named and the empty hand told in the use's frame on 1.2
 the hand told after the server's inventory_content, with the use's end on 1.26.51; then block_entity_data
 `hasBook 1`, page 0 of 0), its screen opened, the close sending `lectern_update {page 0, page_count 0, position}` 5,
 31 and 61 ms after the close step, which is the next frame; against a scripted server (containers_lectern) a lectern
-told no book of, whose close sent nothing. Not recorded: page turns, taking the book (`drop_book` up to 1.20.61; from
-1.20.71 its packet is not known), a written book's pages, a lectern screen before 1.26.20, a written book put on a
-lectern (taken as the book and quill), and a book put on before 1.26.20 (taken as 1.26.20's: no slot named).
+told no book of, whose close sent nothing. Not recorded, written from the protocol: page turns (whether the vanilla
+client tells each turn or only the close, and whether the server answers with block_entity_data) and taking the book
+up to 1.20.61 (what the server answers besides the block entity: the book given, the screen closed); not recorded and
+not known: taking the book from 1.20.71. Not recorded either: a written book's pages, a lectern screen before 1.26.20, a written book put on a
+lectern (taken as the book and quill), and a book put on before 1.26.20 (taken as 1.26.20's: no slot named). Run against
+the 1.19.50, 1.21.80 and 1.26.61 servers, `putBookOnLectern` puts the book on; 1.21.80's and 1.26.61's open the lectern's screen on the use; 1.19.50's opens none, sending nothing of the
+lectern, so `openBlock` rejects there as for any screen not opened, and `setPage` and `takeBook` cannot be reached: the
+vanilla client of such a build presumably shows the book screen itself, which is not recorded, nor the first build whose
+server opens it.
 
 ## Furnaces
 

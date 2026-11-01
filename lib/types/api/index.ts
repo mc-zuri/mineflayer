@@ -1117,10 +1117,10 @@ export interface BedrockLectern extends Window<StorageEvents> {
 
   close (): Promise<void>
 
-  /** unsupported on Bedrock: no recording turns a lectern's page */
+  /** turns the book to `page` (from 0, below totalPages), telling the server (not recorded) */
   setPage (page: number): Promise<void>
 
-  /** unsupported on Bedrock: no recording takes a lectern's book */
+  /** up to 1.20.61 takes the book, resolving once the server told the lectern holds none (not recorded); unsupported from 1.20.71, whose take is not known */
   takeBook (): Promise<void>
 }
 

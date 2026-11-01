@@ -16,6 +16,7 @@ const NAMESPACE = 'minecraft:'
 const BOOKS: readonly string[] = Object.freeze(['writable_book', 'written_book'])
 // as openBlock waits for the screen
 const PUT_TICKS = 100
+const TAKE_TICKS = 100
 
 type Compound = Record<string, undefined | Tags[TagType]>
 
@@ -40,10 +41,13 @@ function numberOf (compound: Compound, key: string): number {
   return typeof value === 'number' ? value : 0
 }
 
-/** The lectern's book screen (Java has no lectern helper): its book read from the block entity, its close telling the page; a book put on it by a use. */
+/** The lectern's book screen (Java has no lectern helper): its book read from the block entity, its page turned and its close telling the page, its book taken up to 1.20.61; a book put on it by a use. */
 export default function lectern (bot: BedrockBotInternal): void {
+  const core = bot._core
   const ItemClass = prismarineItem(bot.registry)
   const lecterns = new Map<string, Told>()
+  // up to 1.20.61 lectern_update also tells whether the book is taken; from 1.20.71 nothing recorded takes it
+  const takesByUpdate = !isBedrockVersionAtLeast(bot.version, 'bedrock_1.20.71')
 
   function bookOf (entity: Compound): Item | null {
     const book = entity['book']
@@ -60,13 +64,48 @@ export default function lectern (bot: BedrockBotInternal): void {
     return lecterns.get(keyOf(position)) ?? UNTOLD
   }
 
+  function update (outbox: OutboxWriter, { x, y, z }: Vec3f, page: number, totalPages: number, take: boolean): void {
+    outbox.queue('lectern_update', { page, page_count: totalPages, position: { x, y, z }, ...(takesByUpdate ? { drop_book: take } : {}) })
+  }
+
+  /** the screen's lectern as told, while its window is the one open and the server told it holds a book */
+  function needsBook (member: string, { window, opening: { position } }: OpenScreen): Told {
+    if (bot.currentWindow !== window) throw new Error(`${member} needs the lectern window open`)
+    const told = toldAt(position)
+    if (told.book === null) throw new Error(`${member}: the lectern holds no book`)
+    return told
+  }
+
+  /** a page turned in the next input pass, shown at once (not recorded: whether the vanilla client tells the server each turn) */
+  async function setPage (screen: OpenScreen, page: number): Promise<void> {
+    await core.call(async ({ outbox }) => {
+      const told = needsBook('setPage', screen)
+      if (!Number.isInteger(page) || page < 0 || page >= told.totalPages) throw new Error(`setPage: the lectern's book has no page ${page}, having ${told.totalPages}`)
+      const { position } = screen.opening
+      update(outbox, position, page, told.totalPages, false)
+      lecterns.set(keyOf(position), { ...told, page })
+    })
+  }
+
+  /** up to 1.20.61 lectern_update's drop_book (not recorded): resolves once the server told the lectern holds no book */
+  async function takeBook (screen: OpenScreen): Promise<void> {
+    if (!takesByUpdate) throw new Error('takeBook is not supported on Bedrock from 1.20.71: lectern_update has no drop_book there, and no recording takes a lectern\'s book')
+    const { position } = screen.opening
+    await core.call(async ({ outbox }) => {
+      const { page, totalPages } = needsBook('takeBook', screen)
+      update(outbox, position, page, totalPages, true)
+    })
+    await core.waits.until(() => toldAt(position).book === null, TAKE_TICKS, `takeBook: the server took no book from the lectern in ${TAKE_TICKS} ticks`)
+  }
+
   /** its window before windowOpen: the block entity's book and page, as the server tells them while it is open too */
-  function extend ({ window, opening: { position } }: OpenScreen): void {
+  function extend (screen: OpenScreen): void {
+    const { window, opening: { position } } = screen
     const told = (key: keyof Told): PropertyDescriptor => ({ get: () => toldAt(position)[key] })
     Object.defineProperties(window, { book: told('book'), page: told('page'), totalPages: told('totalPages') })
     const members: Members = {
-      setPage: async () => { throw new Error('setPage is not supported on Bedrock: no recording turns a lectern\'s page') },
-      takeBook: async () => { throw new Error('takeBook is not supported on Bedrock: no recording takes a lectern\'s book') }
+      setPage: async page => { await setPage(screen, page) },
+      takeBook: async () => { await takeBook(screen) }
     }
     Object.assign(window, members)
   }
@@ -75,13 +114,10 @@ export default function lectern (bot: BedrockBotInternal): void {
   function close (outbox: OutboxWriter, { opening: { position } }: OpenScreen): void {
     const { book, page, totalPages } = toldAt(position)
     if (book === null) return
-    const { x, y, z } = position
-    // up to 1.20.61 it also tells whether the book is taken
-    const taken = isBedrockVersionAtLeast(bot.version, 'bedrock_1.20.71') ? {} : { drop_book: false }
-    outbox.queue('lectern_update', { page, page_count: totalPages, position: { x, y, z }, ...taken })
+    update(outbox, position, page, totalPages, false)
   }
 
-  bot._core.observe(OWNER, 'block_entity_data', ({ position, nbt: { value } }) => {
+  core.observe(OWNER, 'block_entity_data', ({ position, nbt: { value } }) => {
     const key = keyOf(position)
     if (value['id']?.value !== 'Lectern') {
       lecterns.delete(key)
@@ -98,7 +134,7 @@ export default function lectern (bot: BedrockBotInternal): void {
     if (held === undefined || !BOOKS.includes(held)) throw new Error(`putBookOnLectern needs a book and quill or a written book in the hand, not ${held ?? 'nothing'}`)
     if (book !== undefined) await bot.equip(book, 'hand')
     await bot.activateBlock(lectern)
-    await bot._core.waits.until(() => toldAt(lectern.position).book !== null, PUT_TICKS, `the server put no book on the lectern in ${PUT_TICKS} ticks`)
+    await core.waits.until(() => toldAt(lectern.position).book !== null, PUT_TICKS, `the server put no book on the lectern in ${PUT_TICKS} ticks`)
   }
 
   bot._inventory.screens.add(LECTERN_SCREEN, { shown: extend, close })
