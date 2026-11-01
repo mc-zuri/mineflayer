@@ -630,11 +630,20 @@ describe('bedrock entities', () => {
     })
 
     it('handles no entity packet without its plugin', async () => {
-      const { bot, internal, server, driver } = await bedrockTestBot(bedrockCodec(version), { plugins: { entities: false, boss_bar: false } })
+      const { bot, internal, server, driver } = await bedrockTestBot(bedrockCodec(version), { plugins: { entities: false, boss_bar: false, place: false } })
       server.send('start_game', { entity_id: LOCAL_UNIQUE, runtime_entity_id: 1n })
       write(server, 'add_entity', addEntity(version, villager(version)))
       await driver.frame(0)
       assert.deepStrictEqual([bot.entities, internal._core.stats.packets.get('add_entity')], [undefined, { handled: 0, threw: 0, unhandled: 1 }])
+      bot.end()
+    })
+
+    it('reads an entity placing nothing without its plugin', async () => {
+      const { internal, server, driver, bot } = await bedrockTestBot(bedrockCodec(version), { plugins: { entities: false, boss_bar: false } })
+      server.send('start_game', { entity_id: LOCAL_UNIQUE, runtime_entity_id: 1n })
+      write(server, 'add_entity', addEntity(version, villager(version)))
+      await driver.frame(0)
+      assert.deepStrictEqual(internal._core.stats.packets.get('add_entity'), { handled: 1, threw: 0, unhandled: 0 })
       bot.end()
     })
   })

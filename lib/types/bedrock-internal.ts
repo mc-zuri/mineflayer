@@ -48,6 +48,8 @@ export interface BedrockBotInternal extends BedrockBot {
   _genericPlace: (referenceBlock: Block, faceVector: Vec3, options: PlaceOptions) => Promise<Vec3>
   /** placing: the build, resolving once the server put a block at the destination */
   _placeBlockWithOptions: (referenceBlock: Block, faceVector: Vec3, options: PlaceOptions) => Promise<void>
+  /** placing: the build holding an entity's item, resolving with the entity the server spawned near the destination */
+  _placeEntityWithOptions: (referenceBlock: Block, faceVector: Vec3, options: PlaceOptions) => Promise<Entity>
   loadPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => void
   loadPlugins: (plugins: Array<BedrockPlugin | BedrockInternalPlugin>) => void
   hasPlugin: (plugin: BedrockPlugin | BedrockInternalPlugin) => boolean

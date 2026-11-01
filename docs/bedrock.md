@@ -5,7 +5,7 @@ minecraft-data names it. A Bedrock bot is at its start: it connects, logs in, sp
 the scoreboards, the titles, the boss bars, the sounds, the particles, the world's blocks, the entities the server shows
 and the player list, walks, sprints, sneaks, jumps and falls by its controls and looks as the vanilla client does,
 telling the server every tick, follows the server's corrections, chats, keeps the player's items and opens and closes
-its inventory, crafts, places blocks, and ends; the rest of the API is Java's only so far.
+its inventory, crafts, places blocks and entities, and ends; the rest of the API is Java's only so far.
 
 ```js
 const mineflayer = require('mineflayer')
@@ -122,6 +122,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   items, by item stack requests (see items below).
 - `bot.writeBook(slot, pages)`, `bot.signBook(slot, pages, author, title)`: as Java's, by book_edit (see items below).
 - `bot.placeBlock(referenceBlock, faceVector)`: as Java's, as the vanilla client's build (see placing below).
+- `bot.placeEntity(referenceBlock, faceVector)`: as Java's, the same build holding an entity's item (see placing below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -146,7 +147,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   (jsonMsg, position)`, `messagestr (message, position, jsonMsg)`, `chat` and `whisper (username, message, translate,
   jsonMsg)`, `actionBar (jsonMsg)`, `chat:<name> (matches)`, `unmatchedMessage (message, jsonMsg)` (see chat below),
   `windowOpen (window)`, `windowClose (window)`, `heldItemChanged (item)` (see the inventory below), `blockPlaced
-  (oldBlock, newBlock)` (see placing below),
+  (oldBlock, newBlock)`, `entityPlaced (entity)` (see placing below),
   `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`,
   `teamMemberAdded`, `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
@@ -195,7 +196,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced`, `entityPlaced` | the packet pass |
 | `heldItemChanged` | where the held slot changes: the packet pass, or the input pass (a request's prediction, a response taken in) |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
@@ -2594,13 +2595,37 @@ with an empty tag (7), and its first page by the book as it was, then edited (8)
   (`bot.setControlState('sneak', true)`).
 - In creative mode a build predicts no change, as a creative build takes no item (not recorded): no slot named, legacy
   id 0, the use in the air holding the stack.
+- **`bot.placeEntity(referenceBlock, faceVector)`** is Java's, the same build holding an entity's item, as recorded
+  hanging a painting on stone (1.26.20.4, 1.26.51.1, 1.26.60.5): `start_item_use_on` names the reference block itself
+  (an item that places no block), the click empties the painting's slot (legacy id 0) and no use in the air follows, the
+  emptied hand told in the next tick by `interact` then `mob_equipment`.
+  - It resolves with the entity once the server spawned it (add_entity, add_painting) and the use ended;
+    `entityPlaced (entity)` is emitted in that packet pass, right after the entity's `entitySpawn`.
+  - The entity waited for is named by the held item. Java's kinds: an end crystal (`ender_crystal`), a boat (`*_boat`,
+    `boat`, `bamboo_raft`: `boat`), a spawn egg (`<mob>_spawn_egg`: `<mob>`, but Bedrock's `villager_v2`,
+    `zombie_villager_v2`, `evocation_illager` and `tropicalfish`), an armor stand. Bedrock's too, which Java's throws
+    `Unimplemented` for: chest boats (`*_chest_boat`, `chest_boat`, `bamboo_chest_raft`: `chest_boat`), minecarts
+    (`minecart`, `chest_minecart`, `hopper_minecart`, `tnt_minecart`, `command_block_minecart`) and the painting.
+    Any other item throws Java's `AssertionError` (`Unimplemented`), sending nothing.
+  - As Java's, the entity must spawn closer than 2 to the destination's corner (a boat 3, a bat 4). Unlike Java's, which
+    gives up at the first spawn of any entity, another entity spawning first is passed over; each spawn settles one
+    placement, the first waiting.
+  - It rejects with Java's `Failed to place entity` when the server gives the item back or spawns no such entity in 100
+    ticks (Java waits 5 s). `must be holding an item to place an entity` is Java's; the off-hand rejects as
+    `placeBlock`'s.
+  - Not recorded, so unsupported: a spawn egg without a mob in its name, the mob in its aux value (`placeEntity:
+    spawn_egg without a mob name is not supported on Bedrock`), and a boat on water (`placeEntity: a boat on water is
+    not supported on Bedrock yet`), which the vanilla client's pick does not meet. Not recorded either, played as the
+    painting's: any other entity's placement (whether the vanilla client predicts the slot, and uses the item in the
+    air after), and a stack of two (here, as a block's, followed by a use in the air).
 
 Recorded and replayed by the tests: the placement of dirt against stone, played by `placeBlock` on every build, byte for
 byte (the press, the use in the air, the hand told in the next tick and the use's end), resolving at the server's
-recorded update_block.
+recorded update_block; the painting hung on 1.26.20, 1.26.51 and 1.26.60, played by `placeEntity` byte for byte,
+resolving with the painting at the server's recorded add_painting.
 
-Not yet: `placeEntity`, signs (`updateSign`, `signOpen`), a block placed by an item of another name, and the vanilla
-client's repeated builds while the use key is held.
+Not yet: signs (`updateSign`, `signOpen`), a block placed by an item of another name, and the vanilla client's repeated
+builds while the use key is held.
 
 ## Tests
 
@@ -2659,7 +2684,9 @@ client's repeated builds while the use key is held.
   1.16.220 – 1.26.20, the player's container 28 up to 1.19.40 and 29 from 1.19.50, the trigger and prediction from
   1.21.20, the swing's data from 1.21.120 and source from 1.21.130, the cooldown from 1.26.10, ItemV4s 1.26.30 – 1.26.45,
   the hand from 1.26.51, the swing's hand 1.26.60), each group playing the recorded placement of dirt with the bot, byte
-  for byte; the clicks: by how a request names its containers and stacks, each
+  for byte; placing an entity: the painting recorded on 1.26.20, 1.26.51 and 1.26.60 hung by the bot byte for byte, and
+  by how add_painting places it (block coordinates 1.16.201 – 1.16.210, a position from 1.16.220) on every version; the
+  clicks: by how a request names its containers and stacks, each
   group playing the recorded drop of the cursor's stack and a shield put in the offhand, with every gesture recorded on
   1.26.51 played from 1.26.40, the slots named in the click's frame from 1.26.51 and the cursor drags from 1.26.60; the
   crafting: by how crafting_data lists recipes and descriptors and how craft_recipe, craft_recipe_auto,
