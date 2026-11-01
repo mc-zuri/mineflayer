@@ -11,11 +11,9 @@ import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
 import type { BlockAction, Rotation, Vec3f } from './auth_input.ts'
 import type { Inventory } from './inventory.ts'
-import { heldItem } from './items.ts'
+import { heldItem, slotTransaction } from './items.ts'
 import type { Stack } from './items.ts'
 import type { LocalPlayer } from './movement.ts'
-
-type TransactionActions = NonNullable<BedrockServerboundPackets['inventory_transaction']['transaction']['actions']>
 
 const OWNER = 'use'
 const HOTBAR_START = 36
@@ -46,6 +44,8 @@ export interface BlockClick {
   readonly takesHeld: boolean
   /** the eye, as the auth inputs report it */
   readonly eye: Vec3f
+  /** the vanilla client draws a legacy transaction id for every item use, written only where it predicts a slot left holding an item */
+  readonly legacyId: number
 }
 
 /** a hit's block action: the block's and the face's */
@@ -133,12 +133,29 @@ export function clickBlock (version: BedrockVersion, click: BlockClick): Bedrock
   }
   if (atLeast(version, 'bedrock_1.26.10')) data['client_cooldown_state'] = 'off'
   if (atLeast(version, 'bedrock_1.26.51')) data['hand'] = 'main_hand'
-  const packet = useTransaction(version, 'item_use', data)
-  if (click.takesHeld && atLeast(version, 'bedrock_1.26.60')) {
-    // ItemV4s, as from 1.26.30
-    packet.transaction.actions = [{ source_type: 'container', window_id: 0, slot: click.hotbarSlot, old_item: heldItem(true, click.held), new_item: heldItem(true, undefined) }] as TransactionActions
+  if (!click.takesHeld || !atLeast(version, 'bedrock_1.26.60')) return useTransaction(version, 'item_use', data)
+  return slotTransaction(version, { type: 'item_use', hotbarSlot: click.hotbarSlot, before: click.held, after: undefined, legacyId: click.legacyId, data })
+}
+
+/** a use of the held item in the air, its prediction failed (a book's, which opens its screen): an item use's data, which draws a legacy id as every one */
+export function clickAir (version: BedrockVersion, hotbarSlot: number, held: Stack | undefined, eye: Vec3f): Record<string, unknown> {
+  const data: Record<string, unknown> = {
+    action_type: 'click_air',
+    block_position: ORIGIN,
+    face: 255,
+    hotbar_slot: hotbarSlot,
+    held_item: heldItem(atLeast(version, 'bedrock_1.26.30'), held),
+    player_pos: eye,
+    click_pos: ORIGIN,
+    block_runtime_id: 0
   }
-  return packet
+  if (atLeast(version, 'bedrock_1.21.20')) {
+    data['trigger_type'] = 'unknown'
+    data['client_prediction'] = 'failure'
+  }
+  if (atLeast(version, 'bedrock_1.26.10')) data['client_cooldown_state'] = 'off'
+  if (atLeast(version, 'bedrock_1.26.51')) data['hand'] = 'main_hand'
+  return data
 }
 
 /** a use's data, in a transaction that changes no slot, as the version wraps it */
@@ -314,7 +331,8 @@ export class BlockUse {
       hotbarSlot: this.inventory.quickBarSlot,
       held,
       takesHeld,
-      eye: this.player.eye
+      eye: this.player.eye,
+      legacyId: core.requestIds.nextLegacyTransaction()
     }
     const { version } = bot
     if (atLeast(version, 'bedrock_1.19.1')) outbox.queue('player_action', useItemOn(runtimeId, click))

@@ -1042,7 +1042,10 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   whose stack id is a variant naming its kind on 1.26.20 and 1.26.30. prismarine-item's `fromNotch` / `toNotch` read
   and write some of these wrongly (see the notes), so the bot does it itself.
 - **Requests** (`item_stack_request`) are numbered -3, -5, -7 … with no gap, as the vanilla client numbers them (for as
-  long as its process runs: the tests' seam `_core.requestIds.continueProcess(next)` goes on with a recording's). A
+  long as its process runs: the tests' seam `_core.requestIds.continueProcess(next)` goes on with a recording's). Legacy
+  inventory transactions are numbered -4, -6, -8 … the same way: every item use draws the next id (a block's click, a
+  use in the air), written only where the use predicts a slot left holding an item (a book's use), else 0; the ids
+  recorded show each use counted once between two written ids. A
   request is made when asked, but leaves in the next tick, with the others made since in one packet, after what the
   player holds (below): up to 1.19.0 after the tick's auth input, from 1.19.10 just before it, as the vanilla client
   sends a click's on every recorded build (a hand-back's leave with the close when it leaves at once). A request names
@@ -1136,7 +1139,9 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   with no cooldown, from 1.26.51 by the main hand. A use whose block takes the held item (a book a lectern takes, a
   disc a jukebox: see the lectern and the jukebox below) changes the slot from 1.26.60: the click names the hotbar slot emptied of it (`container`, window
   0, the item as `held_item` then none), and the slot shows empty at once, the empty hand told in the use's tick (the
-  inventory's rule above); up to 1.26.51 the click names no slot, and the hand is told once the server sent the slot. The face and the point are where the eye's ray, along the auth input's
+  inventory's rule above); up to 1.26.51 the click names no slot, and the hand is told once the server sent the slot. Every
+  click draws the next legacy transaction id, as the vanilla client's (see requests above); it writes 0, as it leaves no
+  slot holding an item. The face and the point are where the eye's ray, along the auth input's
   rotation, first meets a block, if that is this one (on `direction`'s face, if given), the point found as a float and
   less the block's corner as the client finds it (`cursorPos` instead, if given); else the bot first looks at `cursorPos`
   (the face's centre) on `direction`'s face (the top), as Java's, and clicks there once an auth input carried the look.

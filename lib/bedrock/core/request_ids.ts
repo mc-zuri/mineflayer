@@ -13,7 +13,7 @@ export class RequestIds {
     return id
   }
 
-  /** the id of an inventory_transaction that predicts slots */
+  /** the id every item use draws, and an inventory_transaction that predicts slots: written only where a slot keeps an item */
   nextLegacyTransaction (): number {
     const id = this.nextLegacy
     this.nextLegacy -= 2

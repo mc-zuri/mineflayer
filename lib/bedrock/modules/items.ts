@@ -2,6 +2,7 @@ import type { Item } from 'prismarine-item'
 import { isBedrockVersionAtLeast } from '../version.ts'
 import type { BedrockVersion } from '../../types/api/index.ts'
 import type { MCProtocol } from '../../types/protocol/Bedrock.d.ts'
+import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
 
 type ReadItem = MCProtocol.Bedrock.Read.Types.Item
 type ReadItemV4 = MCProtocol.Bedrock.Read.Types.ItemV4
@@ -12,6 +13,7 @@ type SlotInfo = MCProtocol.Bedrock.Write.Types.StackRequestSlotInfo
 export type StackRequest = MCProtocol.Bedrock.Write.Types.ItemStackRequest
 type StackAction = StackRequest['actions'][number]
 type LegacyStackAction = MCProtocol.Bedrock.Write.Types.ItemStackRequests[number]['actions'][number]
+type Transaction = BedrockServerboundPackets['inventory_transaction']
 
 export interface Stack {
   readonly networkId: number
@@ -142,6 +144,53 @@ export function heldItem (v4: boolean, stack: Stack | undefined): WriteItem {
   const { block_runtime_id: blockRuntimeId, extra } = wire
   if (v4) return { network_id: networkId, count, metadata, has_stack_id: false, block_runtime_id: blockRuntimeId, extra }
   return { network_id: networkId, count, metadata, has_stack_id: 0, block_runtime_id: blockRuntimeId, extra }
+}
+
+/** a slot of the creative inventory a legacy transaction names: the item given to it, or taken from it */
+export interface CreativeChange {
+  readonly slot: number
+  readonly before: Stack | undefined
+  readonly after: Stack | undefined
+}
+
+/** a legacy inventory_transaction predicting a hotbar slot, as the vanilla client sends an item use or a book's edit */
+export interface SlotTransaction {
+  readonly type: 'normal' | 'item_use'
+  readonly hotbarSlot: number
+  readonly before: Stack | undefined
+  readonly after: Stack | undefined
+  /** the id the transaction drew, 0 for one that draws none: written only where the slot keeps an item */
+  readonly legacyId: number
+  /** the creative inventory's slots, after the hotbar slot's */
+  readonly creative?: readonly CreativeChange[]
+  /** an item use's data */
+  readonly data?: Record<string, unknown>
+}
+
+export function slotTransaction (version: BedrockVersion, { type, hotbarSlot, before, after, legacyId, creative = [], data }: SlotTransaction): Transaction {
+  const atLeast = (since: BedrockVersion): boolean => isBedrockVersionAtLeast(version, since)
+  // an ItemV4 from 1.26.30, without its stack id
+  const item = (stack: Stack | undefined): WriteItem => heldItem(atLeast('bedrock_1.26.30'), stack)
+  // the inventory by number up to 1.16.210 and from 1.26.30, by name between; up to 1.26.45 both presences written true, the options saying what follows
+  const [inventory, creativeInventory] = !atLeast('bedrock_1.16.220')
+    ? [{ inventory_id: 0 }, {}]
+    : !atLeast('bedrock_1.26.30')
+        ? [{ inventory_id: 'inventory' as const }, {}]
+        : !atLeast('bedrock_1.26.51')
+            ? [{ container_presence: true, window_id: 0, flag_presence: true }, { container_presence: true, flag_presence: true }]
+            : [{ window_id: 0 }, {}]
+  const actions = [
+    { source_type: 'container' as const, ...inventory, slot: hotbarSlot, old_item: item(before), new_item: item(after) },
+    ...creative.map(change => ({ source_type: 'creative' as const, ...creativeInventory, slot: change.slot, old_item: item(change.before), new_item: item(change.after) }))
+  ]
+  const written = after === undefined ? 0 : legacyId
+  // the player's slots: 1.19.50 renumbered the containers
+  const changed = written === 0 ? {} : { legacy_transactions: [{ container_id: atLeast('bedrock_1.19.50') ? 29 : 28, changed_slots: [{ slot_id: hotbarSlot }] }] }
+  const legacy = { legacy_request_id: written, ...changed }
+  const transactionData = data === undefined ? {} : { transaction_data: data }
+  // the version's layout, which the typings join; 1.16.210 says whether the actions name items by network id
+  if (!atLeast('bedrock_1.16.210')) return { transaction: { ...legacy, transaction_type: type, network_ids: false, inventory_actions: actions, ...transactionData } } as Transaction
+  return { transaction: { legacy, transaction_type: type, actions: atLeast('bedrock_1.16.220') ? actions : { network_ids: false, actions }, ...transactionData } } as Transaction
 }
 
 export function slotInfo (version: BedrockVersion, { container, slot }: SlotRef, stackId: number): SlotInfo {

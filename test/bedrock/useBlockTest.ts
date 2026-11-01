@@ -963,6 +963,14 @@ describe('bedrock using a block', () => {
       internal.end()
     })
 
+    it('draws the next legacy transaction id for every click, writing 0, as the vanilla client: its fresh process (1.26.60.5) drew -4 to -14 for six clicks, then wrote -16', async () => {
+      const { bot, internal, server, driver, table, errors } = await atTable(version)
+      for (let click = 0; click < 6; click++) await settle(driver, bot.activateBlock(table))
+      const written = server.sentOf('inventory_transaction').map(({ transaction }) => transaction.legacy?.legacy_request_id)
+      assert.deepStrictEqual([written, internal._core.requestIds.nextLegacyTransaction(), errors], [[0, 0, 0, 0, 0, 0], -16, []])
+      bot.end()
+    })
+
     it('rejects a use before the player is shown, over a screen, and toward no face', async () => {
       const testBot = await bedrockTestBot(bedrockCodec(version))
       const world = new ServerWorld(testBot.server)

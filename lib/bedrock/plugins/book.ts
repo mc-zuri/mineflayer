@@ -1,8 +1,8 @@
 import assert from 'assert'
 import type { Tags } from 'prismarine-nbt'
 import type { FrameContext } from '../core/types.ts'
-import type { Vec3f } from '../modules/auth_input.ts'
-import { heldItem } from '../modules/items.ts'
+import { clickAir } from '../modules/block_use.ts'
+import { slotTransaction } from '../modules/items.ts'
 import type { Stack } from '../modules/items.ts'
 import { nbtOf } from '../modules/recipes.ts'
 import type { NbtValue } from '../modules/recipes.ts'
@@ -11,9 +11,6 @@ import { shownSlot } from './simple_inventory.ts'
 import type { BedrockVersion } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
-
-type Transaction = BedrockServerboundPackets['inventory_transaction']
-type TransactionItem = ReturnType<typeof heldItem>
 
 const OWNER = 'book'
 const QUICK_BAR_START = 36
@@ -83,64 +80,6 @@ function bookEdit (version: BedrockVersion, slot: number, edit: Edit): BedrockSe
   return { ...isBedrockVersionAtLeast(version, 'bedrock_1.26.0') ? { inventory_slot: slot } : { slot }, ...edit }
 }
 
-/** the vanilla client's use of the held book, which opens its screen: a click in the air, its prediction failed */
-function clickAir (version: BedrockVersion, slot: number, held: Stack, eye: Vec3f): Record<string, unknown> {
-  const atLeast = (since: BedrockVersion): boolean => isBedrockVersionAtLeast(version, since)
-  const origin = { x: 0, y: 0, z: 0 }
-  const data: Record<string, unknown> = {
-    action_type: 'click_air',
-    block_position: origin,
-    face: 255,
-    hotbar_slot: slot,
-    held_item: heldItem(atLeast('bedrock_1.26.30'), held),
-    player_pos: eye,
-    click_pos: origin,
-    block_runtime_id: 0
-  }
-  if (atLeast('bedrock_1.21.20')) {
-    data['trigger_type'] = 'unknown'
-    data['client_prediction'] = 'failure'
-  }
-  if (atLeast('bedrock_1.26.10')) data['client_cooldown_state'] = 'off'
-  if (atLeast('bedrock_1.26.51')) data['hand'] = 'main_hand'
-  return data
-}
-
-/**
- * The legacy transaction the vanilla client sends with an edit, which the server refuses, answering with the slot as it
- * is: the hotbar slot's book as the edit leaves it, the book given to the creative inventory and the edited one taken
- * from it; a signature's numbered, naming the slot. With a use's data, the use's: the hotbar slot's book alone.
- */
-function bookTransaction (version: BedrockVersion, slot: number, book: Stack, made: Stack, legacyId: number, use?: Record<string, unknown>): Transaction {
-  const atLeast = (since: BedrockVersion): boolean => isBedrockVersionAtLeast(version, since)
-  // an ItemV4 from 1.26.30, without its stack id
-  const item = (stack: Stack | undefined): TransactionItem => heldItem(atLeast('bedrock_1.26.30'), stack)
-  // the inventory by number up to 1.16.210 and from 1.26.30, by name between; up to 1.26.45 both presences written true, the options saying what follows
-  const [inventory, creative] = !atLeast('bedrock_1.16.220')
-    ? [{ inventory_id: 0 }, {}]
-    : !atLeast('bedrock_1.26.30')
-        ? [{ inventory_id: 'inventory' as const }, {}]
-        : !atLeast('bedrock_1.26.51')
-            ? [{ container_presence: true, window_id: 0, flag_presence: true }, { container_presence: true, flag_presence: true }]
-            : [{ window_id: 0 }, {}]
-  const container = { source_type: 'container' as const, ...inventory, slot, old_item: item(book), new_item: item(made) }
-  const actions = use !== undefined
-    ? [container]
-    : [
-        container,
-        { source_type: 'creative' as const, ...creative, slot: 0, old_item: item(undefined), new_item: item(book) },
-        { source_type: 'creative' as const, ...creative, slot: 1, old_item: item(made), new_item: item(undefined) }
-      ]
-  // the player's slots: 1.19.50 renumbered the containers
-  const changed = legacyId === 0 ? {} : { legacy_transactions: [{ container_id: atLeast('bedrock_1.19.50') ? 29 : 28, changed_slots: [{ slot_id: slot }] }] }
-  const legacy = { legacy_request_id: legacyId, ...changed }
-  const type = use === undefined ? 'normal' : 'item_use'
-  const data = use === undefined ? {} : { transaction_data: use }
-  // the version's layout; 1.16.210 says whether the actions name items by network id
-  if (!atLeast('bedrock_1.16.210')) return { transaction: { ...legacy, transaction_type: type, network_ids: false, inventory_actions: actions, ...data } } as Transaction
-  return { transaction: { legacy, transaction_type: type, actions: atLeast('bedrock_1.16.220') ? actions : { network_ids: false, actions }, ...data } } as Transaction
-}
-
 /** Java's book: writeBook and signBook, by book_edit as the vanilla client's book screen sends it */
 export default function book (bot: BedrockBotInternal): void {
   const core = bot._core
@@ -175,7 +114,9 @@ export default function book (bot: BedrockBotInternal): void {
   /** the edit after the vanilla client's transaction, the book shown as it leaves it: once the server shows the book so, with a new stack id */
   async function commit ({ outbox }: FrameContext, slot: number, found: Stack, made: Stack, edit: Edit, legacyId: number): Promise<void> {
     const ref = inventory.inventoryRef(slot)
-    outbox.queue('inventory_transaction', bookTransaction(version, slot - QUICK_BAR_START, found, made, legacyId))
+    // the vanilla client's, which the server refuses: the book given to the creative inventory and the edited one taken from it
+    const creative = [{ slot: 0, before: undefined, after: found }, { slot: 1, before: made, after: undefined }]
+    outbox.queue('inventory_transaction', slotTransaction(version, { type: 'normal', hotbarSlot: slot - QUICK_BAR_START, before: found, after: made, legacyId, creative }))
     outbox.queue('book_edit', bookEdit(version, slot - QUICK_BAR_START, edit))
     inventory.predictSlot(ref, made)
     // the server answers the refused transaction with the book as it was before the edit, then sends the edited one
@@ -194,8 +135,9 @@ export default function book (bot: BedrockBotInternal): void {
    */
   function open ({ outbox }: FrameContext, slot: number, found: Stack): void {
     const opened = remade(found, found.networkId, { ...nbtOf(found), pages: noPages() })
-    const use = clickAir(version, slot - QUICK_BAR_START, found, bot._player.eye)
-    outbox.queue('inventory_transaction', bookTransaction(version, slot - QUICK_BAR_START, found, opened, core.requestIds.nextLegacyTransaction(), use))
+    const hotbarSlot = slot - QUICK_BAR_START
+    const data = clickAir(version, hotbarSlot, found, bot._player.eye)
+    outbox.queue('inventory_transaction', slotTransaction(version, { type: 'item_use', hotbarSlot, before: found, after: opened, legacyId: core.requestIds.nextLegacyTransaction(), data }))
     inventory.predictSlot(inventory.inventoryRef(slot), opened)
   }
 
