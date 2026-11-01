@@ -102,6 +102,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.openEnchantmentTable(block)`: Java's, its window's options from player_enchant_options and its enchant (see the
   enchanting table below).
 - `bot.bedrock.openGrindstone(block)` (Bedrock's): the grindstone, and its window's grind (see the grindstone below).
+- `bot.bedrock.putBookOnLectern(lectern, book)` (Bedrock's): a book put on a lectern by a use (see the lectern below).
 - `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
 - `bot.setQuickBarSlot(slot)`, `bot.QUICK_BAR_START`: selecting a hotbar slot (see items below).
 - `bot.equip(item, destination)`, `bot.unequip(destination)`, `bot.getEquipmentDestSlot(destination)`,
@@ -1039,7 +1040,10 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   click changes no slot: the block, the face, the hotbar slot, the held item without its stack id (an ItemV4 from
   1.26.30, a version after mob_equipment's), the eye as the auth inputs report it, the point clicked from the block's
   corner and the block's runtime id; from 1.21.20 triggered by the player's input and predicted to succeed, from 1.26.10
-  with no cooldown, from 1.26.51 by the main hand. The face and the point are where the eye's ray, along the auth input's
+  with no cooldown, from 1.26.51 by the main hand. A use whose block takes the held item (a book a lectern takes: see
+  the lectern below) changes the slot from 1.26.60: the click names the hotbar slot emptied of it (`container`, window
+  0, the item as `held_item` then none), and the slot shows empty at once, the empty hand told in the use's tick (the
+  inventory's rule above); up to 1.26.51 the click names no slot, and the hand is told once the server sent the slot. The face and the point are where the eye's ray, along the auth input's
   rotation, first meets a block, if that is this one (on `direction`'s face, if given), the point found as a float and
   less the block's corner as the client finds it (`cursorPos` instead, if given); else the bot first looks at `cursorPos`
   (the face's centre) on `direction`'s face (the top), as Java's, and clicks there once an auth input carried the look.
@@ -1076,7 +1080,8 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **Events**: `windowOpen` (a screen shown: see the screens below), `windowClose` (the screen
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
-Not yet: using a block with an item the use places or uses up (the client then names the slot it changes). The
+Not yet: using a block with an item the use places or uses up but a lectern's book (from 1.26.60 the client then
+names the slot it changes; a jukebox's disc, recorded on 1.26.20 – 1.26.60, is used without the arm's swing). The
 screens no feature defines (the Education ones and the command block, structure and jigsaw editors) are counted, not
 shown.
 
@@ -1534,13 +1539,23 @@ For a lectern the server told no book of, the close sends nothing, as the vanill
   untold: the bot reads no block entity of a chunk.
 - **`setPage(page)`** and **`takeBook()`** are unsupported: they reject naming the member, as no recording turns a
   page or takes the book.
+- **`activateBlock(lectern)`** holding a book and quill or a written book puts it on a lectern the server told no book
+  of, as the vanilla client's use does (see using a block above): the use names the hotbar slot emptied from 1.26.60,
+  none before; the server then sends the slot emptied and block_entity_data with the book. A lectern told holding a
+  book (or untold: one whose block entity came only in its chunk, which the bot takes for empty) is used as any block.
+- **`bot.bedrock.putBookOnLectern(lectern, book)`** (Java has no lectern helper) equips `book` (the hand's, as null),
+  uses the lectern, and resolves once the server told it holds a book; it rejects, sending nothing, a block that is no
+  lectern, a lectern told holding a book and a given or held item that is no book, and rejects when the server tells no book in 100
+  ticks.
 
-Recorded on 1.26.20, 1.26.51 and 1.26.60 (protocol_blocks_ui): a book and quill put on a lectern (block_entity_data
+Recorded on 1.26.20, 1.26.51 and 1.26.60 (protocol_blocks_ui): a book and quill put on a lectern by a use, byte for
+byte the bot's (the slot named and the empty hand told in the use's frame on 1.26.60; on 1.26.20 and 1.26.51 no slot,
+the hand told after the server's inventory_content, with the use's end on 1.26.51; then block_entity_data
 `hasBook 1`, page 0 of 0), its screen opened, the close sending `lectern_update {page 0, page_count 0, position}` 5,
 31 and 61 ms after the close step, which is the next frame; against a scripted server (containers_lectern) a lectern
 told no book of, whose close sent nothing. Not recorded: page turns, taking the book (`drop_book` up to 1.20.61; from
-1.20.71 its packet is not known), a written book's pages, a lectern screen before 1.26.20, and placing a book, which
-is a use that uses the item up (not supported yet).
+1.20.71 its packet is not known), a written book's pages, a lectern screen before 1.26.20, a written book put on a
+lectern (taken as the book and quill), and a book put on before 1.26.20 (taken as 1.26.20's: no slot named).
 
 ## Furnaces
 

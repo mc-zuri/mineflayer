@@ -363,6 +363,8 @@ export interface BedrockExtensions {
   selectLoomPattern: (pattern: string) => Promise<void>
   /** puts the banner (the inventory's first, as null) and the dye in the loom open or the one given, which it opens and closes, and takes the patterned banner to the inventory; rejects, sending nothing, without them */
   applyBannerPattern: (pattern: string, dye: Item, banner?: Item | null, loom?: Block | null) => Promise<void>
+  /** equips the book (a book and quill or a written book; the one held, as null) and uses the lectern, which the server told holds none; resolves once it tells the lectern holds a book */
+  putBookOnLectern: (lectern: Block, book?: Item | null) => Promise<void>
 }
 
 export interface BotEvents {

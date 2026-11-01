@@ -15,7 +15,10 @@ import { heldItem } from './items.ts'
 import type { Stack } from './items.ts'
 import type { LocalPlayer } from './movement.ts'
 
+type TransactionActions = NonNullable<BedrockServerboundPackets['inventory_transaction']['transaction']['actions']>
+
 const OWNER = 'use'
+const HOTBAR_START = 36
 const OPEN_TICKS = 100
 // the vanilla client ends a use at the first tick after the use key's release: the bot holds it through two ticks
 const HELD_TICKS = 2
@@ -39,9 +42,14 @@ export interface BlockClick {
   readonly result: Vec3f
   readonly hotbarSlot: number
   readonly held: Stack | undefined
+  /** whether the block takes the held item (a book a lectern does) */
+  readonly takesHeld: boolean
   /** the eye, as the auth inputs report it */
   readonly eye: Vec3f
 }
+
+/** whether a block takes an item (by name) a use holds */
+export type TakesHeld = (block: Block, item: string) => boolean
 
 function atLeast (version: BedrockVersion, since: BedrockVersion): boolean {
   return isBedrockVersionAtLeast(version, since)
@@ -95,7 +103,7 @@ export function swingArm (version: BedrockVersion, runtimeId: bigint, source: 'i
   return packet
 }
 
-/** the click, as an item use transaction that changes no slot */
+/** the click, as an item use transaction: from 1.26.60 naming the hotbar slot a block takes the held item from */
 export function clickBlock (version: BedrockVersion, click: BlockClick): BedrockServerboundPackets['inventory_transaction'] {
   const data: Record<string, unknown> = {
     action_type: 'click_block',
@@ -114,7 +122,12 @@ export function clickBlock (version: BedrockVersion, click: BlockClick): Bedrock
   }
   if (atLeast(version, 'bedrock_1.26.10')) data['client_cooldown_state'] = 'off'
   if (atLeast(version, 'bedrock_1.26.51')) data['hand'] = 'main_hand'
-  return useTransaction(version, 'item_use', data)
+  const packet = useTransaction(version, 'item_use', data)
+  if (click.takesHeld && atLeast(version, 'bedrock_1.26.60')) {
+    // ItemV4s, as from 1.26.30
+    packet.transaction.actions = [{ source_type: 'container', window_id: 0, slot: click.hotbarSlot, old_item: heldItem(true, click.held), new_item: heldItem(true, undefined) }] as TransactionActions
+  }
+  return packet
 }
 
 /** a use's data, in a transaction that changes no slot, as the version wraps it */
@@ -173,6 +186,8 @@ export class BlockUse {
   private runtimeId: bigint | undefined
   /** the use going on, until its key's release */
   private pressed: Use | undefined
+  /** the blocks a use can put the held item in, by name */
+  private readonly takers = new Map<string, TakesHeld>()
 
   constructor (bot: BedrockBotInternal, player: LocalPlayer, inventory: Inventory) {
     this.bot = bot
@@ -185,6 +200,11 @@ export class BlockUse {
     this.bot.openBlock = async (block, direction, cursorPos) => await this.open(core, block, { direction, cursorPos })
     core.observe(OWNER, 'start_game', packet => { this.runtimeId = packet.runtime_entity_id })
     core.system(OWNER, { name: 'use.end', place: { after: 'input.cook' }, gate: 'present', replay: false, run: ({ tick, outbox }) => { this.end(tick, outbox) } })
+  }
+
+  /** a block a use puts the held item in, when `takes` says so */
+  addTaker (block: string, takes: TakesHeld): void {
+    this.takers.set(block, takes)
   }
 
   /** the use, resolving with the screen the server opened, once shown */
@@ -244,6 +264,7 @@ export class BlockUse {
     const held = this.inventory.mainHand()
     const item = held === undefined ? undefined : bot.registry.items[held.networkId]
     const placesBeside = held === undefined || (item !== undefined && item.name in bot.registry.blocksByName && !CROPS.includes(item.name))
+    const takesHeld = item !== undefined && (this.takers.get(block.name)?.(block, item.name) ?? false)
     const normal = FACES[face]!
     const { x, y, z } = block.position
     const click: BlockClick = {
@@ -254,12 +275,15 @@ export class BlockUse {
       result: placesBeside ? { x: x + normal.x, y: y + normal.y, z: z + normal.z } : { x, y, z },
       hotbarSlot: this.inventory.quickBarSlot,
       held,
+      takesHeld,
       eye: this.player.eye
     }
     const { version } = bot
     if (atLeast(version, 'bedrock_1.19.1')) outbox.queue('player_action', useItemOn(runtimeId, click))
     outbox.queue('animate', swingArm(version, runtimeId))
     outbox.queue('inventory_transaction', clickBlock(version, click))
+    // from 1.26.60 the client shows the slot emptied at once, telling the server its empty hand in the tick
+    if (takesHeld && atLeast(version, 'bedrock_1.26.60')) this.inventory.predictSlot(this.inventory.inventoryRef(HOTBAR_START + click.hotbarSlot), undefined)
     // as recorded: every block the client used but the crafting table
     if (!atLeast(version, 'bedrock_1.19.1') && block.name !== 'crafting_table') outbox.queue('player_action', interactBlock(version, runtimeId, click))
     const ended = core.waits.untilDue()

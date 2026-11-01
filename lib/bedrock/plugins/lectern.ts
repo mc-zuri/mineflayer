@@ -1,3 +1,4 @@
+import type { Block } from 'prismarine-block'
 import prismarineItem from 'prismarine-item'
 import type { Item } from 'prismarine-item'
 import type { Tags, TagType } from 'prismarine-nbt'
@@ -11,6 +12,10 @@ import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 
 const OWNER = 'lectern'
 const NAMESPACE = 'minecraft:'
+/** the items a lectern takes */
+const BOOKS: readonly string[] = Object.freeze(['writable_book', 'written_book'])
+// as openBlock waits for the screen
+const PUT_TICKS = 100
 
 type Compound = Record<string, undefined | Tags[TagType]>
 
@@ -35,7 +40,7 @@ function numberOf (compound: Compound, key: string): number {
   return typeof value === 'number' ? value : 0
 }
 
-/** The lectern's book screen (Java has no lectern helper): its book read from the block entity, its close telling the page. */
+/** The lectern's book screen (Java has no lectern helper): its book read from the block entity, its close telling the page; a book put on it by a use. */
 export default function lectern (bot: BedrockBotInternal): void {
   const ItemClass = prismarineItem(bot.registry)
   const lecterns = new Map<string, Told>()
@@ -85,5 +90,22 @@ export default function lectern (bot: BedrockBotInternal): void {
     lecterns.set(key, { book: bookOf(value), page: numberOf(value, 'page'), totalPages: numberOf(value, 'totalPages') })
   })
 
+  /** the vanilla client's use of the lectern holding a book: resolves once the server told the lectern holds a book */
+  async function putBook (lectern: Block, book: Item | undefined): Promise<void> {
+    if (lectern.name !== 'lectern') throw new Error(`putBookOnLectern: ${lectern.name} is not a lectern`)
+    if (toldAt(lectern.position).book !== null) throw new Error('putBookOnLectern: the lectern holds a book')
+    const held = (book ?? bot.heldItem)?.name
+    if (held === undefined || !BOOKS.includes(held)) throw new Error(`putBookOnLectern needs a book and quill or a written book in the hand, not ${held ?? 'nothing'}`)
+    if (book !== undefined) await bot.equip(book, 'hand')
+    await bot.activateBlock(lectern)
+    await bot._core.waits.until(() => toldAt(lectern.position).book !== null, PUT_TICKS, `the server put no book on the lectern in ${PUT_TICKS} ticks`)
+  }
+
   bot._inventory.screens.add(LECTERN_SCREEN, { shown: extend, close })
+  // a lectern the server told no book of takes one
+  bot._blockUse.addTaker('lectern', ({ position }, item) => BOOKS.includes(item) && toldAt(position).book === null)
+  bot.bedrock = {
+    ...bot.bedrock,
+    putBookOnLectern: async (lectern, book) => { await putBook(lectern, book ?? undefined) }
+  }
 }
