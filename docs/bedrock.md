@@ -669,8 +669,19 @@ server tells of a block that moves, in the packet pass; the bot sends nothing, a
   on 1.26.20 to 1.26.40, they stayed single chests.
 - Nothing is emitted for block_event's `sound` type (never recorded, and Java has no such event), nor for a block the
   bot does not have. block_event's y is a varint up to 1.26.0, zigzag from 1.26.10.
+- **`pistonMove (block, isPulling, direction)`**: no block_event comes for a piston (Java's server sends a block
+  action); its block entity (`PistonArm`, block_entity_data, observed) tells the move as it starts, `NewState` 1
+  extending (`isPulling` 0) and 3 retracting (1), then 2 extended and 0 at rest a tick later, as recorded on 1.26.20,
+  1.26.51 and 1.26.60 (not recorded before 1.26.20: the same block entity is expected; a piston and a sticky piston
+  moving a stone were seen against Bedrock Dedicated Server 1.16.210, 1.17.0, 1.21.42 and 1.26.20 to 1.26.40). Each
+  move emits once: the `NewState` told last is kept by position, and forgotten when the block is replaced by another.
+  `block` must be a `piston` or a `sticky_piston`, as Java's. `direction` is Java's (0 down, 1 up, 2 north, 3 south,
+  4 west, 5 east), from the piston's `facing_direction`, whose horizontal sides are the reverse of other blocks':
+  2 south, 3 north, 4 east (recorded), 5 west (not recorded; 2 and 3 seen against those servers, the stone moving
+  along the side, 5 and the vertical facings not). block_entity_data's y is a varint up to 1.26.0, zigzag from
+  1.26.10.
 
-Not yet: `pistonMove`, `noteHeard`.
+Not yet: `noteHeard`.
 
 ## Entities
 
@@ -2540,7 +2551,7 @@ with an empty tag (7), and its first page by the book as it was, then edited (8)
   results_deprecated and crafting_event (up to 1.20.40) are written, each group playing a recorded craft with the bot,
   byte for byte; the block actions: by block_event's y, a varint 1.16.201 – 1.26.0, zigzag 1.26.10+, each group
   playing the recorded open and close of a chest, and by the columns that bring a double chest's block entities, whole
-  1.16.201 – 1.17.40). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
+  1.16.201 – 1.17.40, and by block_entity_data's y, each group playing a recorded piston's push and pull). The physics' values are the recorded ones, the same on every version unless a group says otherwise. The
   workspace's `pnpm test:recorded` replays the recordings themselves.
 - **e2e test** (the workspace's `pnpm test:e2e`): a bot on every Bedrock Dedicated Server build of a directory, each
   build started for it.
