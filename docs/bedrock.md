@@ -1986,9 +1986,11 @@ the cursor's place in the hand-back.
   later page's replace, the server adding the pages before it empty), then the pages past `pages` deleted from the last;
   a book with the pages already sends nothing. A book without pages (one given by a command) is first used as the
   vanilla client uses it to open its screen (an item use in the air, the book predicted with an empty page list, told
-  as held a tick before the edits): a server edits no book without pages, and answers the use with nothing (the
+  as held a tick before the edits), once: a server edits no book without pages, and answers the use with nothing (the
   Bedrock Dedicated Servers 1.19.80, 1.21.30, 1.21.120 and 1.26.61 left the edits of a book given by `/give`
-  unanswered until it was used). Each edit follows the legacy inventory transaction the vanilla client
+  unanswered until it was used) or, as 1.17.40.06 does, with the inventory (inventory_content), the book given an empty
+  tag and a new stack id but still no pages, and edits it then: a book used again while it has no pages would be used
+  until the timeout. Each edit follows the legacy inventory transaction the vanilla client
   sends with it (the slot's book as the edit leaves it, the book given to the creative inventory and the edited one
   taken from it), which the server refuses, answering with the book as it was (inventory_content), then with it edited,
   with a new stack id (an inventory transaction): the bot shows the edited book at once, telling it as held (as the
@@ -2034,7 +2036,9 @@ other version sends the same edits and transactions, written by its codec, in gr
 player's container in a signature's legacy transaction 28 up to 1.19.40, 29 from 1.19.50). The use of a book given
 without pages before its first page is played byte for byte on the same builds; every other version sends it written by
 its codec, with the fields of the version's use (the trigger and the failed prediction from 1.21.20, the cooldown from
-1.26.10, the hand from 1.26.51). No book_edit before 1.26.20 is recorded.
+1.26.10, the hand from 1.26.51). No book_edit before 1.26.20 is recorded. On 1.17.40 the tests answer a book given by
+`/give` (stack id 6) as the Bedrock Dedicated Server 1.17.40.06 did in the e2e test: its use by the inventory, the book
+with an empty tag (7), and its first page by the book as it was, then edited (8); the bot uses it once.
 
 ## Tests
 

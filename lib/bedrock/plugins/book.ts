@@ -189,7 +189,8 @@ export default function book (bot: BedrockBotInternal): void {
 
   /**
    * the vanilla client's use of a book without pages, which opens its screen, the book predicted with no page: the
-   * server, which answers nothing, edits no book without them
+   * server edits no book without them. It answers nothing, or (1.17.40) the inventory with the book given an empty tag,
+   * still without pages: a book is used once
    */
   function open ({ outbox }: FrameContext, slot: number, found: Stack): void {
     const opened = remade(found, found.networkId, { ...nbtOf(found), pages: noPages() })
@@ -198,13 +199,13 @@ export default function book (bot: BedrockBotInternal): void {
     inventory.predictSlot(inventory.inventoryRef(slot), opened)
   }
 
-  /** the book's next step, in an input pass once the server showed the one before: its use while it has no pages, a page while the pages differ, then the signature */
-  async function edit (member: string, slot: number, pages: readonly string[], signature: Signature | undefined): Promise<void> {
+  /** the book's next step, in an input pass once the server showed the one before: its use if it has no pages and was not used, a page while the pages differ, then the signature */
+  async function edit (member: string, slot: number, pages: readonly string[], signature: Signature | undefined, used = false): Promise<void> {
     const next = await core.call(async ctx => {
       const found = bookAt(member, slot)
       const have = pagesOf(found)
       const page = nextEdit(have, pages)
-      if (nbtOf(found)['pages'] === undefined && (page !== undefined || signature !== undefined)) {
+      if (!used && nbtOf(found)['pages'] === undefined && (page !== undefined || signature !== undefined)) {
         open(ctx, slot, found)
         return 'opened'
       }
@@ -221,7 +222,7 @@ export default function book (bot: BedrockBotInternal): void {
     })
     // the book with no page told as held before the edits, as the vanilla client tells it
     if (next === 'opened') await bot.waitForTicks(1)
-    if (next !== 'done') await edit(member, slot, pages, signature)
+    if (next !== 'done') await edit(member, slot, pages, signature, true)
   }
 
   /** Java's: the book moved to the hotbar's first slot and back, its hotbar slot selected and the selection given back */

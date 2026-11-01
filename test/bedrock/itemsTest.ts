@@ -1733,6 +1733,34 @@ describe('bedrock items', () => {
     })
   }
 
+  describe('writing a book given without pages, the server answering its use with the inventory, the book given an empty tag (1.17.40)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.17.40', 'bedrock_1.17.40')) {
+      it(`bedrock ${version}: uses the book once, then writes the page`, async () => {
+        const { bot, server, driver, inventory } = await holding(version, null)
+        const writable = bot.registry.itemsByName['writable_book']?.id ?? 0
+        // as the e2e server 1.17.40.06 gave the book (stack id 6), answered its use (7, an empty tag) and its page (8)
+        const used: Given = { id: writable, count: 1, stackId: 7, nbt: {} }
+        inventory.slot('inventory', 0, { id: writable, count: 1, stackId: 6 })
+        await driver.tick()
+        const written = bot.writeBook(36, ['e2e page'])
+        await driver.tick()
+        inventory.content('inventory', [used, ...Array.from({ length: 35 }, () => null)])
+        await driver.ticks(3)
+        // the refused transaction's answer, the book as it was, and the edited book
+        inventory.content('inventory', [used, ...Array.from({ length: 35 }, () => null)])
+        inventory.transaction([{ window: 'inventory', slot: 0, from: used, to: { ...used, stackId: 8, nbt: pagesNbt(['e2e page']) } }])
+        await settled(driver, written)
+        const uses = server.sentOf('inventory_transaction').filter(({ transaction }) => transaction.transaction_type === 'item_use')
+        assert.deepStrictEqual([uses.length, server.sentOf('book_edit'), bookOf(bot.inventory.slots[36])], [
+          1,
+          [{ slot: 0, type: 'replace_page', page_number: 0, text: 'e2e page', photo_name: '' }],
+          { name: 'writable_book', stackId: 8, pages: ['e2e page'] }
+        ])
+        bot.end()
+      })
+    }
+  })
+
   describe(`writing and signing books, alike on every version: (on ${latestSupportedBedrockVersion})`, () => {
     const version = latestSupportedBedrockVersion
     const writableOf = (bot: BedrockBot): number => bot.registry.itemsByName['writable_book']?.id ?? 0
