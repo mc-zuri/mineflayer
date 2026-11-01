@@ -1069,10 +1069,14 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   click is where the pick meets the entity, else (another entity or a block in the way, or farther than the pick
   reaches) at the point looked at, as Java's `activateEntityAt` names its position. No swing and no `player_action`:
   the swing recorded after an entity use is the server's `animate` copied by the recording's observer (10 µs apart). A
-  use waits for a block's use to end, as a held key cannot be pressed again; both resolve once the use is sent. They
-  reject before the player is shown, over a screen, and for an entity not in `bot.entities`. As recorded using a boat on
-  every build and a villager holding wheat on 1.26.20, 1.26.51 and 1.26.60: the client's uses are the bot's, byte for
-  byte, when the bot looks as the client's camera did, a boat's position its feet (see entities above).
+  use waits for a block's use to end, as a held key cannot be pressed again; both resolve once the use is sent. While
+  the player sneaks, the pick starts at the camera the sneak lowered, 0.35 below the eye (the eye the auth inputs and
+  the use report does not change): the vanilla client's camera lowers over a few ticks, and its picks recorded 5 to 9
+  ticks into a sneak started 0.338, 0.345 and 0.347 below (1.26.20, 1.26.51, 1.26.60), so the bot's point is up to 0.012
+  lower than theirs, the rest of the use the same bytes. They reject before the player is shown, over a screen, and for
+  an entity not in `bot.entities`. As recorded using a boat on every build and a villager holding wheat on 1.26.20,
+  1.26.51 and 1.26.60: the client's uses are the bot's, byte for byte, when the bot looks as the client's camera did, a
+  boat's position its feet (see entities above).
 - **set_player_inventory_options** (1.20.50 – 1.21.101): the client tells the server once a process, 120 ms after a
   screen's first opening, the screens it opened so far (the inventory's `layout`, the crafting table's
   `crafting_layout`: `recipe_book` once opened). A bot is a process of its own; a test that continues a recording's
@@ -1204,10 +1208,15 @@ container's, then the player's inventory and hotbar (`inventoryStart` the contai
   window). An entity they open with `bot.openEntity`.
 - **`bot.openEntity(entity, Class)`** is Java's: `bot.activateEntity(entity)`, resolving with the screen the server
   opens once shown, rejecting as `openBlock` does (no screen in 100 ticks, one the bot does not show); `Class` is
-  ignored, as Java's. `openContainer` opens any entity with it, as Java's, and resolves with a container's window. The
-  entities' screens, as a scripted server opened them on 1.26.20, 1.26.51 and 1.26.60 (containers_minecart_chest,
-  containers_minecart_hopper, containers_chest_boat: no use, no content, the slots by inventory_slot, the requests
-  naming `container`):
+  ignored, as Java's. A horse, a donkey, a mule, a skeleton horse, a zombie horse, a llama or a trader llama it uses
+  sneaking, as the vanilla client opens their screen (a use without the sneak rides them, unlike Java's openEntity,
+  which does not sneak): unless the player sneaks already, it presses the sneak key, uses the entity in the input pass
+  after the tick whose auth input started the sneak (1.16.201: its player_action `start_sneak`), and releases the key
+  once the open resolved or rejected. It rejects if the player did not sneak in 20 ticks (physicsEnabled off holds it),
+  sending no use. `openContainer` opens any entity with it, as Java's, and resolves with a container's window (a
+  horse's screen is not one: it rejects with Java's error). The entities' screens, as a scripted server opened them on
+  1.26.20, 1.26.51 and 1.26.60 (containers_minecart_chest, containers_minecart_hopper, containers_chest_boat: no use,
+  no content, the slots by inventory_slot, the requests naming `container`):
 
   | Entity | container_open's type | `window.type`, `window.title` | Its slots |
   | --- | --- | --- | --- |
@@ -1228,11 +1237,18 @@ container's, then the player's inventory and hotbar (`inventoryStart` the contai
   vanilla client closed it 310 to 314 ms after the close key on 1.26.51, as it closes the inventory, not a container's
   405 to 438 ms; 405 to 407 ms on 1.26.60, a container's 530 to 532 ms. The bot does not check which items its slots
   take: update_equipment names them (`acceptedItems`) by their legacy names (`horsearmordiamond`), which the registry
-  has not. Tests (`test/bedrock/horseTest.ts`): every version plays 1.26.60's opening, click and close with its ids.
+  has not. `bot.openEntity(horse)` opens it as the vanilla client did against Bedrock Dedicated Server on 1.26.20,
+  1.26.51 and 1.26.60 (protocol_item_stacks, protocol.horse_equip: a tamed horse, the sneak pressed, the use, the
+  answer update_equipment of window 7, in the use's next batch): by a sneaking use (see `openEntity` above). Tests
+  (`test/bedrock/horseTest.ts`): every version plays 1.26.60's opening, click and close with its ids, and opens the
+  horse with `openEntity`, the sneak's start (player_action on 1.16.201, later the auth input's flag) before the use,
+  its stop after the screen is shown; on 1.26.20, 1.26.51 and 1.26.60 the use is the recorded bytes but the click's y
+  (see `activateEntity` above). Not recorded: the screen of a donkey, a mule, a llama or the other kin the bot opens
+  sneaking, nor an untamed horse's answer.
 
-Not yet: how the vanilla client opens the horse's screen (the inventory key while riding: `interact open_inventory`,
-its target not recorded) and what Bedrock Dedicated Server sends then; a donkey's, a mule's or a llama's chest slots;
-`chestLidMove` (block_event).
+Not yet: the horse's screen opened while riding it (the inventory key: `interact open_inventory`, never recorded while
+riding, and the bot does not ride) and what Bedrock Dedicated Server sends then; a donkey's, a mule's or a llama's chest
+slots; `chestLidMove` (block_event).
 
 ### Drags and double clicks
 

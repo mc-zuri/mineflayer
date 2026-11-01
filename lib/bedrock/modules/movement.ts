@@ -141,6 +141,11 @@ export class LocalPlayer {
     return reportedEyePosition(this.state)
   }
 
+  /** whether the player sneaks, as its last tick left it */
+  get sneaking (): boolean {
+    return this.state.sneaking
+  }
+
   install (core: BedrockCore): void {
     this.bot.look = async (yaw, pitch) => { await this.look(core, yaw, pitch) }
     this.bot.lookAt = async point => {

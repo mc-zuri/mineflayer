@@ -19,6 +19,15 @@ const PICK_REACH = 5.5
 /** it picks an entity by its box grown by 0.1 on each side */
 const PICK_GROWTH = 0.1
 const AXES = Object.freeze(['x', 'y', 'z'] as const)
+/**
+ * the vanilla client's camera, once a sneak lowered it, is this far below the eye its auth inputs report: its picks
+ * recorded 5 to 9 ticks into a sneak came from 0.338, 0.345 and 0.347 below, still lowering
+ */
+const SNEAK_CAMERA_DROP = 0.35
+/** the entities whose screen a use opens while the player sneaks: a use without the sneak rides them */
+const RIDDEN_UNLESS_SNEAKING: readonly string[] = Object.freeze(['horse', 'donkey', 'mule', 'skeleton_horse', 'zombie_horse', 'llama', 'trader_llama'])
+/** the tick after the key's press starts the sneak: a held player (physicsEnabled off) does not */
+const SNEAK_TICKS = 20
 
 /** a use of an entity: where the player's pick met it, and what it holds */
 export interface EntityClick {
@@ -80,9 +89,23 @@ export class EntityUse {
     this.bot.openEntity = async entity => await this.open(core, entity)
   }
 
-  /** the use, resolving with the screen the server opened, once shown */
+  /**
+   * the use, resolving with the screen the server opened, once shown; a horse's (and its kin's) while sneaking, as the
+   * vanilla client opens it: the sneak pressed unless held, the use once an auth input told it, released once done
+   */
   async open (core: BedrockCore, entity: Entity): Promise<Window> {
-    return await openedBy(core, this.bot, this.inventory, String(entity.name), async () => { await this.use(core, entity) })
+    const name = String(entity.name)
+    if (!RIDDEN_UNLESS_SNEAKING.includes(name)) return await openedBy(core, this.bot, this.inventory, name, async () => { await this.use(core, entity) })
+    const pressed = !this.bot.getControlState('sneak')
+    try {
+      return await openedBy(core, this.bot, this.inventory, name, async () => {
+        this.bot.setControlState('sneak', true)
+        if (!this.player.sneaking) await core.waits.until(() => this.player.sneaking, SNEAK_TICKS, `the player did not sneak in ${SNEAK_TICKS} ticks, as a use opening the ${name}'s screen does`)
+        await this.use(core, entity)
+      })
+    } finally {
+      if (pressed) this.bot.setControlState('sneak', false)
+    }
   }
 
   /**
@@ -112,7 +135,8 @@ export class EntityUse {
 
   /** the point where the pick meets the entity, if it is the first entity it meets before a block */
   private pick (target: Entity): Vec3f | undefined {
-    const { eye, rotation } = this.player
+    const { rotation } = this.player
+    const eye = this.camera()
     const direction = lookDirection(rotation)
     const f = Math.fround
     const end = (axis: 'x' | 'y' | 'z'): number => f(f(eye[axis] + f(direction[axis] * PICK_REACH)) - eye[axis])
@@ -129,6 +153,12 @@ export class EntityUse {
       picked = { entity, point: entry.point }
     }
     return picked?.entity === target ? picked.point : undefined
+  }
+
+  /** where the client's pick starts: its camera, lowered by a sneak */
+  private camera (): Vec3f {
+    const { eye, sneaking } = this.player
+    return sneaking ? { ...eye, y: Math.fround(eye.y - SNEAK_CAMERA_DROP) } : eye
   }
 
   private click ({ outbox }: UsePass, entity: Entity, { x, y, z }: Vec3f): void {
