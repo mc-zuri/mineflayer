@@ -92,6 +92,28 @@ describe('bedrock transport', () => {
       }
     })
 
+    it('reads what the client received before it closed itself: a kick RakNet handed over with the close', () => {
+      const client = new FakeProtocolClient()
+      const { inbox, received } = recorder()
+      const delays: Array<{ run: () => void, ms: number }> = []
+      const transport = connectTransport(client, inbox, () => 0, (run, ms) => { delays.push({ run, ms }) })
+      client.calls.length = 0
+      // RakNet's close, and the disconnect packet bedrock-protocol reads a turn later
+      client.close()
+      assert.deepStrictEqual(client.calls, [])
+      client.emit('packet', parsed('disconnect', {}))
+      assert.deepStrictEqual(received.packets, ['disconnect 3 @0'])
+      assert.deepStrictEqual(delays.map(delay => delay.ms), [0])
+      delays[0]?.run()
+      assert.deepStrictEqual(client.calls, ['close'])
+      client.emit('close')
+      delays[1]?.run()
+      assert.deepStrictEqual(received.notices, [{ kind: 'closed', byServer: true }])
+      // the bot's own close, at once
+      transport.close()
+      assert.deepStrictEqual(client.calls, ['close', 'close'])
+    })
+
     it('closes the client when it cannot start, and says why', () => {
       for (const failure of [new Error('Unsupported version'), 'not an error']) {
         const client = new FakeProtocolClient()

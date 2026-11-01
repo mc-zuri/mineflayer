@@ -59,6 +59,11 @@ export function connectBedrockProtocol (options: ProtocolClientOptions, inbox: I
  */
 export function connectTransport (client: ProtocolClient, inbox: InboxWriter, now: () => Ns, delay: (run: () => void, ms: number) => void): Transport {
   let byServer = false
+  // bedrock-protocol reads what RakNet received a turn later (process.nextTick), but closes, dropping its listeners, as
+  // soon as RakNet tells it the server closed the connection: a kick's disconnect packet that RakNet hands over with the
+  // close is lost. Its own closes wait for what came before them
+  const closeNow = client.close.bind(client)
+  client.close = () => { delay(closeNow, 0) }
   client.on('status', status => {
     if (status === CONNECTING) inbox.notice({ kind: 'connected' }, now())
   })
@@ -74,7 +79,7 @@ export function connectTransport (client: ProtocolClient, inbox: InboxWriter, no
     client.init()
   } catch (error) {
     inbox.notice({ kind: 'error', error: error instanceof Error ? error : new Error(String(error)) }, now())
-    client.close()
+    closeNow()
   }
   return {
     flush (batch: readonly OutgoingPacket[]): void {
@@ -90,7 +95,7 @@ export function connectTransport (client: ProtocolClient, inbox: InboxWriter, no
       client.onTick()
     },
     close (): void {
-      client.close()
+      closeNow()
     }
   }
 }

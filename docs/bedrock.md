@@ -2283,6 +2283,11 @@ What was found getting here, beyond mineflayer:
   - Its client's `disconnect()` writes the disconnect packet's `hide_disconnect_reason` under another name (so
     `false`) and no reason. The bot leaves with `close()`, which RakNet tells the server, but only 40 ms after it
     returns (raknet-native): the bot ends after that.
+  - Its client reads what RakNet received a turn later (`process.nextTick`), but closes, dropping its listeners, as
+    soon as RakNet tells it the connection closed. A server kicks with the disconnect packet and closes the connection
+    at once: when RakNet hands both over together (raknet-native polls them in one batch, which a busy process makes
+    likely), the kick was lost, the bot ending with `socketClosed` and no `kicked`. The bot's link defers the client's
+    own closes by a timer, after what came before them is read; its own close is at once.
   - Without a version, `createClient` pings the server for it, and if the ping fails connects as its latest version
     (1.26.60). A Bedrock bot takes the version from the caller instead.
   - `createClient` answers some game packets itself, at its own times: resource packs, client_cache_status,
