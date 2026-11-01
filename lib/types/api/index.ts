@@ -112,7 +112,8 @@ export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'log
   | 'message' | 'messagestr' | 'chat' | 'whisper' | 'actionBar' | 'unmatchedMessage'
   | 'windowOpen' | 'windowClose' | 'heldItemChanged'
   | 'chestLidMove' | 'pistonMove' | 'noteHeard' | 'resourcePack'
-  | 'blockPlaced' | 'entityPlaced' | 'signOpen'> & BlockUpdateAtEvents & ChatPatternEvents
+  | 'blockPlaced' | 'entityPlaced' | 'signOpen'
+  | 'windowOpen' | 'windowClose' | 'heldItemChanged' | 'connect'> & BlockUpdateAtEvents & ChatPatternEvents
 
 /** `blockUpdate:(1, 64, 2)`: the block at (1, 64, 2) changed */
 export interface BlockUpdateAtEvents {
@@ -174,6 +175,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   majorVersion: string
   version: BedrockVersion
   registry: Registry
+  /** minecraft-data's Bedrock features of the version (a Java-only name is false); typed with Java's names only */
+  supportFeature: IndexedData['supportFeature']
   /** from start_game */
   entity: BedrockPlayer
   /** the entities the server shows, by runtime id, the local player's too */
@@ -336,6 +339,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   openAnvil: (anvil: Block) => Promise<BedrockAnvil>
   /** Java's: in creative mode, the command block's command and settings (Java's defaults for the options not given) sent in the next frame as command_block_update, which the server takes from an operator only */
   setCommandBlock: (pos: Vec3, command: string, options?: Partial<CommandBlockOptions>) => void
+  /** throws: createBot connects the bot (Java's bot declares it and never assigns it) */
+  connect: (options: BedrockBotOptions) => void
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */

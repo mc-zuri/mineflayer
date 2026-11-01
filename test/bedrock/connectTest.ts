@@ -12,6 +12,7 @@ import type { BedrockCodec } from './common/codec.ts'
 import { bedrockTestBot, bedrockTestVersions, bedrockTestVersionsFrom, FakeBedrockClient } from './common/server.ts'
 import { createBedrockBot } from '../../lib/bedrock/loader.ts'
 import type { BedrockCore } from '../../lib/bedrock/core/core.ts'
+import type { LinkNotice } from '../../lib/bedrock/core/types.ts'
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
 type Expect<Check extends true> = Check
@@ -152,6 +153,12 @@ describe('bedrock connection', () => {
     assert.deepStrictEqual(logged, ['hidden: false'])
   })
 
+  it('throws on bot.connect, naming it: createBot connects the bot', async () => {
+    const { bot } = await bedrockTestBot(bedrockCodec(mineflayer.latestSupportedBedrockVersion))
+    assert.throws(() => { bot.connect({ version: mineflayer.latestSupportedBedrockVersion }) }, { message: 'bot.connect is not supported on Bedrock: createBot connects the bot' })
+    bot.end()
+  })
+
   for (const version of bedrockTestVersions()) {
     describe(`bedrock ${version}`, () => {
       let codec: BedrockCodec
@@ -177,6 +184,35 @@ describe('bedrock connection', () => {
         await driver.frame(0)
         assert.deepStrictEqual(events, ['login'])
         bot.end()
+      })
+
+      it('emits connect in the packet pass after the link is up, before login', async () => {
+        const { bot, internal, server, driver } = await bedrockTestBot(codec)
+        const events: string[] = []
+        bot.on('connect', () => { events.push('connect') })
+        bot.on('login', () => { events.push('login') })
+        internal._core.inbox.notice({ kind: 'connected' }, driver.now)
+        server.send('start_game', { runtime_entity_id: 7n })
+        assert.deepStrictEqual(events, [])
+        await driver.frame(0)
+        assert.deepStrictEqual(events, ['connect', 'login'])
+        bot.end()
+      })
+
+      it('emits connect once for a link up that then fails, and never for one that fails to come up', async () => {
+        const failed: LinkNotice = { kind: 'error', error: new Error('Connect timed out') }
+        const events: string[][] = []
+        for (const notices of [[failed], [{ kind: 'connected' } as const, failed]]) {
+          const { bot, internal, driver } = await bedrockTestBot(codec, { hideErrors: true })
+          const emitted: string[] = []
+          bot.on('connect', () => { emitted.push('connect') })
+          bot.on('error', error => { emitted.push(error.message) })
+          for (const notice of notices) internal._core.inbox.notice(notice, driver.now)
+          await driver.frame(0)
+          events.push(emitted)
+          bot.end()
+        }
+        assert.deepStrictEqual(events, [['Connect timed out'], ['connect', 'Connect timed out']])
       })
 
       it('is kicked by a disconnect packet, then ends with its message', async () => {
@@ -241,6 +277,32 @@ describe('bedrock connection', () => {
         await driver.frame(0)
         assert.deepStrictEqual(await ended, ['disconnect.quitting'])
       })
+    })
+  }
+
+  // minecraft-data's Bedrock features.json; its typings name Java's features only
+  for (const { versions, tallWorld, blockHashes, itemRegistryPacket } of [
+    { versions: bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.17.40'), tallWorld: false, blockHashes: false, itemRegistryPacket: false },
+    { versions: bedrockTestVersionsFrom('bedrock_1.18.0', 'bedrock_1.19.70'), tallWorld: true, blockHashes: false, itemRegistryPacket: false },
+    { versions: bedrockTestVersionsFrom('bedrock_1.19.80', 'bedrock_1.21.50'), tallWorld: true, blockHashes: true, itemRegistryPacket: false },
+    { versions: bedrockTestVersionsFrom('bedrock_1.21.60'), tallWorld: true, blockHashes: true, itemRegistryPacket: true }
+  ]) {
+    describe(`servers whose world is${tallWorld ? '' : ' not'} tall, with${blockHashes ? '' : 'out'} hashed block ids, with${itemRegistryPacket ? '' : 'out'} item_registry`, () => {
+      for (const version of versions) {
+        it(`bedrock ${version}: supportFeature tells the version's Bedrock features, and a Java-only one is false`, async () => {
+          const { bot } = await bedrockTestBot(bedrockCodec(version))
+          assert.deepStrictEqual([
+            bot.supportFeature('tallWorld'),
+            // @ts-expect-error a Bedrock feature
+            bot.supportFeature('blockHashes'),
+            // @ts-expect-error a Bedrock feature
+            bot.supportFeature('itemRegistryPacket'),
+            bot.supportFeature('nbtNameForEnchant'),
+            bot.supportFeature('dimensionIsAnInt')
+          ], [tallWorld, blockHashes, itemRegistryPacket, 'ench', false])
+          bot.end()
+        })
+      }
     })
   }
 

@@ -160,6 +160,9 @@ function createBedrockBot (botOptions: BedrockBotOptions, seams?: BedrockBotSeam
   bot.version = version
   bot.majorVersion = bot.registry.version.majorVersion!
   bot.protocolVersion = bot.registry.version.version!
+  bot.supportFeature = bot.registry.supportFeature
+  // Java's bot declares it and never assigns it: no option creates a bot that has not connected
+  bot.connect = () => { throw new Error('bot.connect is not supported on Bedrock: createBot connects the bot') }
   if (options.logErrors) {
     bot.on('error', err => {
       if (!options.hideErrors) {

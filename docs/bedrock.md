@@ -64,6 +64,9 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 
 - `bot.version` (`'bedrock_1.21.130'`), `bot.majorVersion` (`'1.21'`), `bot.protocolVersion` (`898`),
   `bot.registry` (minecraft-data and prismarine-registry of the version), `bot.username`.
+- `bot.supportFeature(name)`: as Java's, `bot.registry.supportFeature`: minecraft-data's Bedrock features of the
+  version (`bedrock/common/features.json`: `tallWorld` from 1.18.0, `blockHashes` from 1.19.80, `itemRegistryPacket`
+  from 1.21.60, …); a name only Java's features have is `false`. Its typings name Java's features only (see the notes).
 - `bot.entity`: the local player (a prismarine-entity `Entity`, from start_game): its feet's `position`, `velocity`,
   `yaw` and `pitch` (mineflayer's radians), `onGround`, and `isCollidedHorizontally` / `isCollidedVertically`
   (see the local player below).
@@ -132,7 +135,10 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.end(reason)`, `bot.quit(reason)`; `bot.loadPlugin`, `bot.loadPlugins`, `bot.hasPlugin`.
 - `bot.acceptResourcePack()`, `bot.denyResourcePack()`: the answer to the packs the server offers in the join, from a
   `resourcePack (url, hash, uuid)` listener (see resource packs below).
-- Events, as Java's: `inject_allowed` (the bot's first frame), `login` (the server's start_game), `game` (`bot.game`
+- `bot.connect(options)` throws, naming it: `createBot` connects the bot, and no option creates one that has not
+  connected (Java's bot declares it and never assigns it).
+- Events, as Java's: `inject_allowed` (the bot's first frame), `connect` (the RakNet connection is up, before any
+  packet of the login; never for a connection that fails), `login` (the server's start_game), `game` (`bot.game`
   changed: see game state), `spawn` (the player is initialized: see the local player; and after a respawn or a dimension
   change: see health and dimension changes), `respawn` (a respawn, or a dimension change), `health`, `death` (see
   health), `experience`, `breath` (see experience and breath), `spawnReset`, `rain`, `weatherUpdate` (see spawn point
@@ -198,6 +204,7 @@ Events come at their point in the frame:
 | Event | When |
 | --- | --- |
 | `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced`, `entityPlaced`, `signOpen` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `connect`, in the packet pass after bedrock-protocol told the connection is up | the packet pass |
 | `heldItemChanged` | where the held slot changes: the packet pass, or the input pass (a request's prediction, a response taken in) |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
@@ -2779,6 +2786,8 @@ What was found getting here, beyond mineflayer:
     setting a block of air instead.
 - **Bedrock Dedicated Server 1.26.30+** with `enable-lan-visibility=false` answers no unconnected ping, so a version
   cannot be asked for there; older builds answer.
+- **minecraft-data**'s typings name the features of Java's `features.json` only (`SupportsFeature`): a Bedrock-only
+  name (`blockHashes`) answers at run time but does not type check, and a Java-only name type checks and is `false`.
 - **minecraft-data** reads set_score's entries of 1.16.201 and 1.16.210 the wrong way round: its layout carries an
   entry's identity on a removal, where the wire carries it on a change, so a change reads short and a removal reads
   bytes the packet does not have.

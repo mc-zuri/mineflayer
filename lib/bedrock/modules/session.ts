@@ -62,6 +62,7 @@ export class Session {
     core.onNotice(OWNER, notice => {
       if (notice.kind === 'error') this.bot.emit('error', notice.error)
       if (notice.kind === 'closed') this.bot.emit('end', this.endReason ?? 'socketClosed')
+      if (notice.kind === 'connected') core.emit(this.bot, 'connect')
     })
     core.handle(OWNER, 'disconnect', packet => {
       this.endReason = kickReason(packet)
