@@ -22,6 +22,7 @@ import breath from './plugins/breath.ts'
 import cartography from './plugins/cartography.ts'
 import chat from './plugins/chat.ts'
 import chest from './plugins/chest.ts'
+import commandBlock from './plugins/command_block.ts'
 import craft from './plugins/craft.ts'
 import enchantmentTable from './plugins/enchantment_table.ts'
 import drags from './plugins/drags.ts'
@@ -81,6 +82,7 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   beacon,
   lectern,
   jukebox,
+  command_block: commandBlock,
   furnace,
   enchantment_table: enchantmentTable,
   grindstone,

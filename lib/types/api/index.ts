@@ -326,6 +326,8 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   openEnchantmentTable: (enchantmentTable: Block) => Promise<BedrockEnchantmentTable>
   /** Java's: openBlock on an anvil, resolving with its window: combine and rename as the vanilla client's clicks, the result by Bedrock's rules */
   openAnvil: (anvil: Block) => Promise<BedrockAnvil>
+  /** Java's: in creative mode, the command block's command and settings (Java's defaults for the options not given) sent in the next frame as command_block_update, which the server takes from an operator only */
+  setCommandBlock: (pos: Vec3, command: string, options?: Partial<CommandBlockOptions>) => void
   end: (reason?: string) => void
   quit: (reason?: string) => void
   /** a chat message, or a command (`/…`), sent in the next frame; throws before login */
@@ -1130,6 +1132,25 @@ export interface BedrockLectern extends Window<StorageEvents> {
 
   /** closes the window and hits the lectern, which drops the book beside it as an item; resolves once the server told the lectern holds no book */
   takeBook (): Promise<void>
+}
+
+/** Bedrock's command block window (Java has none): no slot of its own, the command and its settings being the block entity's, as the server last told them (a field it lacks: '', 0 or false) */
+export interface BedrockCommandBlock extends Window<StorageEvents> {
+  readonly command: string
+  /** Java's mode of the block: 0 sequence (a chain command block), 1 auto (repeating), 2 redstone (impulse) */
+  readonly mode: number
+  readonly trackOutput: boolean
+  readonly conditional: boolean
+  /** needing no redstone */
+  readonly alwaysActive: boolean
+  /** in ticks */
+  readonly tickDelay: number
+  readonly executeOnFirstTick: boolean
+  readonly lastOutput: string
+  /** the hover note */
+  readonly customName: string
+
+  close (): Promise<void>
 }
 
 export interface Dispenser extends Window<StorageEvents> {

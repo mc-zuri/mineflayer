@@ -106,6 +106,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   a lectern by a use, and taken by a hit (see the lectern below).
 - `bot.bedrock.jukeboxDisc(jukebox)`, `bot.bedrock.playDisc(jukebox, disc)`, `bot.bedrock.takeDisc(jukebox)`
   (Bedrock's): a jukebox's disc, put in and taken out by uses (see the jukebox below).
+- `bot.setCommandBlock(pos, command, options)`: Java's, as command_block_update; the command block's screen (see the
+  command block below).
 - `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
 - `bot.setQuickBarSlot(slot)`, `bot.QUICK_BAR_START`: selecting a hotbar slot (see items below).
 - `bot.equip(item, destination)`, `bot.unequip(destination)`, `bot.getEquipmentDestSlot(destination)`,
@@ -1101,8 +1103,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 
 Not yet: using a block with an item the use places or uses up but a lectern's book and a jukebox's disc (from 1.26.60
 the client then names the slot it changes). The
-screens no feature defines (the Education ones and the command block, structure and jigsaw editors) are counted, not
-shown.
+screens no feature defines (the Education ones and the structure and jigsaw editors) are counted, not shown.
 
 ### Screens
 
@@ -1719,6 +1720,43 @@ then the server's `jukebox_popup` text (`record.nowPlaying`), block_entity_data 
 a disc put in before 1.26.20 (taken as 1.26.20's: no slot named, as a lectern's book), and the disc taken out (the use
 is the vanilla client's of the version; whether the server answers with block_entity_data without `RecordItem` is
 not recorded).
+
+## Command block
+
+A command block is an operator's editor: the vanilla client opens its screen in creative mode only, and the server
+takes its edits (command_block_update) from an operator in creative mode only, as Java's (Java's setCommandBlock asserts
+creative mode; its server needs an operator too). The bot is never made an operator, so neither is checked against a
+server: the tests are written from the recordings below and from the protocol.
+
+- **The screen** (`command_block`, `lib/bedrock/screens/command_block.ts`, added by the `command_block` plugin) is
+  shown at its opening: a screen with no slot, the command and its settings being the block entity's, which
+  block_entity_data tells. Its window is a **`BedrockCommandBlock`** (Java has no command block window: the type
+  `minecraft:command_block`, with the player's 36 slots only, the inventory part from 0), whose members read the last
+  block_entity_data at the screen's position, while it is open too: **`command`** (`Command`), **`trackOutput`**
+  (`TrackOutput`), **`conditional`** (`conditionalMode`), **`alwaysActive`** (`auto`), **`tickDelay`**
+  (`TickDelay`), **`executeOnFirstTick`** (`ExecuteOnFirstTick`), **`lastOutput`** (`LastOutput`), **`customName`**
+  (the hover note, `CustomName`); a field the block entity lacks (or untold: one whose block entity came only in its
+  chunk) reads as `''`, 0 or false. **`mode`** is Java's of the block, a Bedrock command block's mode being the block
+  itself: 0 sequence (`chain_command_block`), 1 auto (`repeating_command_block`), 2 redstone (`command_block`, and a
+  block the bot has not). `clickWindow` on it rejects; its close has no animation, gives nothing back and sends nothing
+  (no container_close), closing the screen in the next frame, `windowClose` and `closeWindow` with it.
+- **`bot.setCommandBlock(pos, command, options)`** (Java's) throws, as Java's asserts do, out of creative mode and
+  for a block (the one `pos` is in) that is no command block, and for a mode other than 0, 1 and 2; else it sends
+  command_block_update in the next frame: the block's position, Java's `mode` (2, as null) as Bedrock's (`chain`,
+  `repeat`, `impulse`), `needs_redstone` as not `alwaysActive`, `conditional`, the command, `should_track_output`
+  as `trackOutput` (each option false, as null, as Java's defaults), then what the screen would keep: the block
+  entity's last output, hover note (`name`), tick delay and first tick (`''`, 0 and false untold), and from 1.21.60 an
+  empty `filtered_name`. Its position's y is a varint up to 1.26.0 and a zigzag varint from 1.26.10. It returns at
+  once, as Java's: the server tells the change in block_entity_data (and a mode change as the block), which the
+  screen's members read. Java's `MC|AdvCmd` channel of old versions has no Bedrock counterpart.
+
+Recorded on 1.26.20, 1.26.51 and 1.26.60 against a scripted server (containers_command_block): block_entity_data with no
+field of the command's (`id CommandBlock`, the position, `isMovable`), container_open of `command_block` at the
+block, the close sending nothing, the server's later container_close of the screen's id before it opened the screen
+again; before 1.26.20 the same packets, from the protocol. Not recorded: command_block_update (the vanilla client's
+edits need an operator, so whether it sends them at the close or at each edit, and which last output it sends, is not
+known), a real server's command block entity (the field names are Bedrock's block entity format's), and a command
+block minecart's screen and update.
 
 ## Furnaces
 

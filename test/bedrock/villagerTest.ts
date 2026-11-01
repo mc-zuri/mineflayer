@@ -745,9 +745,9 @@ describe('bedrock trading with villagers', () => {
       await inventoryOpened
       server.send('container_close', { window_id: 2, server: true })
       await driver.tick()
-      const unshown = assert.rejects(bot.openVillager(villager), { message: 'the server opened a command_block screen, which the bot does not show' })
+      const unshown = assert.rejects(bot.openVillager(villager), { message: 'the server opened a cauldron screen, which the bot does not show' })
       await driver.frame(10)
-      updateTrade(server, RECORDED_OFFERS, { type: 'command_block' })
+      updateTrade(server, RECORDED_OFFERS, { type: 'cauldron' })
       await driver.tick()
       await unshown
       assert.strictEqual(server.sentOf('inventory_transaction').length, 2)
@@ -782,7 +782,7 @@ describe('bedrock trading with villagers', () => {
       server.send('container_close', { window_id: 6, window_type: 'none', server: true })
       await driver.tick()
       const again = await shownOver(testBot, RECORDED_OFFERS, { windowId: 6 })
-      updateTrade(server, RECORDED_OFFERS, { windowId: 9, type: 'command_block' })
+      updateTrade(server, RECORDED_OFFERS, { windowId: 9, type: 'cauldron' })
       await driver.tick()
       assert.deepStrictEqual([again === window, bot.currentWindow === again, readies], [false, true, 2])
 
