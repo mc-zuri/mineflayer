@@ -7,7 +7,7 @@ import { isBedrockVersionAtLeast, latestSupportedBedrockVersion } from '../../li
 import type { BedrockVersion } from '../../lib/types/api/index.ts'
 import type { BedrockServerboundPackets } from '../../lib/types/protocol/bedrock-client.ts'
 import { bedrockCodec } from './common/codec.ts'
-import { addEntity, boundingBox, spawned, write } from './common/entities.ts'
+import { addEntity, boundingBox, LOCAL_UNIQUE, spawned, write } from './common/entities.ts'
 import { ServerInventory } from './common/inventory.ts'
 import { bedrockTestBot, bedrockTestVersions, bedrockTestVersionsFrom, inputFlags } from './common/server.ts'
 import type { FakeBedrockClient, TestBot } from './common/server.ts'
@@ -396,6 +396,150 @@ describe('bedrock horse screen', () => {
       await driver.tick()
       await opening
       assert.deepStrictEqual([early, server.sentOf('inventory_transaction'), bot.getControlState('sneak')], [false, [], false])
+      bot.end()
+    })
+  })
+})
+
+// The horse's screen opened while riding it: the inventory key's interact open_inventory naming the ride, never
+// recorded while riding (the recorded ones name the player). Run against the servers (1.16.201 – 1.26.61), a horse, a
+// donkey, a llama and a camel ridden by the console's ride answered with update_equipment whichever entity the packet
+// named, a skeleton horse with the inventory's container_open.
+
+const RIDE = 2
+
+/** a link as the version writes it: the vehicle's angular velocity from 1.21.20 */
+function link (version: BedrockVersion, ridden: bigint, rider: bigint, type: number): object {
+  const angular = isBedrockVersionAtLeast(version, 'bedrock_1.21.20') ? { angular_velocity: 0 } : {}
+  return { ridden_entity_id: ridden, rider_entity_id: rider, type, immediate: false, rider_initiated: true, ...angular }
+}
+
+/** joined, then put on a `type` the server shows, as the console's ride links them */
+async function ridingBot (version: BedrockVersion, type: string): Promise<HorseBot & { ride: Entity }> {
+  const testBot = await bedrockTestBot(bedrockCodec(version))
+  const { bot, server, driver } = testBot
+  const world = new ServerWorld(server, { hashes: isBedrockVersionAtLeast(version, 'bedrock_1.20.0') })
+  const itemStates = isBedrockVersionAtLeast(version, 'bedrock_1.21.60') ? {} : { itemstates: world.registry.writeItemStates() }
+  await world.join(testBot, { game: { entity_id: LOCAL_UNIQUE, runtime_entity_id: 1n, ...itemStates } })
+  const errors: string[] = []
+  bot.on('error', error => { errors.push(error.message) })
+  const ride = await showRidden(testBot, RIDE, type, 0)
+  write(server, 'set_entity_link', { link: link(version, -BigInt(RIDE), LOCAL_UNIQUE, 1) })
+  await driver.frame(0)
+  assert.strictEqual(bot.vehicle, ride)
+  return { ...testBot, inventory: new ServerInventory(server), errors, ride }
+}
+
+/** the open_inventory interacts the bot sent */
+function openInventories (server: FakeBedrockClient): Array<BedrockServerboundPackets['interact']> {
+  return server.sentOf('interact').filter(({ action_id: action }) => action === 'open_inventory')
+}
+
+/** the entity an interact names */
+function targetOf (interact: BedrockServerboundPackets['interact'] | undefined): number | undefined {
+  const target = interact?.target_entity_id ?? interact?.target_runtime_entity_id
+  return target === undefined ? undefined : Number(target)
+}
+
+/** openInventory while riding, the server answering with the ride's screen: the interacts sent, the window resolved */
+async function openedRiding ({ bot, server, driver, inventory }: HorseBot): Promise<[Array<BedrockServerboundPackets['interact']>, Window]> {
+  const opening = bot.openInventory()
+  await driver.tick()
+  const sent = openInventories(server)
+  openHorse(server, 7, -BigInt(RIDE))
+  inventory.content(7, [null, null])
+  await driver.frame(0)
+  return [sent, await opening]
+}
+
+/** openInventory while riding, the server answering with the inventory's container_open: the entity named */
+async function openedInventoryRiding ({ bot, server, driver }: HorseBot): Promise<number | undefined> {
+  const opening = bot.openInventory()
+  await driver.tick()
+  const named = targetOf(openInventories(server)[0])
+  server.send('container_open', { window_id: 2, window_type: 'inventory', coordinates: { x: 0, y: 0, z: 0 }, runtime_entity_id: -1n })
+  await driver.frame(0)
+  assert.strictEqual(await opening, bot.inventory)
+  return named
+}
+
+const INTERACT_LAYOUTS: ReadonlyArray<{ name: string, from: BedrockVersion, to: BedrockVersion, interact: BedrockServerboundPackets['interact'] }> = [
+  { name: 'its runtime id a varint', from: 'bedrock_1.16.201', to: 'bedrock_1.16.201', interact: { action_id: 'open_inventory', target_runtime_entity_id: RIDE } },
+  { name: 'target_entity_id', from: 'bedrock_1.16.210', to: 'bedrock_1.21.120', interact: { action_id: 'open_inventory', target_entity_id: BigInt(RIDE) } },
+  { name: 'target_entity_id, has_position false', from: 'bedrock_1.21.130', to: latestSupportedBedrockVersion, interact: { action_id: 'open_inventory', target_entity_id: BigInt(RIDE), has_position: false } }
+]
+
+describe('bedrock horse screen opened while riding (not recorded)', () => {
+  for (const layout of INTERACT_LAYOUTS) {
+    describe(`open_inventory naming the ride, ${layout.name} (${layout.from.slice(8)} – ${layout.to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(layout.from, layout.to)) {
+        it(`bedrock ${version}: openInventory on a horse names it, and resolves with the screen update_equipment opens`, async () => {
+          const testBot = await ridingBot(version, 'horse')
+          const { bot, errors } = testBot
+          const [sent, window] = await openedRiding(testBot)
+          assert.deepStrictEqual([sent, window === bot.currentWindow, window.type, errors], [[layout.interact], true, 'EntityHorse', []])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  describe('a zombie horse: no screen of its own up to 1.21.120, the player named for the inventory (1.16.201 – 1.21.120)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.16.201', 'bedrock_1.21.120')) {
+      it(`bedrock ${version}: names the player, and resolves with the inventory`, async () => {
+        const testBot = await ridingBot(version, 'zombie_horse')
+        assert.strictEqual(await openedInventoryRiding(testBot), 1)
+        testBot.bot.end()
+      })
+    }
+  })
+
+  describe('a zombie horse: a horse\'s inventory from 1.21.130 (1.21.130 – 1.26.60)', () => {
+    for (const version of bedrockTestVersionsFrom('bedrock_1.21.130', latestSupportedBedrockVersion)) {
+      it(`bedrock ${version}: names it, and resolves with its screen`, async () => {
+        const testBot = await ridingBot(version, 'zombie_horse')
+        const [sent, window] = await openedRiding(testBot)
+        assert.deepStrictEqual([sent.map(targetOf), window.type], [[RIDE], 'EntityHorse'])
+        testBot.bot.end()
+      })
+    }
+  })
+
+  describe(`no version differs in: (on ${latestSupportedBedrockVersion})`, () => {
+    const version = latestSupportedBedrockVersion
+
+    it('names a donkey, a mule, a llama, a trader llama, a camel, a camel husk, a nautilus and a zombie nautilus ridden too', async () => {
+      const named: Array<[string, Array<number | undefined>, string | number]> = []
+      for (const type of ['donkey', 'mule', 'llama', 'trader_llama', 'camel', 'camel_husk', 'nautilus', 'zombie_nautilus']) {
+        const testBot = await ridingBot(version, type)
+        const [sent, window] = await openedRiding(testBot)
+        named.push([type, sent.map(targetOf), window.type])
+        testBot.bot.end()
+      }
+      assert.deepStrictEqual(named, ['donkey', 'mule', 'llama', 'trader_llama', 'camel', 'camel_husk', 'nautilus', 'zombie_nautilus'].map(type => [type, [RIDE], 'EntityHorse']))
+    })
+
+    it('names the player on a ride with no screen of its own (a skeleton horse, a boat), and once the ride ended', async () => {
+      const named: Array<number | undefined> = []
+      for (const type of ['skeleton_horse', 'boat']) {
+        const testBot = await ridingBot(version, type)
+        named.push(await openedInventoryRiding(testBot))
+        testBot.bot.end()
+      }
+      const testBot = await ridingBot(version, 'horse')
+      const { bot, server, driver } = testBot
+      write(server, 'set_entity_link', { link: link(version, -BigInt(RIDE), LOCAL_UNIQUE, 0) })
+      await driver.frame(0)
+      named.push(await openedInventoryRiding(testBot))
+      assert.deepStrictEqual([named, bot.vehicle], [[1, 1, 1], null])
+      bot.end()
+    })
+
+    it('rejects when the server opens no screen in 100 ticks, naming the ride', async () => {
+      const { bot, driver } = await ridingBot(version, 'horse')
+      const rejected = assert.rejects(bot.openInventory(), { message: 'the server did not open the horse in 100 ticks' })
+      await driver.ticks(101)
+      await rejected
       bot.end()
     })
   })

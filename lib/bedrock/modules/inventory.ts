@@ -1,3 +1,4 @@
+import type { Entity } from 'prismarine-entity'
 import prismarineItem from 'prismarine-item'
 import type { Item } from 'prismarine-item'
 import prismarineWindows from 'prismarine-windows'
@@ -5,7 +6,7 @@ import type { Window } from 'prismarine-windows'
 import type { BedrockCore } from '../core/core.ts'
 import type { FrameContext, Ns, OutboxWriter } from '../core/types.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
-import { swingArm } from './block_use.ts'
+import { openedBy, swingArm } from './block_use.ts'
 import type { BedrockVersion, StorageEvents } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
@@ -33,6 +34,8 @@ const DEFAULT_STACK_SIZE = 64
 const HOTBAR_START = 36
 const OFFHAND = 'offhand:1'
 const OUTSIDE = -999
+/** the rides with a horse's inventory in the vanilla behaviour packs, whose screen the inventory key opens to their rider */
+const SCREENED_RIDES: readonly string[] = Object.freeze(['horse', 'donkey', 'mule', 'llama', 'trader_llama', 'camel', 'camel_husk', 'nautilus', 'zombie_nautilus'])
 
 /** a slot of the bot's containers: `inventory:0` – `inventory:35`, `armor:0` – `armor:3`, `offhand:1`, `ui:<slot>`, `open:<slot>` (the open screen's own window) */
 type Key = string
@@ -565,6 +568,13 @@ export class Inventory {
     if (screen?.window === this.window) return this.window
     if (screen !== undefined) throw new Error(`the inventory cannot open over the ${screen.window.type} window`)
     if (runtimeId === undefined) throw new Error('the inventory cannot open before start_game')
+    const ride = this.screenedRide()
+    if (ride !== undefined) {
+      // the server opens the ride's screen whichever entity the packet names
+      return await openedBy(core, this.bot, this, String(ride.name), async () => {
+        core.command(({ outbox }) => { outbox.queue('interact', this.interact('open_inventory', BigInt(ride.id))) })
+      })
+    }
     core.command(({ outbox }) => { outbox.queue('interact', this.interact('open_inventory', runtimeId)) })
     await core.waits.until(() => this.screen?.window === this.window, RESPONSE_TICKS, `the server did not open the inventory in ${RESPONSE_TICKS} ticks`)
     return this.window
@@ -909,6 +919,14 @@ export class Inventory {
   private showAll ({ window, keys }: Screen): void {
     keys.forEach((key, slot) => { showSlot(window, slot, itemOf(this.Item, this.slots.get(key))) })
     window.selectedItem = itemOf(this.Item, this.slots.get('ui:0'))
+  }
+
+  /** the entity the player rides, when the inventory key opens its screen: a zombie horse's has one from 1.21.130 */
+  private screenedRide (): Entity | undefined {
+    const ride = this.bot.vehicle
+    const name = String(ride?.name)
+    const screened = SCREENED_RIDES.includes(name) || (name === 'zombie_horse' && this.atLeast('bedrock_1.21.130'))
+    return screened && ride !== null ? ride : undefined
   }
 
   private interact (action: 'mouse_over_entity' | 'open_inventory', target: bigint): BedrockServerboundPackets['interact'] {

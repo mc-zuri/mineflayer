@@ -701,7 +701,8 @@ The vanilla client answers none of these packets. How they differ by version:
 - **mob_effect**'s removal carries an amplifier and a duration of 0 up to 1.20.61, the effect's from 1.20.71: the bot
   ends the effect it kept, as Java.
 - **set_entity_link** names the rider and the vehicle by their unique ids, and carries the vehicle's angular velocity
-  from 1.21.20.
+  from 1.21.20. Run against the 1.16.201 – 1.26.61 servers, the console's `ride` linked the local player to a horse
+  (`rider_initiated` true) and `stop_riding` removed the link: `bot.vehicle` the horse, then null.
 - **The ids**: the runtime id is a varint on 1.16.201 (a varint64 after) in the add packets, move_entity,
   set_entity_motion, set_entity_data, entity_event and mob_effect; add_entity names its ids unique_id and runtime_id
   from 1.19.10. Up to 1.16.210 the add packets give x, y, z and the speeds, and add_painting block coordinates.
@@ -977,7 +978,8 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
 - **`bot.openInventory()`** (Bedrock's: Java's inventory has no screen to open) sends `interact open_inventory` and
   resolves once the server opened the screen (container_open), with `bot.inventory`; at once if it is open, but while
   it is closing it waits for the server's close and opens it again. It rejects
-  before start_game, over another screen, or when the server does not open it in 100 ticks.
+  before start_game, over another screen, or when the server does not open it in 100 ticks. While the player rides a
+  horse or another ride with a horse's inventory, it opens the ride's screen instead (see the horse's screen below).
 - **`bot.closeWindow(window)`** gives back what the screen holds, one request for each slot an item goes to, in one
   packet: on the inventory screen the grid's items then the cursor's, on a crafting table the cursor's then the grid's;
   each to the stacks of its item with room (64 for an item that names no stack size, as the game has it), then to empty
@@ -1256,10 +1258,23 @@ container's, then the player's inventory and hotbar (`inventoryStart` the contai
   its stop after the screen is shown; on 1.26.20, 1.26.51 and 1.26.60 the use is the recorded bytes but the click's y
   (see `activateEntity` above). Not recorded: the screen of a donkey, a mule, a llama or the other kin the bot opens
   sneaking, nor an untamed horse's answer.
+- **The horse's screen opened while riding it**: while `bot.vehicle` is a horse, a donkey, a mule, a llama, a trader
+  llama, a camel, a camel husk, a nautilus, a zombie nautilus or (from 1.21.130) a zombie horse, the rides with a
+  horse's inventory in the vanilla behaviour packs, `bot.openInventory()` sends `interact open_inventory` naming the
+  ride, as the vanilla client's inventory key does, and resolves with the screen the server opens once shown, as
+  `openEntity` does (rejecting as it does, naming the ride: `the server did not open the horse in 100 ticks`). The
+  interact is the inventory's (the runtime id a varint on 1.16.201, `has_position` false from 1.21.130); the recorded
+  ones name the player, none was recorded while riding. On another ride (a skeleton horse, a boat, a minecart) it names
+  the player and opens the inventory, as when not riding. Run against the 1.16.201, 1.19.10, 1.19.40, 1.19.70, 1.21.0
+  and 1.26.61 servers, the player put on a tamed saddled horse with the console's `ride`: the server answered with
+  update_equipment of the horse's screen (its saddle in slot 0 by inventory_content), whichever entity the packet named,
+  and the close as any; on 1.21.0 and 1.26.61 a donkey, a llama and a camel alike, a skeleton horse with the
+  inventory's container_open. The e2e opens it on every build it starts (1.16.201 – 1.26.61; the console's `ride`
+  exists on all of them); 1.26.51.1, which it only reuses, is not checked. Tests (`test/bedrock/horseTest.ts`): each
+  version names the horse ridden as its interact writes it and resolves with update_equipment's screen; a zombie horse
+  is named from 1.21.130, the player before.
 
-Not yet: the horse's screen opened while riding it (the inventory key: `interact open_inventory`, never recorded while
-riding, and the bot does not ride) and what Bedrock Dedicated Server sends then; a donkey's, a mule's or a llama's chest
-slots; `chestLidMove` (block_event).
+Not yet: a donkey's, a mule's or a llama's chest slots; `chestLidMove` (block_event).
 
 ### Drags and double clicks
 
