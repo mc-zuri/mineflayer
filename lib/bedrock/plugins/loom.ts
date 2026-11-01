@@ -1,15 +1,15 @@
 import type { Block } from 'prismarine-block'
 import type { Item } from 'prismarine-item'
-import type { Tags } from 'prismarine-nbt'
 import type { Window } from 'prismarine-windows'
 import type { FrameContext } from '../core/types.ts'
 import { HOTBAR_AND_INVENTORY, placesFor } from '../modules/clicks.ts'
 import type { WindowClick } from '../modules/clicks.ts'
 import type { Move } from '../modules/inventory.ts'
-import { resultsAction, stackAction, withCount } from '../modules/items.ts'
+import { resultsAction, stackAction } from '../modules/items.ts'
 import type { SlotRef, Stack } from '../modules/items.ts'
-import { Ingredients, nbtOf, withNbt, writtenResult } from '../modules/recipes.ts'
+import { Ingredients, writtenResult } from '../modules/recipes.ts'
 import { CURSOR, OUTPUT, PLAYER_SLOTS } from '../modules/screens.ts'
+import { dyeColor, patterned } from '../modules/special_recipes.ts'
 import { LOOM_DYE, LOOM_INPUT, LOOM_MATERIAL, LOOM_SCREEN } from '../screens/loom.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
@@ -26,12 +26,6 @@ const PATTERNS: readonly string[] = Object.freeze([
 ])
 /** the patterns of a banner pattern item in loom_material, which no recording has */
 const ITEM_PATTERNS: readonly string[] = Object.freeze(['cre', 'sku', 'flo', 'moj', 'bri', 'cbo', 'pig', 'glb', 'flw', 'gus'])
-/** a banner pattern's Color: Bedrock's index of the dye's color (red's 1 recorded) */
-const COLORS: readonly string[] = Object.freeze([
-  'black', 'red', 'green', 'brown', 'blue', 'purple', 'cyan', 'light_gray', 'gray', 'pink', 'lime', 'yellow', 'light_blue', 'magenta', 'orange', 'white'
-])
-
-type Compound = Tags['compound']['value']
 
 /** The loom: its screen, the pattern its buttons select, and what a click on its output makes. */
 export default function inject (bot: BedrockBotInternal): void {
@@ -53,19 +47,7 @@ export default function inject (bot: BedrockBotInternal): void {
 
   /** -1: not a dye */
   function colorOf (dye: Stack): number {
-    const name = ingredients.nameOf(dye.networkId)
-    return COLORS.findIndex(color => name === `${color}_dye`)
-  }
-
-  /** the banner with the pattern after its own, its Patterns before its other tags, as recorded: {Patterns, Type} from 1.20.61, whose banners have Type 0 */
-  function patterned (banner: Stack, pattern: string, color: number): Stack {
-    const { Patterns: patterns, ...rest } = nbtOf(banner)
-    // a banner's patterns are compounds
-    const kept = patterns?.type === 'list' ? patterns.value.value as Compound[] : []
-    const added: Compound = { Color: { type: 'int', value: color }, Pattern: { type: 'string', value: pattern } }
-    const { wire } = banner
-    const bare: Stack = { ...banner, wire: 'auxiliary_value' in wire ? { ...wire, nbt: undefined } : { ...wire, extra: undefined } }
-    return withNbt(withCount(bare, 1), { Patterns: { type: 'list', value: { type: 'compound', value: [...kept, added] } }, ...rest })
+    return dyeColor(ingredients.nameOf(dye.networkId))
   }
 
   // up to 1.17.30 the request names no pattern; the times from 1.21.20

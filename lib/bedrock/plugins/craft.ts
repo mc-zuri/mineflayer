@@ -8,6 +8,7 @@ import { craftRecipeAction, craftRecipeAutoAction, createAction, resultsAction, 
 import type { SlotRef, Stack } from '../modules/items.ts'
 import { draw, drawSome, gridCells, Ingredients, matchGrid, nbtOf, RecipeBook, withNbt, writtenResult } from '../modules/recipes.ts'
 import type { CraftingRecipe, Drawn, GridUse, Ingredient } from '../modules/recipes.ts'
+import { SpecialRecipes } from '../modules/special_recipes.ts'
 import { INVENTORY_GRID } from '../screens/inventory.ts'
 import { TABLE_GRID } from '../screens/workbench.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
@@ -81,6 +82,7 @@ export default function inject (bot: BedrockBotInternal): void {
   const { version } = bot
   const ingredients = new Ingredients(bot.registry, version)
   const book = new RecipeBook(ingredients, version)
+  const special = new SpecialRecipes(bot.registry, ingredients, version, name => book.all().find(({ result }) => ingredients.nameOf(result.networkId) === name)?.result)
   // the recipe book's select sets what the output crafts, until a craft or another screen
   let selected: BedrockRecipe | undefined
   // a shift click in the select's input pass crafts once, as the vanilla client's select with shift
@@ -260,13 +262,26 @@ export default function inject (bot: BedrockBotInternal): void {
     await send(ctx, requests)
   }
 
+  // a grid no recipe matches, by the multi recipe that makes it: each cell but those it keeps gives one item
+  function specialCraft (screen: ScreenType, grid: ReadonlyArray<readonly [SlotRef, Stack | undefined]>): GridCraft | undefined {
+    const found = special.craft(grid.map(([, stack]) => stack), GRID_WIDTHS[screen])
+    const multi = found === undefined ? undefined : book.multiOf(found.uuid)
+    if (found === undefined || multi === undefined) return undefined
+    const uses = grid.flatMap(([from, stack], cell) => stack === undefined || found.kept.includes(cell) ? [] : [{ from, stack, count: 1 }])
+    const made: Made = { result: found.result, outputs: [found.result] }
+    return { networkId: multi.networkId, uuid: multi.uuid, uses, results: { ...made, told: made } }
+  }
+
   // the selected recipe while the grid makes it; after a craft what the grid makes, as a multi recipe that stands for it
   function gridCrafts (screen: ScreenType, draft: Draft): { first: GridCraft, later: GridCraft } | undefined {
     const grid = GRIDS[screen].map(ref => [ref, draft.stackAt(ref)] as const)
     const all = book.all()
     const chosen = matchGrid(ingredients, all.filter(({ recipe }) => recipe === selected), grid, GRID_WIDTHS[screen])
     const matched = matchGrid(ingredients, all, grid, GRID_WIDTHS[screen])
-    if (matched === undefined) return undefined
+    if (matched === undefined) {
+      const craft = specialCraft(screen, grid)
+      return craft === undefined ? undefined : { first: craft, later: craft }
+    }
     const craftOf = ({ recipe, uses }: typeof matched, asMulti: boolean): GridCraft => {
       const results = resultsOf(recipe, uses.map(({ stack }) => stack), true)
       const multi = asMulti ? book.multiFor(recipe) : undefined

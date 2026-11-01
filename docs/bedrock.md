@@ -1358,6 +1358,41 @@ own bits, the state the version's palette varies fastest lowest (acacia planks 4
 
   `recipesAll`, `recipesFor`, `craft` and `placeRecipe` take the recipes they stand for, as the vanilla client's recipe
   book does: no recording crafts a multi recipe by `craft_recipe_auto` or selects one.
+- **The grid's special recipes**: a grid no recipe matches is crafted by the multi recipe that makes it, when
+  crafting_data sent it, by the output's clicks as any grid (each mode, a shift click repeating while the grid has the
+  items); the request names the multi recipe and tells the result, a `consume` of one from each cell but those the
+  craft keeps. They have no `BedrockRecipe`: as the vanilla client's recipe book shows none, `recipesAll`,
+  `recipesFor`, `craft` and `placeRecipe` do not take them, and Java's bot has none either (minecraft-data's recipes),
+  only `clickWindow` on the output. None is recorded, so the results are the game's rules, Java's where Bedrock's are
+  not known (the keys of a compound written in their byte order, as every recorded item's):
+  - repair (`00000000-0000-0000-0100-000000000000`): two items of a kind with durability, the result their
+    durability and 5% of the most more (NBT `Damage`, 0 at least), the first's curses then those of the second the
+    first has not (`ench`), every other tag gone; not with an enchantment the registry does not know;
+  - map cloning (`9d4d10ba-5597-9385-c443-e9a8b7efcca4`): a filled map and empty maps (any data), a copy of the
+    filled map (its NBT) for each, the map too;
+  - book cloning (`2f4f8e33-846b-cad1-8dd9-4b8bcc766b9c`): a written book and books and quills, a copy for each,
+    its `generation` one more, the written book kept in the grid (not consumed); not a copy's copy (generation 2);
+  - banner duplicate (`7640a275-05d1-c5b5-f04b-bfa23e922baf`): a banner of patterns and one without, of one color
+    (data), a copy of the patterned one, which is kept in the grid;
+  - banner add pattern (`404472e1-afae-1ad8-7bd2-30f08d862592`), at the crafting table: a banner of fewer than 6
+    patterns and dyes (`…_dye`) of one color in one of the 32 shapes of the loom's dye patterns (Java's old table:
+    `ts` the top row, `mc` the middle, …), the banner in another cell: the pattern added as the loom adds it;
+  - the decorated pot (`4e4a2ec4-2a74-5a68-5b8e-c93fb85eea88`), at the crafting table: bricks and sherds (the
+    registry's `minecraft:decorated_pot_sherds`) on its four sides, crafting_data's pot with NBT `sherds`, the items'
+    names (`minecraft:brick` too) back, left, right, front (top, left, right, bottom cell), as Java's;
+  - fireworks (`00000000-0000-0000-0200-000000000000`), crafting_data's rocket or star with its NBT made of the
+    grid: rockets of paper, 1 – 3 gunpowder (`Flight`) and stars (their `FireworksItem` the `Explosions`, in the
+    grid's order; none: a list of no tag, as crafting_data's); a star of a gunpowder, dyes (`FireworkColor`, their
+    indices: black 0 … white 15, as the loom's), a shape or none (`FireworkType`: a fire charge 1, a gold nugget 2, a
+    head 3, a feather 4), a diamond (`FireworkTrail`) and a glowstone dust (`FireworkFlicker`), of the first dye's
+    data and the colors' mix as `customColor` (each channel's mean of crafting_data's one-dye stars' colors); a star
+    and dyes, the star's `FireworkFade` the dyes'. Up to 1.20.0 an ink sac, cocoa beans, lapis lazuli and bone meal
+    are dyes too, as crafting_data's stars take them by the multi recipe then (above).
+
+  Not supported, so nothing is sent: map extending (`ae40a14b-75b0-92d3-cef6-568d86af8987`, a filled map amid 8
+  paper: the map's scale, which decides whether it extends, is not in its item, and the extended item's NBT is not
+  known), the multi recipe `00000000-0000-0000-c800-000000000000` (1.19.80 – 1.26.60 here; what it makes is not
+  known), and a banner pattern of an item at the crafting table (which items the grid takes is not known).
 - **`bot.placeRecipe(recipe, all)`** (Bedrock's) selects a recipe as the recipe book does: the grid's items go back to
   the inventory first (as a close hands them back), then each cell's items from the inventory, a `place` for each cell
   and slot it takes from, a shaped recipe's from the grid's top left, a shapeless one's in the first slots; `all`
@@ -1397,11 +1432,16 @@ clicked at a crafting table or with the offhand empty and a stack of rockets in 
 before 1.20.80 (crafting_data has no `assume_symmetry` then: the bot mirrors every shaped recipe), a block's item
 facing other than north or the dispenser's way from 1.26.40, a grid filled by hand that a multi recipe stands for, the
 stars of cocoa beans, lapis lazuli and bone meal from 1.20.10, and the decorated pot's multi recipe before 1.20.50.
+The grid's special recipes are not recorded at all (their tests check the request's layout on every version and the
+results on 1.26.60): which multi recipe the vanilla client names for each, the results it tells (the colors' mix and
+a star's data, the pot's sherds and their order, the curses a repair keeps, a copy's NBT), which cells it keeps (Java
+keeps the written book and the patterned banner), whether it takes more than one empty map or book and quill, and
+whether the server checks the told result. A grid crafting_data's own recipe matches is crafted by it even where the
+special recipe would differ (rockets of paper, a gunpowder and a star of another star's data: crafting_data's rockets
+of that data, matched by the star's data alone).
 
-Not yet: the other multi recipes (a filled map extended or cloned, banners' patterns, a book cloned, an item repaired,
-a decorated pot of sherds, a firework star of a shape or a fade: no recording crafts them, and the bot sends nothing
-for a grid only one of them makes), and the recipe book's choice between recipes alike (the bot crafts the one given).
-The stations have their own sections below.
+Not yet: map extending in the grid and the other multi recipes above, and the recipe book's choice between recipes
+alike (the bot crafts the one given). The stations have their own sections below.
 
 ## Trading
 
