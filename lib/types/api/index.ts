@@ -1120,7 +1120,7 @@ export interface BedrockLectern extends Window<StorageEvents> {
   /** turns the book to `page` (from 0, below totalPages), telling the server (not recorded) */
   setPage (page: number): Promise<void>
 
-  /** up to 1.20.61 takes the book, resolving once the server told the lectern holds none (not recorded); unsupported from 1.20.71, whose take is not known */
+  /** rejects on every version: the servers ignore lectern_update's drop_book (up to 1.20.61), and the vanilla client's take is not known */
   takeBook (): Promise<void>
 }
 

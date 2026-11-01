@@ -184,11 +184,12 @@ describe('bedrock lectern', () => {
   })
 })
 
-// ---- pages turned and the book taken: not recorded, written from the protocol's lectern_update
+// ---- pages turned: not recorded, written from the protocol's lectern_update; the book's take: not known
 
 /** a written book of three pages */
 const WRITTEN_BOOK: Compound = Object.freeze({ ...RECORDED_BOOK, Name: string('minecraft:written_book') })
-const TAKE_TICKS = 100
+// the 1.16.201, 1.16.220, 1.18.30, 1.19.80, 1.20.10 and 1.20.61 servers ignored drop_book, sent with the screen open or not
+const TAKE_UNSUPPORTED = "takeBook is not supported on Bedrock: the servers ignore lectern_update's drop_book (up to 1.20.61, removed in 1.20.71), and the vanilla client's take is not known"
 
 interface Turn {
   name: string
@@ -196,25 +197,11 @@ interface Turn {
   to: BedrockVersion
   /** setPage(1) of the three pages */
   turned: object
-  /** takeBook's lectern_update, or its rejection */
-  taken: object | string
 }
 
 const TURNS: readonly Turn[] = [
-  {
-    name: 'drop_book: the take told by it',
-    from: 'bedrock_1.16.201',
-    to: 'bedrock_1.20.61',
-    turned: { page: 1, page_count: 3, position: LECTERN_AT, drop_book: false },
-    taken: { page: 1, page_count: 3, position: LECTERN_AT, drop_book: true }
-  },
-  {
-    name: 'no drop_book: no take known',
-    from: 'bedrock_1.20.71',
-    to: latestSupportedBedrockVersion,
-    turned: { page: 1, page_count: 3, position: LECTERN_AT },
-    taken: 'takeBook is not supported on Bedrock from 1.20.71: lectern_update has no drop_book there, and no recording takes a lectern\'s book'
-  }
+  { name: 'drop_book false', from: 'bedrock_1.16.201', to: 'bedrock_1.20.61', turned: { page: 1, page_count: 3, position: LECTERN_AT, drop_book: false } },
+  { name: 'no drop_book', from: 'bedrock_1.20.71', to: latestSupportedBedrockVersion, turned: { page: 1, page_count: 3, position: LECTERN_AT } }
 ]
 
 /** the call's promise once a frame ran its input pass */
@@ -223,11 +210,11 @@ async function afterFrame<Result> (driver: TestBot['driver'], call: Promise<Resu
   return await call
 }
 
-describe('bedrock lectern: pages turned and the book taken (not recorded)', () => {
+describe('bedrock lectern: pages turned (not recorded) and the book not taken', () => {
   for (const turn of TURNS) {
     describe(`${turn.name} (${turn.from.slice(8)} – ${turn.to.slice(8)})`, () => {
       for (const version of bedrockTestVersionsFrom(turn.from, turn.to)) {
-        it(`bedrock ${version}: turns the page in the next frame, shown at once and told by the close, and ${typeof turn.taken === 'string' ? 'rejects taking the book' : 'takes the book once the server told none'}`, async () => {
+        it(`bedrock ${version}: turns the page in the next frame, shown at once and told by the close, and rejects taking the book, sending nothing`, async () => {
           const { bot, server, driver, errors, tell, open, close } = await lecternBot(version)
           tell(lecternEntity(LECTERN_AT, WRITTEN_BOOK, 0, 3))
           const lectern = await open()
@@ -235,19 +222,8 @@ describe('bedrock lectern: pages turned and the book taken (not recorded)', () =
           assert.deepStrictEqual([server.sentOf('lectern_update'), lectern.page], [[], 0])
           await afterFrame(driver, turning)
           assert.deepStrictEqual([server.sentOf('lectern_update'), lectern.page], [[turn.turned], 1])
-          if (typeof turn.taken === 'string') {
-            await assert.rejects(lectern.takeBook(), { message: turn.taken })
-            assert.deepStrictEqual([await close(lectern), server.sentOf('lectern_update'), errors], [1, [turn.turned, turn.turned], []])
-          } else {
-            let taken = false
-            const taking = lectern.takeBook().then(() => { taken = true })
-            await driver.tick()
-            assert.deepStrictEqual([server.sentOf('lectern_update'), taken], [[turn.turned, turn.taken], false])
-            tell(lecternEntity(LECTERN_AT))
-            await afterFrame(driver, taking)
-            // the close of a lectern holding no book sends nothing
-            assert.deepStrictEqual([taken, lectern.book, await close(lectern), server.sentOf('lectern_update').length, errors], [true, null, 1, 2, []])
-          }
+          await assert.rejects(afterFrame(driver, lectern.takeBook()), { message: TAKE_UNSUPPORTED })
+          assert.deepStrictEqual([lectern.book?.name, await close(lectern), server.sentOf('lectern_update'), errors], ['written_book', 1, [turn.turned, turn.turned], []])
           bot.end()
         })
       }
@@ -274,27 +250,6 @@ describe('bedrock lectern: pages turned and the book taken (not recorded)', () =
       tell(lecternEntity(LECTERN_AT, WRITTEN_BOOK, 0, 3))
       await assert.rejects(afterFrame(driver, lectern.setPage(0)), { message: 'setPage needs the lectern window open' })
       assert.deepStrictEqual([server.sentOf('lectern_update'), errors], [[{ page: 2, page_count: 3, position: LECTERN_AT }], []])
-      bot.end()
-    })
-  })
-
-  describe('on 1.20.61, the last version whose lectern_update takes the book', () => {
-    const version = 'bedrock_1.20.61'
-
-    it(`takes no book of a lectern told holding none or a window not open, sending nothing, and rejects when the server tells the book there for ${TAKE_TICKS} ticks`, async () => {
-      const { bot, server, driver, errors, tell, open, close } = await lecternBot(version)
-      tell(lecternEntity(LECTERN_AT, WRITTEN_BOOK, 2, 3))
-      const lectern = await open()
-      tell(lecternEntity(LECTERN_AT))
-      await assert.rejects(afterFrame(driver, lectern.takeBook()), { message: 'takeBook: the lectern holds no book' })
-      tell(lecternEntity(LECTERN_AT, WRITTEN_BOOK, 2, 3))
-      const taking = assert.rejects(lectern.takeBook(), { message: `takeBook: the server took no book from the lectern in ${TAKE_TICKS} ticks` })
-      await driver.ticks(TAKE_TICKS + 2)
-      await taking
-      await close(lectern)
-      await assert.rejects(afterFrame(driver, lectern.takeBook()), { message: 'takeBook needs the lectern window open' })
-      const told = { page: 2, page_count: 3, position: LECTERN_AT }
-      assert.deepStrictEqual([server.sentOf('lectern_update'), errors], [[{ ...told, drop_book: true }, { ...told, drop_book: false }], []])
       bot.end()
     })
   })
