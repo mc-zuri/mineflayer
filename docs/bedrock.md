@@ -1762,15 +1762,15 @@ recorded), and from 1.21.120 waits for the crafting table's animation (390 ms), 
 - **`anvil.combine(itemOne, itemTwo, name)`** and **`anvil.rename(item, name)`** check as Java's, with its messages: a
   name longer than 35 characters, no result (`Not anvil-able (in either direction), cancelling.`, `Not valid rename,
   cancelling.`), and outside creative a level below the cost (`Player does not have enough xp to do action,
-  cancelling.`). `combine` takes the items in the order that makes a result (both orders cost the same where both
-  do). Then they do what the vanilla client does: the item moved into slot 0 by `bot.moveSlotItem`, the same for the
-  material into slot 1 (an item already in its slot stays there), a click on the result, and up to 1.19.40 the cursor
-  put in the first empty slot of the window's inventory (`bot.putSelectedItemRange`). Each item moves from the window's
-  slot holding its stack, else, as Java's `bot.transfer`, the first of its type, metadata and NBT in the window's
-  inventory, so an item of `bot.inventory` works as in Java; an item in no slot of the window rejects (`<member>: the
-  <name> given is in no slot of the window`). They resolve once the server took the
-  request and, outside creative, told the level it took (100 ticks), as Java's wait for `experience`; Java's rename
-  waits in creative too, and never resolves there.
+  cancelling.`). `combine` takes the items in the order that makes a result, as Java's the cheaper where both do (the
+  given order where both cost the same). Then they do what the vanilla client does: the item moved into slot 0 by
+  `bot.moveSlotItem`, the same for the material into slot 1 (an item already in its slot stays there), a click on the
+  result, and up to 1.19.40 the cursor put in the first empty slot of the window's inventory
+  (`bot.putSelectedItemRange`). Each item moves from the window's slot holding its stack, else, as Java's
+  `bot.transfer`, the first of its type, metadata and NBT in the window's inventory, so an item of `bot.inventory` works
+  as in Java; an item in no slot of the window rejects (`<member>: the <name> given is in no slot of the window`). They
+  resolve once the server took the request and, outside creative, told the level it took (100 ticks), as Java's wait for
+  `experience`; Java's rename waits in creative too, and never resolves there.
 - **A click on the result** (`bot.clickWindow(2, button, 0)`) makes the vanilla client's request, which leaves in the
   next tick: `optional` (no recipe, no filtered name), a `consume` of the material it takes, then of the item, and the
   result taken to the cursor (up to 1.19.40) or placed in the first slot of the inventory with room (from 1.19.50). Its
@@ -1793,10 +1793,29 @@ recorded), and from 1.21.120 waits for the crafting table's animation (390 ms), 
   the durability for each one, as many as it needs, each a level; two of an item leave what both had left and 12 % of
   the durability, for 2 levels; a new name costs a level more, and a rename alone keeps the item's `RepairCost`
   (written, 0 when it had none), where a repair writes the larger of the two's twice over plus one. The cost adds both
-  items' `RepairCost` (Java's prior work), a cost of 40 makes no result, a rename alone costs 39 at most. Its NBT has
-  the item's keys first, then `RepairCost` and `display` (`Name`, beside what the item's display had). Recorded:
-  `Damage` 200 and 2 iron ingots make `Damage` 76 and `RepairCost` 1 for 2 levels, two of `Damage` 200 `Damage` 120 for
-  2, a rename of `Damage` 0 `RepairCost` 0 with its name for 1.
+  items' `RepairCost` (Java's prior work), a cost of 40 makes no result, a rename alone costs 39 at most. Its NBT is
+  the item's with `Damage`, `ench`, `RepairCost` and `display` (`Name`, beside what the item's display had), its keys
+  in their byte order, as in every item NBT recorded from the vanilla client and the server (`Damage`, `RepairCost`,
+  `display`, `ench`; a book's `author`, `generation`, `pages`, `title`, `xuid`). Recorded: `Damage` 200 and 2 iron
+  ingots make `Damage` 76 and `RepairCost` 1 for 2 levels, two of `Damage` 200 `Damage` 120 for 2, a rename of
+  `Damage` 0 `RepairCost` 0 with its name for 1.
+- **Enchantments** come, as Java's, from an enchanted book (Bedrock's keeps them in `ench`, as an item) on any item or
+  on another book, or from a second of an item with durability; a material only mends, keeping the item's. Each of the
+  second item's enchantments that goes on the first, and that none of the first's excludes (the registry's `exclude`),
+  is added, its level one more where both have it at the same level (at most its `maxLevel`), else the higher of the
+  two; one that some of the first's exclude is not added and costs nothing. Each costs only the levels it rises over
+  the first's (Bedrock's rules; Java's charges its whole final level and a level for each of the first's enchantments
+  excluding one): a level by the enchantment's weight 1, 2, 4 or 8 (`weight` 10, 5, 2, 1), Impaling 2 (Java's 4), half
+  of it and at least 1 from a book. Where the second has enchantments and none of them is added, or nothing changes
+  (no repair and no level risen), there is no result. The result's `ench` is the first's, levels raised in place, then
+  the new ones in the second's order. What an enchantment goes on is by the registry's
+  enchant categories of the item: the enchantment's category (armour, a piece of it, `weapon` a sword or a spear,
+  `digger` a pickaxe, shovel, axe or hoe, a bow, a fishing rod, a trident, a crossbow; `breakable` an item with
+  durability and an enchant category, `vanishable` also a compass or a head, `wearable` armour, an elytra or a head), as
+  Bedrock's anvil, also Thorns on any armour, Sharpness, Smite and Bane of Arthropods on an axe, Smite, Bane of
+  Arthropods and Fire Aspect on a mace, Efficiency on shears; on a book all. An enchantment the registry has not (newer
+  than its data), or of a weight or a category these rules do not know, rejects (`the anvil with an enchantment of
+  <name> it does not know is not supported on Bedrock yet`).
 
 Recorded and replayed by the tests on every build: an iron sword of `Damage` 200 repaired with 2 iron ingots, two
 combined, and one renamed, each group playing the client's packets with the bot, byte for byte (the anvil's damage as
@@ -1804,9 +1823,13 @@ combined, and one renamed, each group playing the client's packets with the bot,
 anvil_damage), 1.18.11 (the last with filter_text_packet) and 1.26.10 (the anvil's position written anew) apart; on
 1.26.60 the item and the material given back on close; on 1.26.51 a sword of `Damage` 200 repaired with an ingot by a
 shift left click, a shift right click and the key 1, played on every version in two groups (up to 1.19.40 and from
-1.19.50; byte for byte on 1.26.51). Not recorded, so as the bot does it
-or rejecting: enchantments and enchanted books on either item, an empty name, more material than needed, prior work,
-40 levels and the rename's cap (Java's rules), the result with no room in the inventory, the cursor's place in the
+1.19.50; byte for byte on 1.26.51). The request names no item, so the tests play an enchanted book of Sharpness I and
+Unbreaking I in place of the second sword on a sword of Sharpness I in each group, with the recorded combine's packets
+but the tell of the result held and, on 1.16.201, of the levels taken. Not recorded, so as the bot does it or
+rejecting: every enchantment rule above (Bedrock's, as the game documents them: the vanilla client's levels, costs,
+the items each enchantment goes on and the order of the result's `ench` are not recorded; in creative Java's anvil
+puts any enchantment on any item, which the bot does not), an empty name, more material than needed, prior work, 40
+levels and the rename's cap (Java's rules), the result with no room in the inventory, the cursor's place in the
 hand-back, how long a name Bedrock's box takes (Java's 35 kept).
 
 ## Stations

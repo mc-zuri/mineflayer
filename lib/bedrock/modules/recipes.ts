@@ -436,8 +436,13 @@ export function gridCells<Slot> (recipe: CraftingRecipe, grid: readonly Slot[], 
 }
 
 export function withNbt (stack: Stack, value: NbtValue): Stack {
+  return withOnlyNbt(stack, { ...nbtOf(stack), ...value })
+}
+
+/** the stack with `value` as its NBT, in place of its own */
+export function withOnlyNbt (stack: Stack, value: NbtValue): Stack {
   const { wire } = stack
-  const nbt = { version: 1, nbt: { type: 'compound' as const, name: '', value: { ...nbtOf(stack), ...value } } }
+  const nbt = { version: 1, nbt: { type: 'compound' as const, name: '', value } }
   if ('auxiliary_value' in wire) return { ...stack, wire: { ...wire, has_nbt: true, nbt } }
   return { ...stack, wire: { ...wire, extra: { can_place_on: [], can_destroy: [], ...wire.extra, has_nbt: true, nbt } } }
 }

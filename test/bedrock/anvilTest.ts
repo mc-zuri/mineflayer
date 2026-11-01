@@ -1,6 +1,7 @@
 import assert from 'assert'
 import prismarineBlock from 'prismarine-block'
 import prismarineItem from 'prismarine-item'
+import nbt from 'prismarine-nbt'
 import type { Block } from 'prismarine-block'
 import type { Item } from 'prismarine-item'
 import type { Window } from 'prismarine-windows'
@@ -31,6 +32,8 @@ type Attributes = ClientboundPacketsToWrite['update_attributes']['attributes']
 const HOTBAR = 30
 const RESULT_SLOT = 2
 const SHARPNESS = 9
+const UNBREAKING = 17
+const IMPALING = 29
 const PACKETS = ['item_stack_request', 'filter_text_packet', 'entity_event', 'anvil_damage', 'interact', 'mob_equipment'] as const
 
 interface RecordedUse {
@@ -1458,6 +1461,21 @@ function compound (value: NbtValue): object {
   return { type: 'compound', name: '', value }
 }
 
+/** an item's `ench`: its enchantments as their ids and levels */
+function ench (...enchants: ReadonlyArray<readonly [number, number]>): { ench: NonNullable<NbtValue[string]> } {
+  return { ench: { type: 'list', value: { type: 'compound', value: enchants.map(([id, lvl]) => ({ id: { type: 'short', value: id }, lvl: { type: 'short', value: lvl } })) } } }
+}
+
+/** a tell of the held item by its name alone, but one of the empty hand */
+function heldItemByName (packet: string): string {
+  return packet.startsWith('mob_equipment ') && packet.length > 60 ? 'mob_equipment' : packet
+}
+
+/** an item's NBT as its keys and values, in their order */
+function described (value: Item['nbt'] | undefined): string {
+  return value == null ? 'no NBT' : JSON.stringify(nbt.simplify(value))
+}
+
 /** the player's level, as the version's update_attributes writes it */
 function levelAttribute (version: BedrockVersion, level: number): Attributes {
   return [{
@@ -1547,7 +1565,7 @@ async function rejection (driver: TestBot['driver'], promise: Promise<unknown>):
 interface Replayed {
   /** the bot's packets: the vanilla client's, then the result put away up to 1.19.40 */
   packets: string[]
-  result: object | undefined
+  result: Item['nbt'] | undefined
   level: number | null
   errors: string[]
 }
@@ -1624,6 +1642,21 @@ describe('bedrock anvil', () => {
             async anvil => { await anvil.rename(itemAt(anvil, HOTBAR), 'Iron Swordfixture') })
           const display: NbtValue = { display: { type: 'compound', value: { Name: { type: 'string', value: 'Iron Swordfixture' } } } }
           assert.deepStrictEqual(compared(replayed, rename), [rename.packets, putAway, compound({ Damage: int(0), RepairCost: int(0), ...display }), rename.level - 1, []])
+        })
+
+        // the request names no item: an enchanted book in place of the second sword makes the recorded combine's packets,
+        // but the tell of the result held (its NBT) and on 1.16.201 of the levels taken
+        it(`bedrock ${version}: one of Damage 200 and Sharpness I with a book of Sharpness I and Unbreaking I, as the recorded combine (the enchantments not recorded)`, async () => {
+          const replayed = await replay(version, recordedUses, combine, ({ sword, given }) => [
+            { ...sword(combine.stacks[0] ?? 0, 200), nbt: ench([SHARPNESS, 1]) },
+            { ...given('enchanted_book', combine.stacks[1] ?? 0), nbt: ench([SHARPNESS, 1], [UNBREAKING, 1]) }
+          ], 2, async anvil => { await anvil.combine(itemAt(anvil, HOTBAR), itemAt(anvil, HOTBAR + 1)) })
+          // 2 levels: Sharpness II at 1 for the level it rises, Unbreaking I at 2 halved from a book
+          const packets = combine.packets.map(packet => packet.startsWith('entity_event ') ? 'entity_event 1b092203' : heldItemByName(packet))
+          assert.deepStrictEqual([compared({ ...replayed, packets: replayed.packets.map(heldItemByName) }, combine), described(replayed.result)], [
+            [packets, putAway, compound({ Damage: int(200), RepairCost: int(1), ...ench([SHARPNESS, 2], [UNBREAKING, 1]) }), combine.level - 2, []],
+            '{"Damage":200,"RepairCost":1,"ench":[{"id":9,"lvl":2},{"id":17,"lvl":1}]}'
+          ])
         })
       }
     })
@@ -1807,8 +1840,8 @@ describe('bedrock anvil', () => {
         'Name is too long.',
         'Player does not have enough xp to do action, cancelling.',
         'the anvil with an empty name is not supported on Bedrock yet',
-        'the anvil with enchantments is not supported on Bedrock yet',
-        'the anvil with enchantments is not supported on Bedrock yet',
+        'Player does not have enough xp to do action, cancelling.',
+        'Not anvil-able (in either direction), cancelling.',
         'the anvil holds nothing to repair or name',
         'clickWindow: the anvil\'s result costs 2 levels, and the player has 0',
         'combine needs the anvil open',
@@ -2041,6 +2074,195 @@ describe('bedrock anvil', () => {
       assert.deepStrictEqual([shifted, keyed, none, requests(), bot.inventory.slots[40]?.stackId, errors], ['the anvil\'s result with no room in the inventory is not supported on Bedrock yet', 'resolved', [], [
         '-3, optional, consume 2 anvil_material:2#21, consume 1 anvil_input:1#20, take 1 creative_output:50#-3 → hotbar:4#0, [] -1'
       ], 30, []])
+      bot.end()
+    })
+
+    it('combines enchantments by Bedrock\'s rules, the levels they rise, from a book at half the cost, on the items Bedrock\'s take each; its NBT\'s keys in byte order (not recorded)', async () => {
+      const testBot = await anvilBot(version)
+      const { bot, server, driver, inventory, sword, given } = testBot
+      openAnvil(server, 3)
+      await driver.tick()
+      let made = 100
+      const book = (stackId: number, ...enchants: ReadonlyArray<readonly [number, number]>): Given => ({ ...given('enchanted_book', stackId), nbt: ench(...enchants) })
+      const enchanted = (name: string, stackId: number, ...enchants: ReadonlyArray<readonly [number, number]>): Given => ({ ...given(name, stackId), nbt: ench(...enchants) })
+      const blade = (stackId: number, damage: number, ...enchants: ReadonlyArray<readonly [number, number]>): Given => ({ ...sword(stackId, damage), nbt: ench(...enchants) })
+      /** the result of the item and the material put in the anvil: the levels it costs and its NBT, else why a click on it rejects */
+      async function outcome (one: Given, two: Given): Promise<string> {
+        inventory.slot('ui', 1, one)
+        inventory.slot('ui', 2, two)
+        testBot.level(0)
+        await driver.tick()
+        const message = await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 0))
+        const cost = /costs (\d+) levels/.exec(message)?.[1]
+        if (cost === undefined) return message
+        testBot.level(100)
+        await driver.tick()
+        await served(testBot, bot.clickWindow(RESULT_SLOT, 0, 0), ++made)
+        return `${cost} ${described(bot.inventory.slots.find(item => item?.stackId === made)?.nbt)}`
+      }
+      const none = 'clickWindow: the anvil shows no result'
+      const outcomes = [
+        // a book's Sharpness I on a sword's: II, 1 for the level it rises; II and III make III for 1; IV and IV V for 1;
+        // III and II, V and V (its max) none, nothing rising
+        await outcome(blade(20, 0, [SHARPNESS, 1]), book(21, [SHARPNESS, 1])),
+        await outcome(blade(22, 0, [SHARPNESS, 2]), book(23, [SHARPNESS, 3])),
+        await outcome(blade(104, 0, [SHARPNESS, 4]), book(105, [SHARPNESS, 4])),
+        await outcome(blade(106, 0, [SHARPNESS, 3]), book(107, [SHARPNESS, 2])),
+        await outcome(blade(24, 0, [SHARPNESS, 5]), book(25, [SHARPNESS, 5])),
+        // Smite, which Sharpness excludes: none alone; beside Unbreaking (2 a level, 1 from a book) nothing for it
+        await outcome(blade(26, 0, [SHARPNESS, 1]), book(27, [10, 1])),
+        await outcome(blade(28, 0, [SHARPNESS, 1]), book(29, [10, 1], [UNBREAKING, 1])),
+        // excluded by one of the first's enchantments, whatever the others: Unbreaking II for the level it rises alone
+        await outcome(blade(112, 0, [SHARPNESS, 1], [UNBREAKING, 1]), book(113, [10, 1], [UNBREAKING, 1])),
+        // Protection does not go on a sword; Sharpness on an axe, Smite on a mace, Thorns (8, 4 from a book) on a helmet, Efficiency on shears
+        await outcome(sword(30, 0), book(31, [0, 1])),
+        await outcome(given('iron_axe', 32), book(33, [SHARPNESS, 1])),
+        await outcome(given('mace', 34), book(35, [10, 1])),
+        await outcome(given('iron_helmet', 36), book(37, [5, 1])),
+        await outcome(given('shears', 38), book(39, [15, 1])),
+        // Unbreaking on an item with durability and an enchant category: an elytra, neither wolf armor nor a compass
+        await outcome(given('elytra', 40), book(41, [UNBREAKING, 1])),
+        await outcome(given('wolf_armor', 42), book(43, [UNBREAKING, 1])),
+        await outcome(given('compass', 44), book(45, [UNBREAKING, 1])),
+        // Curse of Vanishing on a compass and a carved pumpkin; two pumpkins, which have no durability, nothing
+        await outcome(given('compass', 46), book(47, [28, 1])),
+        await outcome(given('carved_pumpkin', 48), book(49, [28, 1])),
+        await outcome(enchanted('carved_pumpkin', 50, [27, 1]), enchanted('carved_pumpkin', 51, [28, 1])),
+        // two swords: Knockback I and I make II at 2 for the level it rises; of Damage 100 and 0 the repair's 2 more; none without a change; an axe's Sharpness not
+        await outcome(blade(52, 0, [12, 1]), blade(53, 0, [12, 1])),
+        await outcome(blade(54, 100), blade(55, 0, [SHARPNESS, 1])),
+        await outcome(sword(56, 0), sword(57, 0)),
+        await outcome(sword(58, 100), enchanted('iron_axe', 59, [SHARPNESS, 1])),
+        // two books: Mending (4, 2 from a book) on Protection; a book's on a book none
+        await outcome(book(60, [0, 1]), book(61, [26, 1])),
+        await outcome(given('book', 62), book(63, [SHARPNESS, 1])),
+        // the material mends an enchanted sword, its enchantments as they were
+        await outcome(blade(64, 100, [SHARPNESS, 1]), given('iron_ingot', 65, 2)),
+        // the prior work: 3 and 1 added, the result's 7; 39 and Sharpness V's 1 make 40, too expensive, 38 39
+        await outcome({ ...sword(66, 0, 3), nbt: ench([SHARPNESS, 1]) }, { ...book(67, [SHARPNESS, 1]), ints: { RepairCost: 1 } }),
+        await outcome({ ...sword(68, 0, 39), nbt: ench([SHARPNESS, 4]) }, book(69, [SHARPNESS, 4])),
+        await outcome({ ...sword(70, 0, 38), nbt: ench([SHARPNESS, 4]) }, book(71, [SHARPNESS, 4])),
+        // Impaling, Bedrock's 2 a level, 1 from a book
+        await outcome(given('trident', 108), book(109, [IMPALING, 1])),
+        await outcome(enchanted('trident', 110, [IMPALING, 1]), enchanted('trident', 111, [IMPALING, 1])),
+        // an enchantment newer than the registry's data
+        await outcome(blade(72, 0, [38, 1]), book(73, [SHARPNESS, 1])),
+        await outcome(blade(74, 0, [SHARPNESS, 1]), book(75, [38, 1])),
+        // each category's items: Protection, Feather Falling, Respiration, Swift Sneak, Thorns; Knockback on a spear,
+        // Fire Aspect on a mace, Efficiency on a pickaxe, Power, Luck of the Sea, Loyalty, Quick Charge, Curse of Binding; Curse of Vanishing on a shovel
+        await outcome(given('iron_boots', 76), book(77, [0, 1])),
+        await outcome(given('iron_boots', 78), book(79, [2, 1])),
+        await outcome(given('iron_helmet', 80), book(81, [6, 1])),
+        await outcome(given('iron_leggings', 82), book(83, [37, 1])),
+        await outcome(given('iron_chestplate', 84), book(85, [5, 1])),
+        await outcome(given('iron_spear', 86), book(87, [12, 1])),
+        await outcome(given('mace', 88), book(89, [13, 1])),
+        await outcome(given('iron_pickaxe', 90), book(91, [15, 1])),
+        await outcome(given('bow', 92), book(93, [19, 1])),
+        await outcome(given('fishing_rod', 94), book(95, [23, 1])),
+        await outcome(given('trident', 96), book(97, [31, 1])),
+        await outcome(given('crossbow', 98), book(99, [35, 1])),
+        await outcome(given('elytra', 100), book(101, [27, 1])),
+        await outcome(given('iron_shovel', 102), book(103, [28, 1]))
+      ]
+      assert.deepStrictEqual(outcomes, [
+        '1 {"Damage":0,"RepairCost":1,"ench":[{"id":9,"lvl":2}]}',
+        '1 {"Damage":0,"RepairCost":1,"ench":[{"id":9,"lvl":3}]}',
+        '1 {"Damage":0,"RepairCost":1,"ench":[{"id":9,"lvl":5}]}',
+        none,
+        none,
+        none,
+        '1 {"Damage":0,"RepairCost":1,"ench":[{"id":9,"lvl":1},{"id":17,"lvl":1}]}',
+        '1 {"Damage":0,"RepairCost":1,"ench":[{"id":9,"lvl":1},{"id":17,"lvl":2}]}',
+        none,
+        '1 {"RepairCost":1,"ench":[{"id":9,"lvl":1}]}',
+        '1 {"RepairCost":1,"ench":[{"id":10,"lvl":1}]}',
+        '4 {"RepairCost":1,"ench":[{"id":5,"lvl":1}]}',
+        '1 {"RepairCost":1,"ench":[{"id":15,"lvl":1}]}',
+        '1 {"RepairCost":1,"ench":[{"id":17,"lvl":1}]}',
+        none,
+        none,
+        '4 {"RepairCost":1,"ench":[{"id":28,"lvl":1}]}',
+        '4 {"RepairCost":1,"ench":[{"id":28,"lvl":1}]}',
+        none,
+        '2 {"Damage":0,"RepairCost":1,"ench":[{"id":12,"lvl":2}]}',
+        '3 {"Damage":0,"RepairCost":1,"ench":[{"id":9,"lvl":1}]}',
+        none,
+        none,
+        '2 {"RepairCost":1,"ench":[{"id":0,"lvl":1},{"id":26,"lvl":1}]}',
+        none,
+        '2 {"Damage":0,"RepairCost":1,"ench":[{"id":9,"lvl":1}]}',
+        '5 {"Damage":0,"RepairCost":7,"ench":[{"id":9,"lvl":2}]}',
+        none,
+        '39 {"Damage":0,"RepairCost":77,"ench":[{"id":9,"lvl":5}]}',
+        '1 {"RepairCost":1,"ench":[{"id":29,"lvl":1}]}',
+        '2 {"RepairCost":1,"ench":[{"id":29,"lvl":2}]}',
+        'the anvil with an enchantment of iron_sword it does not know is not supported on Bedrock yet',
+        'the anvil with an enchantment of enchanted_book it does not know is not supported on Bedrock yet',
+        ...[[0, 1], [2, 1], [6, 2], [37, 4], [5, 4], [12, 1], [13, 2], [15, 1], [19, 1], [23, 2], [31, 1], [35, 1], [27, 4], [28, 4]].map(([id, cost]) => `${cost} {"RepairCost":1,"ench":[{"id":${id},"lvl":1}]}`)
+      ])
+      bot.end()
+    })
+
+    it('rejects an enchantment of a weight or a category the rules do not know, newer than them (not recorded)', async () => {
+      const testBot = await anvilBot(version)
+      const { bot, server, driver, inventory, sword, given } = testBot
+      const { registry } = bot
+      const sharpness = registry.enchantmentsByName['sharpness']
+      assert.ok(sharpness !== undefined)
+      const added = [{ ...sharpness, id: 90, name: 'weighty', weight: 3 }, { ...sharpness, id: 91, name: 'novel', category: 'novel' }]
+      for (const enchantment of added) {
+        registry.enchantments[enchantment.id] = enchantment
+        registry.enchantmentsByName[enchantment.name] = enchantment
+      }
+      try {
+        openAnvil(server, 3)
+        await driver.tick()
+        const messages: string[] = []
+        for (const id of [90, 91]) {
+          inventory.slot('ui', 1, sword(20, 0))
+          inventory.slot('ui', 2, { ...given('enchanted_book', 21), nbt: ench([id, 1]) })
+          await driver.tick()
+          messages.push(await rejection(driver, bot.clickWindow(RESULT_SLOT, 0, 0)))
+        }
+        assert.deepStrictEqual(messages, Array(2).fill('the anvil with an enchantment of enchanted_book it does not know is not supported on Bedrock yet'))
+      } finally {
+        for (const { id, name } of added) {
+          Reflect.deleteProperty(registry.enchantments, id)
+          Reflect.deleteProperty(registry.enchantmentsByName, name)
+        }
+        bot.end()
+      }
+    })
+
+    it('combines the cheaper way, as Java\'s; renames an enchanted item, its NBT\'s keys in byte order (not recorded)', async () => {
+      const testBot = await anvilBot(version)
+      const { bot, server, driver, inventory, sword, given } = testBot
+      testBot.internal._core.requestIds.continueProcess(-3)
+      inventory.slot('inventory', 0, { ...sword(20, 0), nbt: ench([SHARPNESS, 1]) })
+      inventory.slot('inventory', 1, { ...sword(21, 0), nbt: ench([SHARPNESS, 1], [12, 2]) })
+      inventory.slot('inventory', 2, { ...given('enchanted_book', 22), nbt: ench([UNBREAKING, 1]) })
+      const lore: NbtValue = { display: { type: 'compound', value: { Name: { type: 'string', value: 'Old' }, Lore: { type: 'list', value: { type: 'string', value: ['old'] } } } } }
+      inventory.slot('inventory', 3, { ...sword(23, 0), nbt: { ...ench([SHARPNESS, 1]), ...lore } })
+      testBot.level(30)
+      openAnvil(server, 3)
+      await driver.tick()
+      const anvil = anvilOf(bot.currentWindow)
+      const requests = requestsSince(server)
+      // the first on the second: 1 for Sharpness II, 4 for Knockback II; the second on the first: 1
+      await served(testBot, anvil.combine(itemAt(anvil, HOTBAR), itemAt(anvil, HOTBAR + 1)), 30, 29)
+      // the book first makes nothing
+      await served(testBot, anvil.combine(itemAt(anvil, HOTBAR + 2), itemAt(anvil, HOTBAR + 3)), 31, 28)
+      await served(testBot, anvil.rename(itemAt(anvil, HOTBAR + 1), 'Blade'), 32, 26)
+      assert.deepStrictEqual([requests().filter(request => request.includes('optional')), [HOTBAR, HOTBAR + 1, HOTBAR + 2].map(slot => described(anvil.slots[slot]?.nbt))], [[
+        '-11, optional, consume 1 anvil_material:2#20, consume 1 anvil_input:1#21, place 1 creative_output:50#-11 → hotbar_and_inventory:0#0, [] -1',
+        '-21, optional, consume 1 anvil_material:2#22, consume 1 anvil_input:1#23, place 1 creative_output:50#-21 → hotbar_and_inventory:1#0, [] -1',
+        '-27, optional, consume 1 anvil_input:1#31, place 1 creative_output:50#-27 → hotbar_and_inventory:1#0, ["Blade"] anvil_text'
+      ], [
+        '{"Damage":0,"RepairCost":1,"ench":[{"id":9,"lvl":2},{"id":12,"lvl":2}]}',
+        '{"Damage":0,"RepairCost":1,"display":{"Lore":["old"],"Name":"Blade"},"ench":[{"id":9,"lvl":1},{"id":17,"lvl":1}]}',
+        'no NBT'
+      ]])
       bot.end()
     })
 

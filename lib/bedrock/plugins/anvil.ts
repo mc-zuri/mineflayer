@@ -1,3 +1,4 @@
+import type { Enchantment } from 'minecraft-data'
 import type { Item } from 'prismarine-item'
 import type { Window } from 'prismarine-windows'
 import type { FrameContext } from '../core/types.ts'
@@ -6,7 +7,7 @@ import type { WindowClick } from '../modules/clicks.ts'
 import type { Move } from '../modules/inventory.ts'
 import { stackAction } from '../modules/items.ts'
 import type { RequestText, SlotRef, Stack } from '../modules/items.ts'
-import { nbtOf, withNbt } from '../modules/recipes.ts'
+import { nbtOf, withOnlyNbt } from '../modules/recipes.ts'
 import type { NbtValue } from '../modules/recipes.ts'
 import { CURSOR, OUTPUT } from '../modules/screens.ts'
 import type { OpenScreen } from '../modules/screens.ts'
@@ -28,10 +29,60 @@ const REPAIR_PERCENT = 25
 const COMBINE_BONUS_PERCENT = 12
 // Java's anvil waits for the level the server takes; Bedrock's server answers the request in the same frame or the next
 const LEVEL_TICKS = 100
+// the levels a level of an enchantment costs, by its weight; half of it, at least 1, from a book
+const LEVEL_COSTS: Readonly<Record<number, number>> = Object.freeze({ 10: 1, 5: 2, 2: 4, 1: 8 })
+/** Bedrock's costs apart from their weight's */
+const NAMED_LEVEL_COSTS: Readonly<Record<string, number>> = Object.freeze({ impaling: 2 })
+const ARMOR = Object.freeze(['armor_head', 'armor_torso', 'armor_legs', 'armor_feet'])
+/** an item with durability and an enchant category: what Bedrock's breakable and vanishable enchantments go on */
+const DURABLE = 'durable'
+/** the items, by the registry's enchant categories, that an enchantment of each category goes on at the anvil */
+const CATEGORY_ITEMS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  armor: ARMOR,
+  armor_head: ['armor_head'],
+  armor_chest: ['armor_torso'],
+  armor_legs: ['armor_legs'],
+  armor_feet: ['armor_feet'],
+  weapon: ['sword', 'melee_spear'],
+  digger: ['pickaxe', 'shovel', 'axe', 'hoe'],
+  bow: ['bow'],
+  fishing_rod: ['fishing_rod'],
+  trident: ['spear'],
+  crossbow: ['crossbow'],
+  breakable: [DURABLE],
+  wearable: [...ARMOR, 'elytra', 'cosmetic_head'],
+  vanishable: [DURABLE, 'compass', 'cosmetic_head']
+})
+/** the items an enchantment also goes on at the anvil, beyond its category's */
+const ALSO_ITEMS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  thorns: ARMOR,
+  sharpness: ['axe'],
+  smite: ['axe', 'heavy_weapon'],
+  bane_of_arthropods: ['axe', 'heavy_weapon'],
+  fire_aspect: ['heavy_weapon'],
+  efficiency: ['shears']
+})
+
+interface Enchant {
+  readonly enchantment: Enchantment
+  readonly level: number
+  /** the levels a level of it costs from an item */
+  readonly each: number
+  /** the enchant categories of the items it goes on */
+  readonly goesOn: readonly string[]
+}
+
+/** the enchantments the anvil gives the first item from the second, and what they cost */
+interface Merged {
+  readonly enchants: readonly Enchant[]
+  readonly cost: number
+}
 
 interface AnvilResult {
   /** undefined: the item's own */
   readonly damage: number | undefined
+  /** undefined: the item's own */
+  readonly enchants: readonly Enchant[] | undefined
   readonly repairCost: number
   /** the name it gives, undefined where it keeps the item's */
   readonly name: string | undefined
@@ -55,6 +106,15 @@ function slotOf (window: Window, item: Item, member: string): number {
 
 function int (value: number): NbtValue[string] {
   return { type: 'int', value }
+}
+
+function short (value: number): NbtValue[string] {
+  return { type: 'short', value }
+}
+
+/** the vanilla client writes a compound's keys in their byte order, as every recorded item's NBT */
+function inOrder (value: NbtValue): NbtValue {
+  return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]))
 }
 
 /** Java's anvil on Bedrock's: openAnvil, and its window's combine and rename, the vanilla client's clicks and request */
@@ -104,20 +164,68 @@ export default function inject (bot: BedrockBotInternal): void {
     return { damage: Math.max(damage - used * each, 0), cost: used, used }
   }
 
+  /** the item's enchantments; throws for one the registry or these rules do not know, newer than them */
+  function enchantsOf (item: Item): Enchant[] {
+    return item.enchants.map(({ name, lvl }) => {
+      const enchantment = registry.enchantmentsByName[name]
+      const each = NAMED_LEVEL_COSTS[name] ?? LEVEL_COSTS[enchantment?.weight ?? 0]
+      const items = CATEGORY_ITEMS[enchantment?.category ?? '']
+      if (enchantment === undefined || each === undefined || items === undefined) throw new Error(`the anvil with an enchantment of ${item.name} it does not know is not supported on Bedrock yet`)
+      return { enchantment, level: lvl, each, goesOn: [...items, ...ALSO_ITEMS[name] ?? []] }
+    })
+  }
+
+  function goesOn ({ goesOn }: Enchant, item: Item): boolean {
+    if (item.name === 'enchanted_book') return true
+    const known = registry.items[item.type]
+    const categories = known?.enchantCategories ?? []
+    const durable = categories.length > 0 && known?.maxDurability !== undefined
+    return goesOn.some(goes => goes === DURABLE ? durable : categories.includes(goes))
+  }
+
+  /** Bedrock's rules: each of the second's enchantments that goes on the first and that none of the first's excludes, its level one more where both have it alike (at most its max), else the higher, costing only the levels it rises; undefined where some do not go on and none does */
+  function mergedOf (one: Item, two: Item): Merged | undefined {
+    const enchants = enchantsOf(one)
+    const fromBook = two.name === 'enchanted_book'
+    let cost = 0
+    let refused = false
+    let applied = false
+    for (const enchant of enchantsOf(two)) {
+      const { enchantment, level, each } = enchant
+      const excluded = enchants.some(({ enchantment: other }) => enchantment.exclude.includes(other.name))
+      if (excluded || !goesOn(enchant, one)) {
+        refused = true
+        continue
+      }
+      const index = enchants.findIndex(other => other.enchantment === enchantment)
+      const had = enchants[index]?.level
+      const merged = { ...enchant, level: Math.min(had === level ? level + 1 : Math.max(had ?? 0, level), enchantment.maxLevel) }
+      if (index === -1) enchants.push(merged)
+      else enchants[index] = merged
+      cost += (merged.level - (had ?? 0)) * (fromBook ? Math.max(1, each / 2) : each)
+      applied = true
+    }
+    if (refused && !applied) return undefined
+    return { enchants, cost }
+  }
+
   /** the vanilla client's result, undefined where it shows none; throws for what is not recorded */
   function resultOf (one: Item, two: Item | null, name: string | undefined): AnvilResult | undefined {
-    if ([one, two].some(item => item !== null && (item.enchants.length > 0 || item.name === 'enchanted_book'))) throw new Error('the anvil with enchantments is not supported on Bedrock yet')
     if (name === '') throw new Error('the anvil with an empty name is not supported on Bedrock yet')
     const renamed = name !== undefined && name !== nameOf(one) ? name : undefined
     const penalty = one.repairCost + (two?.repairCost ?? 0)
     if (two === null) {
       // as Java's, a rename alone is never too expensive; Bedrock's keeps the item's prior work
-      return renamed === undefined ? undefined : { damage: undefined, repairCost: one.repairCost, name: renamed, cost: Math.min(1 + penalty, TOO_EXPENSIVE - 1), used: 0 }
+      return renamed === undefined ? undefined : { damage: undefined, enchants: undefined, repairCost: one.repairCost, name: renamed, cost: Math.min(1 + penalty, TOO_EXPENSIVE - 1), used: 0 }
     }
     const repair = repairOf(one, two)
-    const cost = (repair?.cost ?? 0) + (renamed === undefined ? 0 : 1) + penalty
-    if (repair === undefined || cost >= TOO_EXPENSIVE) return undefined
-    return { damage: repair.damage, repairCost: Math.max(one.repairCost, two.repairCost) * 2 + 1, name: renamed, cost, used: repair.used }
+    // as Java's, enchantments come from a book, or from a second of an item with durability
+    const merges = two.name === 'enchanted_book' || (two.type === one.type && registry.items[one.type]?.maxDurability !== undefined)
+    const merged = merges ? mergedOf(one, two) : { enchants: [], cost: 0 }
+    if (merged === undefined || (repair === undefined && merged.cost === 0)) return undefined
+    const cost = (repair?.cost ?? 0) + merged.cost + (renamed === undefined ? 0 : 1) + penalty
+    if (cost >= TOO_EXPENSIVE) return undefined
+    return { damage: repair?.damage, enchants: merged.cost === 0 ? undefined : merged.enchants, repairCost: Math.max(one.repairCost, two.repairCost) * 2 + 1, name: renamed, cost, used: repair?.used ?? 1 }
   }
 
   /** the vanilla client takes the level a result costs outside creative */
@@ -137,11 +245,11 @@ export default function inject (bot: BedrockBotInternal): void {
     needsOpen('combine', window)
     checkName(name)
     const ways: Array<[Item, Item]> = [[itemOne, itemTwo], [itemTwo, itemOne]]
-    // Java takes the cheaper way: Bedrock's rules here cost the same both ways that make a result
+    // as Java's, the cheaper way; the given one where both cost the same
     const [way] = ways.flatMap(([one, two]) => {
       const result = resultOf(one, two, name)
       return result === undefined ? [] : [{ one, two, cost: result.cost }]
-    })
+    }).sort((a, b) => a.cost - b.cost)
     if (way === undefined) throw new Error('Not anvil-able (in either direction), cancelling.')
     if (!affords(way.cost)) throw new Error('Player does not have enough xp to do action, cancelling.')
     await use(window, 'combine', way.one, way.two, name)
@@ -200,12 +308,13 @@ export default function inject (bot: BedrockBotInternal): void {
     if (!affords(result.cost)) throw new Error(`clickWindow: the anvil's result costs ${result.cost} levels, and the player has ${bot.experience.level ?? 0}`)
     const display = nbtOf(input)['display']
     const shown = display?.type === 'compound' ? display.value : {}
-    // its keys after the item's own, as the vanilla client's
-    const made = withNbt(input, {
+    const made = withOnlyNbt(input, inOrder({
+      ...nbtOf(input),
       ...result.damage === undefined ? {} : { Damage: int(result.damage) },
+      ...result.enchants === undefined ? {} : { ench: { type: 'list', value: { type: 'compound', value: result.enchants.map(({ enchantment, level }) => ({ id: short(enchantment.id), lvl: short(level) })) } } },
       RepairCost: int(result.repairCost),
-      ...result.name === undefined ? {} : { display: { type: 'compound', value: { ...shown, Name: { type: 'string', value: result.name } } } }
-    })
+      ...result.name === undefined ? {} : { display: { type: 'compound', value: inOrder({ ...shown, Name: { type: 'string', value: result.name } }) } }
+    }))
     const moved = movedTo(made, click)
     if (moved.length === 0) return
     const moves: Move[] = [

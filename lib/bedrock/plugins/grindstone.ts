@@ -7,7 +7,7 @@ import type { WindowClick } from '../modules/clicks.ts'
 import type { Move } from '../modules/inventory.ts'
 import { resultsAction, stackAction } from '../modules/items.ts'
 import type { SlotRef, Stack } from '../modules/items.ts'
-import { Ingredients, nbtOf, writtenResult } from '../modules/recipes.ts'
+import { Ingredients, nbtOf, withOnlyNbt, writtenResult } from '../modules/recipes.ts'
 import type { NbtValue } from '../modules/recipes.ts'
 import { CURSOR, OUTPUT } from '../modules/screens.ts'
 import { GRINDSTONE_ADDITIONAL, GRINDSTONE_INPUT, GRINDSTONE_SCREEN } from '../screens/grindstone.ts'
@@ -39,14 +39,6 @@ function slotOf (window: Window, item: Item, member: string): number {
     window.findItemRange(window.inventoryStart, window.inventoryEnd, item.type, item.metadata, false, item.nbt)
   if (found == null) throw new Error(`${member}: the ${item.name} given is in no slot of the window`)
   return found.slot
-}
-
-/** the stack with `value` as its NBT, in place of its own */
-function withOnlyNbt (stack: Stack, value: NbtValue): Stack {
-  const { wire } = stack
-  const nbt = { version: 1, nbt: { type: 'compound' as const, name: '', value } }
-  if ('auxiliary_value' in wire) return { ...stack, wire: { ...wire, has_nbt: true, nbt } }
-  return { ...stack, wire: { ...wire, extra: { can_place_on: [], can_destroy: [], ...wire.extra, has_nbt: true, nbt } } }
 }
 
 /** Bedrock's grindstone, which Java's bot has not: bot.bedrock.openGrindstone, and its window's grind, the vanilla client's clicks */
