@@ -108,6 +108,9 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   (Bedrock's): a jukebox's disc, put in and taken out by uses (see the jukebox below).
 - `bot.setCommandBlock(pos, command, options)`: Java's, as command_block_update; the command block's screen (see the
   command block below).
+- `bot.bedrock.setStructureBlock(structureBlock, settings, trigger)`, `bot.bedrock.setJigsaw(jigsaw, settings)`
+  (Bedrock's): a structure block's settings as structure_block_update, a jigsaw block's as block_entity_data; their
+  screens (see the structure block and the jigsaw block below).
 - `bot.bedrock.createCompound(compound)`, `bot.bedrock.combineLabTable()` (Bedrock's, on an Education world): a
   compound made and a lab table's combine; the Education screens (see the Education screens below).
 - `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
@@ -1104,8 +1107,7 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   closed, then the window's own `close`), `heldItemChanged` (each update of the held slot, and a new selection).
 
 Not yet: using a block with an item the use places or uses up but a lectern's book and a jukebox's disc (from 1.26.60
-the client then names the slot it changes). The
-screens no feature defines (the structure and jigsaw editors) are counted, not shown.
+the client then names the slot it changes).
 
 ### Screens
 
@@ -1759,6 +1761,75 @@ again; before 1.26.20 the same packets, from the protocol. Not recorded: command
 edits need an operator, so whether it sends them at the close or at each edit, and which last output it sends, is not
 known), a real server's command block entity (the field names are Bedrock's block entity format's), and a command
 block minecart's screen and update.
+
+## Structure block
+
+A structure block is an operator's editor, as a command block is: the vanilla client opens its screen in creative mode
+only, and the server takes its settings (structure_block_update) from an operator in creative mode only. Java has no
+helper for it, so its member is Bedrock's. The bot is never made an operator, so the update with settings of the
+bot's is not checked against a server: the tests are written from the recordings below and from the protocol.
+
+- **The screen** (`structure_editor`, `lib/bedrock/screens/structure_editor.ts`, added by the `structure_block` plugin)
+  is shown at its opening: a screen with no slot, the settings being the block entity's, which block_entity_data
+  tells. Its window is a **`BedrockStructureBlock`** (the type `minecraft:structure_block`, with the player's 36 slots
+  only, the inventory part from 0), whose members read the last block_entity_data at the screen's position, while it
+  is open too: **`mode`** (`data`: `data`, `save`, `load`, `corner`, `invalid`, `export`), **`structureName`**
+  (`structureName`), **`dataField`** (`dataField`), **`includePlayers`**, **`showBoundingBox`**,
+  **`ignoreEntities`**, **`removeBlocks`** (each its own name), **`size`** (`xStructureSize` …), **`offset`**
+  (`xStructureOffset` …), **`rotation`** (`rotation`: `none`, `90_deg`, `180_deg`, `270_deg`), **`mirror`**
+  (`mirror`: `none`, `x_axis`, `z_axis`, `both_axes`), **`animationMode`** (`animationMode`: `none`, `layers`,
+  `blocks`), **`animationSeconds`**, **`integrity`**, **`seed`** (the long's low 32 bits, as the protocol's),
+  **`redstoneSaveMode`** (`redstoneSaveMode`: `memory`, `disk`). A field the block entity lacks (or untold) reads as
+  `''`, 0, false or the first name, as the vanilla client's update showed them; a number out of the names, the first
+  name. `clickWindow` on it rejects; its close has no animation, gives nothing back, and sends the settings in
+  structure_block_update, no container_close, closing the screen in the next frame (`windowClose` and `closeWindow`
+  with it).
+- **`bot.bedrock.setStructureBlock(structureBlock, settings, trigger)`** throws out of creative mode and for a block
+  that is no structure block; else it sends structure_block_update in the next frame, as the screen's close: the
+  settings given, the block entity's for those not given (all of them, as null), and `should_trigger` as `trigger`
+  (false, as null: true asks the server to run the block's mode at once, as the protocol defines it). What the screen
+  keeps of its own is sent as recorded: the palette `default`, `non_ticking_players_and_ticking_areas` true, the player's
+  unique id (start_game's) as the last editor, the pivot at the structure's middle (half the size less a half on each
+  axis), an empty filtered name, `water_logged` false (the bot keeps no block's second layer). The layout is the
+  version's: rotation and mirror as numbers and no animation on 1.16.220, the animation from 1.17.0, the ticking areas
+  from 1.18.30, `water_logged` from 1.19.30, the filtered name from 1.21.60, the position's y a zigzag varint from
+  1.26.10, the redstone save mode a byte from 1.26.40. The protocol data of 1.16.201 and 1.16.210 has no layout of
+  structure_block_update (an empty packet), so there it throws, naming the version, and the screen's close sends
+  nothing. It returns at once: the server tells the change in block_entity_data, which the screen's members read.
+  structure_template_data_export_request (the export and the load's size query) is not sent.
+
+Recorded on 1.26.20, 1.26.51 and 1.26.60 against a scripted server (containers_structure_editor): block_entity_data
+with no field of the settings (`id StructureBlock`, the position, `isMovable`), container_open of `structure_editor`
+at the block, the close's structure_block_update (structure block type 0, integrity 0, pivot (-0.5, -0.5, -0.5), the
+start_game unique id), which the tests replay byte for byte, the server's later container_close of the screen's id
+before it opened the screen again; before 1.26.20 the same packets, from the protocol. Not recorded: an update with
+settings or a trigger (the vanilla client's edits need an operator), the pivot of a size other than 0, the filtered
+name of a name, `water_logged` of a waterlogged block, and a real server's structure block entity (the field names are
+Bedrock's block entity format's).
+
+## Jigsaw block
+
+A jigsaw block is an operator's editor too. The protocol has no packet of its own for its edits, so the bot sends the
+block entity back in block_entity_data, which either side sends (jigsaw_structure_data is the server's, of the world's
+jigsaw structures, which the bot does not read).
+
+- **The screen** (`jigsaw_editor`, `lib/bedrock/screens/jigsaw_editor.ts`, added by the `jigsaw` plugin) is shown at
+  its opening: a screen with no slot. Its window is a **`BedrockJigsaw`** (the type `minecraft:jigsaw`, with the
+  player's 36 slots only), whose members read the last block_entity_data at the screen's position, while it is open
+  too: **`name`** (`name`), **`target`** (`target`), **`pool`** (`target_pool`), **`finalState`** (`final_state`),
+  **`joint`** (`joint`), each `''` when the block entity lacks it. `clickWindow` on it rejects; its close has no
+  animation, gives nothing back and sends nothing (no container_close), closing the screen in the next frame.
+- **`bot.bedrock.setJigsaw(jigsaw, settings)`** throws out of creative mode and for a block that is no jigsaw block;
+  else it sends block_entity_data in the next frame: the block entity as last told (`id JigsawBlock` and the position
+  for one untold), its other fields kept, with the settings given and the block entity's for the others, each a
+  string. Its position's y is a varint up to 1.26.0 and a zigzag varint from 1.26.10. It returns at once.
+
+Recorded on 1.26.20, 1.26.51 and 1.26.60 against a scripted server (containers_jigsaw_editor): block_entity_data with
+no field of the settings (`id JigsawBlock`, the position, `isMovable`), container_open of `jigsaw_editor` at the block,
+which the tests replay byte for byte, the close sending nothing, the server's later container_close before it opened
+the screen again; before 1.26.20 the same packets, from the protocol. Not recorded: an edit (whether the vanilla
+client sends it as block_entity_data, at the close or at its button, and which fields, is not known: the field names
+are Bedrock's block entity format's), and the jigsaw's generate button.
 
 ## Education screens
 

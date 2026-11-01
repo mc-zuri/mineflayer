@@ -1,5 +1,6 @@
-import type { Tags, TagType } from 'prismarine-nbt'
 import { Vec3 } from 'vec3'
+import { blockKey, numberOf, textOf } from '../block_entity.ts'
+import type { BlockEntity } from '../block_entity.ts'
 import type { Vec3f } from '../modules/auth_input.ts'
 import type { OpenScreen } from '../modules/screens.ts'
 import { COMMAND_BLOCK_SCREEN } from '../screens/command_block.ts'
@@ -17,8 +18,6 @@ const BLOCKS: readonly string[] = Object.freeze(['chain_command_block', 'repeati
 // Java's mode of a command block as placed
 const REDSTONE = 2
 
-type Compound = Record<string, undefined | Tags[TagType]>
-
 /** a command block's block entity as the server last told it: a field it lacks reads as its type's zero */
 interface Told {
   readonly command: string
@@ -35,21 +34,7 @@ const UNTOLD: Told = Object.freeze({
   command: '', lastOutput: '', customName: '', trackOutput: false, conditional: false, alwaysActive: false, tickDelay: 0, executeOnFirstTick: false
 })
 
-function keyOf ({ x, y, z }: Vec3f): string {
-  return `${x},${y},${z}`
-}
-
-function textOf (compound: Compound, key: string): string {
-  const value = compound[key]?.value
-  return typeof value === 'string' ? value : ''
-}
-
-function numberOf (compound: Compound, key: string): number {
-  const value = compound[key]?.value
-  return typeof value === 'number' ? value : 0
-}
-
-function toldOf (entity: Compound): Told {
+function toldOf (entity: BlockEntity): Told {
   return {
     command: textOf(entity, 'Command'),
     lastOutput: textOf(entity, 'LastOutput'),
@@ -72,7 +57,7 @@ export default function commandBlock (bot: BedrockBotInternal): void {
   const hasFilteredName = isBedrockVersionAtLeast(bot.version, 'bedrock_1.21.60')
 
   function toldAt (position: Vec3f): Told {
-    return blocks.get(keyOf(position)) ?? UNTOLD
+    return blocks.get(blockKey(position)) ?? UNTOLD
   }
 
   function modeAt ({ x, y, z }: Vec3f): number {
@@ -81,7 +66,7 @@ export default function commandBlock (bot: BedrockBotInternal): void {
   }
 
   core.observe(OWNER, 'block_entity_data', ({ position, nbt: { value } }) => {
-    const key = keyOf(position)
+    const key = blockKey(position)
     if (value['id']?.value === 'CommandBlock') blocks.set(key, toldOf(value))
     else blocks.delete(key)
   })

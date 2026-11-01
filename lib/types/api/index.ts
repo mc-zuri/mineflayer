@@ -375,6 +375,10 @@ export interface BedrockExtensions {
   playDisc: (jukebox: Block, disc?: Item | null) => Promise<void>
   /** uses the jukebox, which the server told holds a disc, as the vanilla client does; the server drops the disc as an item; resolves once it tells the jukebox holds none */
   takeDisc: (jukebox: Block) => Promise<void>
+  /** in creative mode, the structure block's settings (the block entity's for those not given) sent in the next frame as structure_block_update, as its screen's close does; `trigger` (false, as null) runs its save or load, which the server takes from an operator only */
+  setStructureBlock: (structureBlock: Block, settings?: Partial<BedrockStructureBlockSettings> | null, trigger?: boolean | null) => void
+  /** in creative mode, the jigsaw block's settings (the block entity's for those not given) sent in the next frame as block_entity_data, which the server takes from an operator only */
+  setJigsaw: (jigsaw: Block, settings: Partial<BedrockJigsawSettings>) => void
   /** an Education world's: a stack of the compound of the metadata (water 26) taken from the open compound creator's output to the empty cursor; the server judges the elements in its inputs */
   createCompound: (compound: number) => Promise<void>
   /** an Education world's: the open lab table's combine, which destroys its items, then its screen's close, as the vanilla client's */
@@ -1154,6 +1158,55 @@ export interface BedrockCommandBlock extends Window<StorageEvents> {
   /** the hover note */
   readonly customName: string
 
+  close (): Promise<void>
+}
+
+/** a structure block's settings, as its block entity keeps them and its screen shows them (a field the block entity lacks: '', 0, false or the first name) */
+export interface BedrockStructureBlockSettings {
+  /** what the block does (its block entity's `data`) */
+  mode: 'data' | 'save' | 'load' | 'corner' | 'invalid' | 'export'
+  structureName: string
+  /** the data mode's function */
+  dataField: string
+  includePlayers: boolean
+  showBoundingBox: boolean
+  ignoreEntities: boolean
+  /** the structure loaded without its air (structure_block_update's ignore_blocks) */
+  removeBlocks: boolean
+  size: Vec3
+  /** of the structure from the block */
+  offset: Vec3
+  rotation: 'none' | '90_deg' | '180_deg' | '270_deg'
+  mirror: 'none' | 'x_axis' | 'z_axis' | 'both_axes'
+  /** how a load shows the structure */
+  animationMode: 'none' | 'layers' | 'blocks'
+  animationSeconds: number
+  integrity: number
+  seed: number
+  /** where a save by redstone keeps the structure */
+  redstoneSaveMode: 'memory' | 'disk'
+}
+
+/** Bedrock's structure block window (Java has none): no slot of its own, its settings being the block entity's, as the server last told them */
+export interface BedrockStructureBlock extends Window<StorageEvents>, Readonly<BedrockStructureBlockSettings> {
+  close (): Promise<void>
+}
+
+/** a jigsaw block's settings, as its block entity keeps them and its screen shows them (a field the block entity lacks: '') */
+export interface BedrockJigsawSettings {
+  name: string
+  /** the name of the jigsaw it joins */
+  target: string
+  /** the template pool it draws from */
+  pool: string
+  /** the block it turns into */
+  finalState: string
+  /** 'rollable' or 'aligned' */
+  joint: string
+}
+
+/** Bedrock's jigsaw block window (Java has none): no slot of its own, its settings being the block entity's, as the server last told them */
+export interface BedrockJigsaw extends Window<StorageEvents>, Readonly<BedrockJigsawSettings> {
   close (): Promise<void>
 }
 
