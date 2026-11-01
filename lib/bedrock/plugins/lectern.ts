@@ -87,15 +87,26 @@ export default function lectern (bot: BedrockBotInternal): void {
   }
 
   /**
-   * a player's take (the servers ignore lectern_update's drop_book): the screen closed, then a hit of the lectern, which
-   * drops the book beside it as an item; resolves once the server told the lectern holds no book
+   * a player's take (the servers ignore lectern_update's drop_book): a hit of the lectern, which drops the book beside
+   * it as an item; resolves once the server told the lectern holds no book
    */
+  async function knockBookOff ({ x, y, z }: Vec3f): Promise<void> {
+    await bot._blockUse.hit(core, new Vec3(x, y, z))
+    await core.waits.until(() => toldAt({ x, y, z }).book === null, TOLD_TICKS, `the server took no book off the lectern in ${TOLD_TICKS} ticks`)
+  }
+
+  /** the screen closed first, telling the page */
   async function takeBook (screen: OpenScreen): Promise<void> {
     await core.call(async () => { needsBook('takeBook', screen) })
-    const { window, opening: { position } } = screen
-    await bot.closeWindow(window)
-    await bot._blockUse.hit(core, new Vec3(position.x, position.y, position.z))
-    await core.waits.until(() => toldAt(position).book === null, TOLD_TICKS, `the server took no book off the lectern in ${TOLD_TICKS} ticks`)
+    await bot.closeWindow(screen.window)
+    await knockBookOff(screen.opening.position)
+  }
+
+  /** with no screen open: servers before 1.20.61 open none on a use */
+  async function takeBookFrom (lectern: Block): Promise<void> {
+    if (lectern.name !== 'lectern') throw new Error(`takeBookFromLectern: ${lectern.name} is not a lectern`)
+    if (toldAt(lectern.position).book === null) throw new Error('takeBookFromLectern: the lectern holds no book')
+    await knockBookOff(lectern.position)
   }
 
   /** its window before windowOpen: the block entity's book and page, as the server tells them while it is open too */
@@ -142,6 +153,7 @@ export default function lectern (bot: BedrockBotInternal): void {
   bot._blockUse.addTaker('lectern', ({ position }, item) => BOOKS.includes(item) && toldAt(position).book === null)
   bot.bedrock = {
     ...bot.bedrock,
-    putBookOnLectern: async (lectern, book) => { await putBook(lectern, book ?? undefined) }
+    putBookOnLectern: async (lectern, book) => { await putBook(lectern, book ?? undefined) },
+    takeBookFromLectern: async lectern => { await takeBookFrom(lectern) }
   }
 }

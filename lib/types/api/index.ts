@@ -365,6 +365,8 @@ export interface BedrockExtensions {
   applyBannerPattern: (pattern: string, dye: Item, banner?: Item | null, loom?: Block | null) => Promise<void>
   /** equips the book (a book and quill or a written book; the one held, as null) and uses the lectern, which the server told holds none; resolves once it tells the lectern holds a book */
   putBookOnLectern: (lectern: Block, book?: Item | null) => Promise<void>
+  /** hits the lectern, which the server told holds a book, as the vanilla client does with no screen open; resolves once it tells the lectern holds none */
+  takeBookFromLectern: (lectern: Block) => Promise<void>
 }
 
 export interface BotEvents {

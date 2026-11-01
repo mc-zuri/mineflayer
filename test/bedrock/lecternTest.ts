@@ -584,6 +584,30 @@ describe('bedrock lectern: the book taken by a hit (not recorded)', () => {
           assert.deepStrictEqual([taken, window.book, errors], [true, null, []])
           bot.end()
         })
+
+        it(`bedrock ${version}: takeBookFromLectern hits the lectern with no screen open, telling no page, and resolves once the server told no book`, async () => {
+          const { bot, server, driver, errors, lectern, tell } = await puttingBot(version)
+          tell(lecternEntity(lectern.position, WRITTEN_BOOK, 1, 3))
+          await driver.ticks(2)
+          const since = server.batches.flat().length
+          let taken = false
+          const taking = bot.bedrock.takeBookFromLectern(lectern).then(() => { taken = true })
+          await driver.ticks(4)
+          const at = { x: 2, y: lectern.position.y, z: 0 }
+          assert.deepStrictEqual(fromFirst(hitTicks(server, since)), [
+            [0, hit.start, hit.started.map((action): Struck => [action, at, 4])],
+            [1, hit.abort, hit.aborted.map((action): Struck => [action, at, 0])]
+          ])
+          const legacy = hit.started.length === 0
+          const actions = server.sentOf('player_action').filter(({ action }) => String(action).endsWith('_break')).map(({ action, position, face }) => [action, position, face])
+          assert.deepStrictEqual(actions, legacy ? [['start_break', at, 4], ['abort_break', at, 0]] : [])
+          assert.deepStrictEqual([server.sentOf('lectern_update'), server.sentOf('inventory_transaction'), bot.currentWindow, taken], [[], [], null, false])
+          tell(lecternEntity(lectern.position))
+          await driver.tick()
+          await taking
+          assert.deepStrictEqual([taken, errors], [true, []])
+          bot.end()
+        })
       }
     })
   }
@@ -634,6 +658,19 @@ describe('bedrock lectern: the book taken by a hit (not recorded)', () => {
       await driver.ticks(4)
       const hitting = server.sentOf('player_auth_input').filter(input => input.block_action !== undefined)
       assert.deepStrictEqual([hitting, server.sentOf('animate').filter(swing => swing.swing_source === 'mine'), window.book?.name, errors], [[], [], 'written_book', []])
+      bot.end()
+    })
+
+    it('takeBookFromLectern takes no book of a lectern told holding none, nor of another block, sending nothing', async () => {
+      const { bot, server, driver, errors, lectern } = await puttingBot(version)
+      await driver.ticks(2)
+      await assert.rejects(bot.bedrock.takeBookFromLectern(lectern), { message: 'takeBookFromLectern: the lectern holds no book' })
+      const floor = bot.blockAt(lectern.position.offset(-2, -1, 0))
+      assert.ok(floor !== null)
+      await assert.rejects(bot.bedrock.takeBookFromLectern(floor), { message: 'takeBookFromLectern: stone is not a lectern' })
+      await driver.ticks(4)
+      const hitting = server.sentOf('player_auth_input').filter(input => input.block_action !== undefined)
+      assert.deepStrictEqual([hitting, server.sentOf('animate'), errors], [[], [], []])
       bot.end()
     })
 

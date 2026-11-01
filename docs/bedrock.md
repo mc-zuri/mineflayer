@@ -102,7 +102,8 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.openEnchantmentTable(block)`: Java's, its window's options from player_enchant_options and its enchant (see the
   enchanting table below).
 - `bot.bedrock.openGrindstone(block)` (Bedrock's): the grindstone, and its window's grind (see the grindstone below).
-- `bot.bedrock.putBookOnLectern(lectern, book)` (Bedrock's): a book put on a lectern by a use (see the lectern below).
+- `bot.bedrock.putBookOnLectern(lectern, book)`, `bot.bedrock.takeBookFromLectern(lectern)` (Bedrock's): a book put on
+  a lectern by a use, and taken by a hit (see the lectern below).
 - `bot.openAnvil(block)`: Java's, its window's combine and rename, the result by Bedrock's rules (see the anvil below).
 - `bot.setQuickBarSlot(slot)`, `bot.QUICK_BAR_START`: selecting a hotbar slot (see items below).
 - `bot.equip(item, destination)`, `bot.unequip(destination)`, `bot.getEquipmentDestSlot(destination)`,
@@ -1637,8 +1638,7 @@ For a lectern the server told no book of, the close sends nothing, as the vanill
   1.16.201, 1.16.220, 1.18.30, 1.19.80, 1.20.10 and 1.20.61 servers, it took nothing, with the screen open or not. A
   `player_action start_break` drops the book on the servers up to 1.26.0 too, the 1.26.61 server closing the
   connection on it. The book and quill dropped is named "Book & Quill" up to 1.21.20, "Book and Quill" from 1.21.30.
-  `takeBook` is a member of the screen's window: it cannot be reached on the servers that open no lectern screen (see
-  below).
+  On the servers that open no lectern screen (see below), `bot.bedrock.takeBookFromLectern` takes it.
 - **`activateBlock(lectern)`** holding a book and quill or a written book puts it on a lectern the server told no book
   of, as the vanilla client's use does (see using a block above): the use names the hotbar slot emptied from 1.26.60,
   none before; the server then sends the slot emptied and block_entity_data with the book. A lectern told holding a
@@ -1647,6 +1647,13 @@ For a lectern the server told no book of, the close sends nothing, as the vanill
   uses the lectern, and resolves once the server told it holds a book; it rejects, sending nothing, a block that is no
   lectern, a lectern told holding a book and a given or held item that is no book, and rejects when the server tells no book in 100
   ticks.
+- **`bot.bedrock.takeBookFromLectern(lectern)`** (Java has no lectern helper) is `takeBook` with no screen open: it
+  hits the lectern as `takeBook` does, the vanilla client's hit of the version (looking at the lectern's top first when
+  the player's pick does not meet it), and resolves once the server told the lectern holds no book. It rejects,
+  sending nothing, a block that is no lectern and a lectern told holding no book (or untold); a hit cannot be made
+  while a screen is open (close the lectern's with `takeBook`), and it rejects when the server tells the book still on
+  100 ticks after the hit. It reaches the book on every version, the servers that open no screen included (in the e2e,
+  those before 1.20.61).
 
 Recorded on 1.26.20, 1.26.51 and 1.26.60 (protocol_blocks_ui): a book and quill put on a lectern by a use, byte for
 byte the bot's (the slot named and the empty hand told in the use's frame on 1.26.60; on 1.26.20 and 1.26.51 no slot,
