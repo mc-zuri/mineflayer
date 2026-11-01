@@ -53,6 +53,13 @@ export interface BlockClick {
   readonly legacyId: number
 }
 
+/** a build pressed: where the held item goes, its name, and the tick of the press */
+export interface Build {
+  readonly position: Vec3f
+  readonly item: string
+  readonly tick: number
+}
+
 /** a hit's block action: the block's and the face's */
 export interface HitAction extends BlockAction {
   readonly position: Vec3f
@@ -252,6 +259,8 @@ export class BlockUse {
   private hitting: Hit | undefined
   /** the blocks a use can put the held item in, by name */
   private readonly takers = new Map<string, TakesHeld>()
+  /** the last build pressed: up to 1.19.70 the vanilla client opens a sign's editor itself after placing it */
+  lastBuild: Build | undefined
 
   constructor (bot: BedrockBotInternal, player: LocalPlayer, inventory: Inventory) {
     this.bot = bot
@@ -377,6 +386,7 @@ export class BlockUse {
     // as recorded: every block the client used but the crafting table; a build sends none
     if (kind === 'use' && !atLeast(version, 'bedrock_1.19.1') && block.name !== 'crafting_table') outbox.queue('player_action', interactBlock(version, runtimeId, click))
     clicked?.(click)
+    if (kind === 'build' && item !== undefined) this.lastBuild = { position: click.result, item: item.name, tick }
     const ended = core.waits.untilDue()
     // the click's tick is the next to run
     this.pressed = { runtimeId, click, endsAt: tick + 1 + heldTicks, ended }

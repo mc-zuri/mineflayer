@@ -123,6 +123,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.writeBook(slot, pages)`, `bot.signBook(slot, pages, author, title)`: as Java's, by book_edit (see items below).
 - `bot.placeBlock(referenceBlock, faceVector)`: as Java's, as the vanilla client's build (see placing below).
 - `bot.placeEntity(referenceBlock, faceVector)`: as Java's, the same build holding an entity's item (see placing below).
+- `bot.updateSign(block, text, back)`: as Java's, the sign's block entity sent back with its text (see signs below).
 - `bot.controlState`, `bot.setControlState(control, state)`, `bot.getControlState(control)`,
   `bot.clearControlStates()`, `bot.look(yaw, pitch)`, `bot.lookAt(point)`, `bot.waitForTicks(ticks)`: as Java's
   (see controls and look below).
@@ -147,7 +148,7 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
   (jsonMsg, position)`, `messagestr (message, position, jsonMsg)`, `chat` and `whisper (username, message, translate,
   jsonMsg)`, `actionBar (jsonMsg)`, `chat:<name> (matches)`, `unmatchedMessage (message, jsonMsg)` (see chat below),
   `windowOpen (window)`, `windowClose (window)`, `heldItemChanged (item)` (see the inventory below), `blockPlaced
-  (oldBlock, newBlock)`, `entityPlaced (entity)` (see placing below),
+  (oldBlock, newBlock)`, `entityPlaced (entity)` (see placing below), `signOpen (block)` (see signs below),
   `kicked (reason, loggedIn)`, `end (reason)`, `error`. The team events (`teamCreated`, `teamRemoved`, `teamUpdated`,
   `teamMemberAdded`, `teamMemberRemoved`) are declared, so that code for both editions type checks, and never come.
   - `blockUpdate:(x, y, z)` is typed for every position (`blockUpdate:(1, 64, 2)`), not only by its placeholder name
@@ -196,7 +197,7 @@ Events come at their point in the frame:
 
 | Event | When |
 | --- | --- |
-| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced`, `entityPlaced` | the packet pass |
+| `login`, `game`, `respawn`, `health`, `death`, `experience`, `breath`, `spawnReset`, `rain`, `weatherUpdate`, `abilities`, `time`, `forcedMove`, `blockUpdate`, `message`, `messagestr`, `chat`, `whisper`, `actionBar`, `chat:<name>`, `unmatchedMessage`, `windowOpen`, `windowClose`, the scoreboard, title, boss bar, sound and particle events, `kicked`, `end`, `error`; `entitySpawn`, `entityMoved`, `entityAttributes`, `entityEffect`, `entityEffectEnd`, `itemDrop`, `playerCollect`, `entityAttach`, `entityDetach`, `mount`, `dismount` and the events of entity_event and animate; `playerJoined`, `playerUpdated`, `playerLeft`; `blockPlaced`, `entityPlaced`, `signOpen` | the packet pass |
 | `heldItemChanged` | where the held slot changes: the packet pass, or the input pass (a request's prediction, a response taken in) |
 | `chunkColumnLoad`; `entityUpdate`, `entitySleep`, `entityElytraFlew`, `entityCrouch`, `entityUncrouch` | the start of a tick |
 | `spawn` (and `entitySpawn` of `bot.entity` right after it), `entityGone` (and `dismount` of the vehicle gone), `physicsTick`, `physicTick`, `move` | the end of a tick, in this order, once `bot.entity` shows where the tick left the player |
@@ -2622,10 +2623,40 @@ with an empty tag (7), and its first page by the book as it was, then edited (8)
 Recorded and replayed by the tests: the placement of dirt against stone, played by `placeBlock` on every build, byte for
 byte (the press, the use in the air, the hand told in the next tick and the use's end), resolving at the server's
 recorded update_block; the painting hung on 1.26.20, 1.26.51 and 1.26.60, played by `placeEntity` byte for byte,
-resolving with the painting at the server's recorded add_painting.
+resolving with the painting at the server's recorded add_painting; the oak sign placed on 1.26.20, 1.26.51 and 1.26.60,
+played by `_placeBlockWithOptions` at the recorded point byte for byte (the bot's pick finds that point a float step
+off), its editor opened by the server's recorded packets and its block entity sent back by `updateSign`, byte for byte.
 
-Not yet: signs (`updateSign`, `signOpen`), a block placed by an item of another name, and the vanilla client's repeated
-builds while the use key is held.
+Not yet: a block placed by an item of another name, and the vanilla client's repeated builds while the use key is held.
+
+### Signs
+
+- **`signOpen (block)`** is Java's, emitted in the packet pass with `bot.blockAt` of the sign (null where no column is
+  loaded). From 1.19.80 it comes at the server's `open_sign` (its `is_front` is not passed on: Java's event has no
+  side). As recorded placing an oak sign (1.26.20.4, 1.26.51.1, 1.26.60.5), the server puts the sign, tells its block
+  entity, puts and tells it again, then opens the editor, after `placeBlock` resolved. Up to 1.19.70 there is no
+  `open_sign`: the vanilla client opens its editor itself after placing a sign. There the bot emits `signOpen` once, at
+  the server's block entity of a sign at the destination of the bot's last build holding a sign's item, within 100
+  ticks of the press. No sign is recorded before 1.26.20; the e2e checks it on 1.16.220 and 1.19.70 (one `Text` field
+  there).
+- **`bot.updateSign(block, text, back = false)`** is Java's, as the vanilla client's edit: the sign's block entity sent
+  back in `block_entity_data`. Recorded closing the editor without typing, the client sent it back as the server told
+  it, byte for byte. The bot sends the block entity the server last told at the block (`block_entity_data`), with its
+  fields in their order as told, and the side's `Text` replaced by `text`, as given:
+  - a two-sided sign's `FrontText`, or its `BackText` for `back` (recorded 1.26.20 – 1.26.60);
+  - else the block entity's one `Text`, as signs before 1.19.80 are believed to be told (not recorded), where `back`
+    emits `error` (`updateSign: the sign at (1, -60, 0) has no back`).
+
+  It returns nothing and the edit goes in the next frame, as Java's sends it at once. Java's errors are emitted (`too
+  many lines for sign text` over 4 lines, `Signs have a maximum of 45 characters per line`), and the sign's:
+  `updateSign: the server told no block entity of the sign at (1, -60, 0)` (a block entity only sent in a column is not
+  read yet), `updateSign: the sign at (1, -60, 0) is waxed`.
+- The server takes the edit while it has the sign's editor open for the player: the block entity it tells then names
+  the player in `LockedForEditingBy` (recorded), sent back as told. Call `updateSign` from `signOpen`, as with Java's
+  servers. Not recorded, so kept as told: what the vanilla client writes in `TextOwner` and `FilteredText` when text is
+  typed. Whether a server takes an edit without the lock is not verified.
+- Not yet: `block.signText` and `blockEntityData` (the world's block entities), and a sign's colour and glow (item uses
+  on a sign). A hanging sign's block entity (`HangingSign`) is taken as a sign's: not recorded.
 
 ## Tests
 
@@ -2685,7 +2716,9 @@ builds while the use key is held.
   1.21.20, the swing's data from 1.21.120 and source from 1.21.130, the cooldown from 1.26.10, ItemV4s 1.26.30 – 1.26.45,
   the hand from 1.26.51, the swing's hand 1.26.60), each group playing the recorded placement of dirt with the bot, byte
   for byte; placing an entity: the painting recorded on 1.26.20, 1.26.51 and 1.26.60 hung by the bot byte for byte, and
-  by how add_painting places it (block coordinates 1.16.201 – 1.16.210, a position from 1.16.220) on every version; the
+  by how add_painting places it (block coordinates 1.16.201 – 1.16.210, a position from 1.16.220) on every version;
+signs: the oak sign recorded on 1.26.20, 1.26.51 and 1.26.60 placed, opened and sent back byte for byte, and by how the
+editor opens (the vanilla client's own up to 1.19.70, one text; open_sign from 1.19.80, two sides) on every version; the
   clicks: by how a request names its containers and stacks, each
   group playing the recorded drop of the cursor's stack and a shield put in the offhand, with every gesture recorded on
   1.26.51 played from 1.26.40, the slots named in the click's frame from 1.26.51 and the cursor drags from 1.26.60; the

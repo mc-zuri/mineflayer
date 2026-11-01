@@ -43,6 +43,7 @@ import particle from './plugins/particle.ts'
 import place from './plugins/place.ts'
 import rain from './plugins/rain.ts'
 import scoreboard from './plugins/scoreboard.ts'
+import sign from './plugins/sign.ts'
 import simpleInventory from './plugins/simple_inventory.ts'
 import settings, { chunkRadiusOf } from './plugins/settings.ts'
 import sound from './plugins/sound.ts'
@@ -106,7 +107,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   creative,
   book,
   block_actions: blockActions,
-  place
+  place,
+  sign
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */
