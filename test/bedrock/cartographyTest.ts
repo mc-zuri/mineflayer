@@ -1,4 +1,6 @@
 import assert from 'assert'
+import type { Item } from 'prismarine-item'
+import type { Tags } from 'prismarine-nbt'
 import { isBedrockVersionAtLeast, latestSupportedBedrockVersion } from '../../lib/bedrock/version.ts'
 import type { BedrockVersion } from '../../lib/types/api/index.ts'
 import type { BedrockServerboundPackets } from '../../lib/types/protocol/bedrock-client.ts'
@@ -6,7 +8,7 @@ import { bedrockCodec } from './common/codec.ts'
 import { ServerInventory } from './common/inventory.ts'
 import type { Given, RespondedSlot } from './common/inventory.ts'
 import { ServerRecipes } from './common/recipes.ts'
-import type { GivenIngredient, GivenRecipe } from './common/recipes.ts'
+import type { GivenIngredient, GivenMulti, GivenRecipe } from './common/recipes.ts'
 import { bedrockTestBot, bedrockTestVersionsFrom } from './common/server.ts'
 import type { FakeBedrockClient, TestBot } from './common/server.ts'
 import { ServerWorld } from './common/world.ts'
@@ -214,6 +216,161 @@ const GESTURES: ReadonlyArray<{ what: string, mode: number, button: number, requ
   { what: 'the key 1', mode: HOTBAR_KEY, button: 0, request: -4591, paper: 1202, told: '930101dd47030d0f94090000000005050137000cb20400000000013c003211eeffff1c00000000000001000a000000' }
 ]
 
+const MAP_LOCKING = '5343c1ca-e434-2260-4b02-70ffebb1b78b'
+
+function longOf ([high, low]: readonly number[]): bigint {
+  return (BigInt(high ?? 0) << 32n) | BigInt((low ?? 0) >>> 0)
+}
+
+/** a filled map of the id, its map_uuid's high and low halves */
+function filledMap (version: BedrockVersion, id: number, stackId: number, [high, low]: [number, number]): Given {
+  const mapUuid: Tags['long'] = { type: 'long', value: [high, low] }
+  // up to 1.16.210 an item's NBT is the network NBT, whose long the codec writes from a bigint, which prismarine-nbt's typings do not give
+  if (!atLeast(version, 'bedrock_1.16.220')) Reflect.set(mapUuid, 'value', longOf([high, low]))
+  return { id, count: 1, stackId, nbt: { map_name_index: { type: 'int', value: 2 }, map_uuid: mapUuid } }
+}
+
+/** the map_uuid of the item's NBT: up to 1.16.210 read as a bigint */
+function mapUuidOf (item: Item | null | undefined): string {
+  const tag = item?.nbt?.type === 'compound' ? item.nbt.value['map_uuid'] : undefined
+  if (tag?.type !== 'long') return 'none'
+  return String(typeof tag.value === 'bigint' ? tag.value : longOf(tag.value))
+}
+
+/** the bot's map_create_locked_copy (its ids) and item_stack_request packets since the last call, in order */
+function previewsSince (server: FakeBedrockClient): () => string[] {
+  let [seen, previewsSeen] = [server.batches.flat().length, server.sentOf('map_create_locked_copy').length]
+  return () => {
+    const all = server.batches.flat()
+    const fresh = all.slice(seen)
+    const previews = server.sentOf('map_create_locked_copy').slice(previewsSeen)
+    seen = all.length
+    previewsSeen += previews.length
+    return fresh.flatMap(({ name }) => {
+      if (name !== 'map_create_locked_copy') return name === 'item_stack_request' ? [name] : []
+      const preview = previews.shift()
+      return [`${name} ${String(preview?.original_map_id)} ${String(preview?.new_map_id)}`]
+    })
+  }
+}
+
+/** protocol_maps' protocol.map_locked_copy: a filled map in the input, a glass pane placed from the cursor to the addition, then a left click on the output */
+interface RecordedLocking {
+  version: BedrockVersion
+  /** crafting_data's network id of the multi recipe 5343c1ca… */
+  recipe: number
+  map: number
+  pane: number
+  /** the map's map_uuid: its high and low halves */
+  mapUuid: [number, number]
+  /** the place's request id, the lock's the next */
+  place: number
+  /** the stack id the server gave the locked map */
+  made: number
+  /** the requests, as the client sent them */
+  told: { place: string, lock: string }
+  /** map_create_locked_copy's original_map_id, the map's id */
+  original: bigint
+  /** the bot's new_map_id for user Player's first copy of the map: the client's own is random */
+  preview: bigint
+}
+
+const LOCKINGS: readonly RecordedLocking[] = [
+  {
+    // the client's new_map_id 1800816707
+    version: 'bedrock_1.26.20',
+    recipe: 3585,
+    map: 80,
+    pane: 82,
+    mapUuid: [-2, 25],
+    place: -45,
+    made: 83,
+    told: { place: '930101590101013b0000a40138000d0000ffffffff', lock: '9301015d040f811c00000000050137000ca001050138000da40100013c00325d3b00000001000a000000' },
+    original: -8589934567n,
+    preview: 803647151n
+  },
+  {
+    // the client's new_map_id 515977548
+    version: 'bedrock_1.26.51',
+    recipe: 4763,
+    map: 8,
+    pane: 10,
+    mapUuid: [-2, 12],
+    place: -89,
+    made: 11,
+    told: { place: '930101b101010101013b00000a00000038000d0000000000ffffffff', lock: '930101b501040d0f9b250000000005050137000c0800000005050138000d0a0000000000013c0032a5ffffff3b00000000000001000a000000' },
+    original: -8589934580n,
+    preview: 770767309n
+  },
+  {
+    // the client's new_map_id 1043407513
+    version: 'bedrock_1.26.60',
+    recipe: 2867,
+    map: 77,
+    pane: 79,
+    mapUuid: [-2, 25],
+    place: -45,
+    made: 80,
+    told: { place: '93010159010101013b00004f00000038000d0000000000ffffffff', lock: '9301015d040d0fb3160000000005050137000c4d00000005050138000d4f0000000000013c0032d1ffffff3b00000000000001000a000000' },
+    original: -8589934567n,
+    preview: 803647151n
+  }
+]
+
+/** the recording of the version, or of the latest version before it, or the first */
+function lockingOf (version: BedrockVersion): RecordedLocking {
+  const recording = LOCKINGS.filter(recorded => atLeast(version, recorded.version)).at(-1) ?? LOCKINGS[0]
+  assert.ok(recording !== undefined)
+  return recording
+}
+
+interface LockingGroup {
+  from: BedrockVersion
+  to: BedrockVersion
+  title: string
+  previews: boolean
+  /** the place's request and the lock's, as requestsSince describes them */
+  described: (recording: RecordedLocking) => [string, string]
+}
+
+function lockingRequests ({ recipe, map, pane, place }: RecordedLocking, legacy: (type: number) => string, text: string): [string, string] {
+  return [
+    `${place} place${legacy(1)} 1 cursor:0#${pane} → cartography_additional:13#0`,
+    `${place - 2} optional${legacy(15)} ${recipe} text 0, consume${legacy(5)} 1 cartography_input:12#${map}, consume${legacy(5)} 1 cartography_additional:13#${pane}, take${legacy(0)} 1 creative_output:50#${place - 2} → cursor:0#0 names [""]${text}`
+  ]
+}
+
+const LOCKING_GROUPS: readonly LockingGroup[] = [
+  {
+    from: 'bedrock_1.16.201',
+    to: 'bedrock_1.16.210',
+    title: 'no preview, the protocol data giving map_create_locked_copy no fields, and no cause (1.16.201 – 1.16.210, not recorded)',
+    previews: false,
+    described: recording => lockingRequests(recording, () => '', '')
+  },
+  {
+    from: 'bedrock_1.16.220',
+    to: 'bedrock_1.19.21',
+    title: 'the preview, no cause (1.16.220 – 1.19.21, not recorded)',
+    previews: true,
+    described: recording => lockingRequests(recording, () => '', '')
+  },
+  {
+    from: 'bedrock_1.19.30',
+    to: 'bedrock_1.26.30',
+    title: 'the cause cartography_text (1.19.30 – 1.26.30, recorded on 1.26.20)',
+    previews: true,
+    described: recording => lockingRequests(recording, () => '', ' cause cartography_text')
+  },
+  {
+    from: 'bedrock_1.26.40',
+    to: 'bedrock_1.26.60',
+    title: 'each action\'s legacy type (1.26.40 – 1.26.60, recorded on 1.26.51 and 1.26.60)',
+    previews: true,
+    described: recording => lockingRequests(recording, type => `/${type}`, ' cause cartography_text')
+  }
+]
+
 describe('bedrock cartography table', () => {
   describe('the vanilla client\'s shift clicks place the map in the inventory\'s first slot with room, its key 1 takes it to hotbar slot 0 (recorded on 1.26.51.1)', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.26.51', 'bedrock_1.26.51')) {
@@ -280,6 +437,46 @@ describe('bedrock cartography table', () => {
     })
   }
 
+  for (const group of LOCKING_GROUPS) {
+    describe(`the vanilla client locking a filled map with a glass pane: the pane placed from the cursor to the addition, then the output to the cursor: ${group.title}`, () => {
+      for (const version of bedrockTestVersionsFrom(group.from, group.to)) {
+        it(`bedrock ${version}`, async () => {
+          const table = await joined(version)
+          const { bot, internal, server, driver, errors, inventory, recipes, idOf } = table
+          const recording = lockingOf(version)
+          const { recipe, map, pane, mapUuid, place, made } = recording
+          recipes.send([{ type: 'multi', uuid: '00000000-0000-0000-0200-000000000000', networkId: 2 }, ...tableRecipes(4044, 4043), { type: 'multi', uuid: MAP_LOCKING, networkId: recipe }])
+          openTable(server)
+          inventory.slot('ui', 12, filledMap(version, idOf('filled_map'), map, mapUuid))
+          inventory.slot('ui', 0, { id: idOf('glass_pane'), count: 1, stackId: pane })
+          await driver.tick()
+          const [described, told, sent] = [requestsSince(table), toldSince(server), previewsSince(server)]
+          internal._core.requestIds.continueProcess(place)
+          const placed = bot.clickWindow(1, 0, 0)
+          await driver.tick()
+          const toldPlace = told()
+          const previewed = sent()
+          inventory.respond(place, [{ container: 'cursor', slot: 0, count: 0 }, { container: 'cartography_additional', slot: 13, count: 1, stackId: pane }])
+          await driver.tick()
+          await placed
+          const locked = bot.clickWindow(OUTPUT, 0, 0)
+          await driver.tick()
+          const toldLock = told()
+          inventory.respond(place - 2, [{ container: 'cartography_input', slot: 12, count: 0 }, { container: 'cartography_additional', slot: 13, count: 0 }, { container: 'cursor', slot: 0, count: 1, stackId: made }])
+          await driver.tick()
+          await locked
+          if (version === recording.version) assert.deepStrictEqual([toldPlace, toldLock], [[recording.told.place], [recording.told.lock]])
+          const window = bot.currentWindow
+          assert.deepStrictEqual([described(), previewed, sent(), window?.selectedItem?.name, countAndId(window?.selectedItem), mapUuidOf(window?.selectedItem), window?.slots[INPUT], window?.slots[1], errors], [
+            group.described(recording), group.previews ? [`map_create_locked_copy ${recording.original} ${recording.preview}`, 'item_stack_request'] : ['item_stack_request'], ['item_stack_request'],
+            'filled_map', [1, made], String(recording.original), null, null, []
+          ])
+          bot.end()
+        })
+      }
+    })
+  }
+
   describe('the window: Java\'s cartography table (the input, the addition, the result); the close gives back the cursor\'s item, then the input\'s and the addition\'s, up to 1.21.111 with the close, from 1.21.120 after the crafting table\'s animation', () => {
     for (const version of bedrockTestVersionsFrom('bedrock_1.21.111', 'bedrock_1.21.120')) {
       // recorded in reduced_stations' empty_map on 1.21.2.2: place(cartography_input:12 → hotbar_and_inventory:0, 3), container_close in its packet
@@ -319,7 +516,7 @@ describe('bedrock cartography table', () => {
     const version = latestSupportedBedrockVersion
 
     /** the table open, its slots holding the items given, crafting_data's recipes of the table sent after the others given */
-    async function tableWith (input: string | null, additional: string | null, others: GivenRecipe[] = []): Promise<Cartography & { described: () => string[] }> {
+    async function tableWith (input: string | null, additional: string | null, others: Array<GivenRecipe | GivenMulti> = []): Promise<Cartography & { described: () => string[] }> {
       const table = await joined(version)
       const { server, driver, inventory, recipes, idOf } = table
       recipes.send([...others, ...tableRecipes(4044, 4043)])
@@ -389,6 +586,63 @@ describe('bedrock cartography table', () => {
         `${crafted(-5, 11)}, take/0 1 creative_output:50#-5 → hotbar:4#0 ${text}`,
         `${crafted(-7, 11)}, place/1 1 creative_output:50#-7 → hotbar_and_inventory:4#24 ${text}`
       ], [], []])
+      table.bot.end()
+    })
+
+    // crafting_data's multi recipes are sent before it on every version: the fireworks' among them
+    const MULTIS: readonly GivenMulti[] = [{ type: 'multi', uuid: '00000000-0000-0000-0200-000000000000', networkId: 2 }, { type: 'multi', uuid: MAP_LOCKING, networkId: 2867 }]
+
+    it('locks one filled map of a stack with one glass pane of a stack, the request leaving them previewed; sends nothing for a filled map without a long map_uuid, another item of one, glass, or without the multi recipe (none recorded)', async () => {
+      const map = (id: number, uuid: [number, number]): Given => ({ ...filledMap(version, id, 11, uuid), count: 2 })
+      const cases: Array<{ input: (idOf: (name: string) => number) => Given, addition: string, multis: readonly GivenMulti[] }> = [
+        { input: idOf => map(idOf('filled_map'), [-2, -100]), addition: 'glass_pane', multis: MULTIS },
+        { input: idOf => ({ id: idOf('filled_map'), count: 1, stackId: 11 }), addition: 'glass_pane', multis: MULTIS },
+        { input: idOf => ({ id: idOf('filled_map'), count: 1, stackId: 11, nbt: { map_uuid: { type: 'int', value: 25 } } }), addition: 'glass_pane', multis: MULTIS },
+        { input: idOf => map(idOf('empty_map'), [-2, 25]), addition: 'glass_pane', multis: MULTIS },
+        { input: idOf => map(idOf('filled_map'), [-2, 25]), addition: 'glass', multis: MULTIS },
+        { input: idOf => map(idOf('filled_map'), [-2, 25]), addition: 'glass_pane', multis: MULTIS.slice(0, 1) }
+      ]
+      const outcomes: Array<[string, string[], string[], string[]]> = []
+      for (const { input, addition, multis } of cases) {
+        const table = await tableWith(null, null, [...multis])
+        const { inventory, idOf, driver, server } = table
+        const sent = previewsSince(server)
+        inventory.slot('ui', 12, input(idOf))
+        inventory.slot('ui', 13, { id: idOf(addition), count: 3, stackId: 12 })
+        await driver.tick()
+        outcomes.push([await clicked(table), table.described(), sent(), table.errors])
+        table.bot.end()
+      }
+      const nothing = ['resolved', [], [], []]
+      assert.deepStrictEqual(outcomes, [
+        ['pending', ['-3 optional/15 2867 text 0, consume/5 1 cartography_input:12#11, consume/5 1 cartography_additional:13#12, take/0 1 creative_output:50#-3 → cursor:0#0 names [""] cause cartography_text'], ['map_create_locked_copy -4294967396 225728497', 'item_stack_request'], []],
+        nothing, nothing, nothing, nothing, nothing
+      ])
+    })
+
+    it('previews the locked copy once a request leaves a filled map and a glass pane in the slots, in either order, again after the pane left, and after the server closed the screen; a new id each (only the pane added to the map recorded)', async () => {
+      const table = await tableWith(null, null, [...MULTIS])
+      const { bot, server, driver, inventory, idOf } = table
+      const sent = previewsSince(server)
+      const map = (stackId: number): Given => filledMap(version, idOf('filled_map'), stackId, [-2, 25])
+      inventory.slot('ui', 12, map(30))
+      inventory.slot('ui', 0, { id: idOf('glass_pane'), count: 2, stackId: 31 })
+      await driver.tick()
+      const click = async (slot: number, mouseButton: number): Promise<string[]> => {
+        bot.clickWindow(slot, mouseButton, 0).catch(() => {})
+        await driver.tick()
+        return sent()
+      }
+      const previewed = [await click(1, 1), await click(1, 1), await click(1, 0), await click(1, 0)]
+      server.send('container_close', { window_id: 4, window_type: 'none', server: true })
+      openTable(server, 5)
+      inventory.slot('ui', 12, null)
+      inventory.slot('ui', 13, { id: idOf('glass_pane'), count: 1, stackId: 33 })
+      inventory.slot('ui', 0, map(34))
+      await driver.tick()
+      previewed.push(await click(0, 0))
+      const preview = (id: bigint): string[] => [`map_create_locked_copy -8589934567 ${id}`, 'item_stack_request']
+      assert.deepStrictEqual([previewed, table.errors], [[preview(803647151n), ['item_stack_request'], ['item_stack_request'], preview(652615301n), preview(260024746n)], []])
       table.bot.end()
     })
   })

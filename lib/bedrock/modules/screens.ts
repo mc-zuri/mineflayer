@@ -83,8 +83,8 @@ export interface ScreenHooks {
   readonly shown?: (screen: OpenScreen) => void
   /** after windowClose */
   readonly closed?: (screen: OpenScreen) => void
-  /** a request made while the screen is open, its moves predicted */
-  readonly requested?: (requestId: number, moves: readonly Move[], screen: OpenScreen) => void
+  /** a request made while the screen is open, its moves predicted: what is queued here leaves in the request's input pass */
+  readonly requested?: (requestId: number, moves: readonly Move[], screen: OpenScreen, outbox: OutboxWriter) => void
   /** the item_stack_request packet about to be queued while the screen is open: what is queued here leaves before it */
   readonly beforeSend?: (outbox: OutboxWriter, screen: OpenScreen) => void
   /** a slot an ok response lists, settled: what the response tells of it besides its count and stack id */

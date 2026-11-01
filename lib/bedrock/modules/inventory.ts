@@ -495,7 +495,7 @@ export class Inventory {
       return action
     })
     this.queued.push(stackRequest(this.bot.version, request.id, actions, text))
-    if (screen !== undefined) for (const hooks of screen.hooks) hooks.requested?.(request.id, moves, screen)
+    if (screen !== undefined) for (const hooks of screen.hooks) hooks.requested?.(request.id, moves, screen, outbox)
     try {
       await core.waits.until(() => request.response !== undefined, RESPONSE_TICKS, `the server did not answer item stack request ${request.id} in ${RESPONSE_TICKS} ticks`)
     } catch (error) {

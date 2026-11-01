@@ -1960,18 +1960,31 @@ compass a locator map. Java's bot has no cartography helper, and the slots decid
 member of its own: `bot.openBlock`, `bot.clickWindow` and `bot.closeWindow` drive it.
 
 - **The output** (`bot.clickWindow(2, …)`) makes the recipe whose ingredients the slots hold in its order, as
-  recorded: the input its first, the addition its second or nothing. Else it sends nothing: extending, cloning,
-  locking and renaming a map are not crafting_data's recipes and not supported. A request is `optional` (the recipe,
-  the text 0), a `consume` of the input, then of the addition, and the result moved: with a mouse button taken to the
-  cursor, as recorded, with a hotbar key to the key's slot, unless that slot holds another item or has no room for it,
-  with a shift click to the inventory as a shift click moves a stack (both recorded on 1.26.51 into empty slots). Its
-  custom names are `[""]`,
-  the map's name unchanged, and from 1.19.30 its cause `cartography_text`; from 1.26.40 each action's legacy type.
+  recorded: the input its first, the addition its second or nothing; else a filled map in the input and a glass pane
+  added lock the map, by crafting_data's multi recipe `5343c1ca-e434-2260-4b02-70ffebb1b78b` (on every version), one
+  of each. Else it sends nothing: extending, cloning and renaming a map are not supported. A request is `optional` (the
+  recipe, the text 0), a `consume` of the input, then of the addition, and the result moved: with a mouse button taken
+  to the cursor, as recorded, with a hotbar key to the key's slot, unless that slot holds another item or has no room
+  for it, with a shift click to the inventory as a shift click moves a stack (both recorded on 1.26.51 into empty
+  slots). Its custom names are `[""]`, the map's name unchanged, and from 1.19.30 its cause `cartography_text`; from
+  1.26.40 each action's legacy type. No packet tells the locked map's NBT (the server's own map id): the bot shows the
+  input's.
+- **The preview**: once a request (any click's) leaves a filled map and a glass pane in the slots where the one before
+  it on this screen did not leave that map with a pane, the bot sends `map_create_locked_copy` (the map's id, from its
+  `map_uuid`, and the copy's) in the click's frame, before the request, as the vanilla client previews the copy, as
+  recorded on 1.26.20, 1.26.51 and 1.26.60. The client's copy id is random (below 2^31, recorded); the bot's is
+  random-looking from the username, the map and how many it previewed, as a command's origin. A map without a
+  `map_uuid` is not locked. Up to 1.16.210 the protocol data give the packet no fields, so the bot sends none there.
 
 Recorded and replayed by the tests: an empty map and a locator map to the cursor on every build, of the request's
 layout by version (byte for byte on 1.16.201, 1.16.210, 1.19.30, 1.21.20, 1.21.30, 1.26.40 and 1.26.60); on 1.26.51
-an empty map by a shift left click, a shift right click and the key 1. Not recorded, so as the bot does it: a hotbar
-key over a slot holding an item, the slots' items in the other order, and the cursor's place in the hand-back.
+an empty map by a shift left click, a shift right click and the key 1; and a map locked (protocol_maps'
+`protocol.map_locked_copy`: the pane placed from the cursor, the preview, the lock to the cursor; byte for byte on
+1.26.20, 1.26.51 and 1.26.60, but for the copy's id). Not recorded, so as the bot does it: a hotbar key over a slot
+holding an item, a hotbar key or a shift click locking a map, the slots' items in the other order, the map placed
+after the pane, a stack of maps or panes, a map locked already (the server's to refuse), when the client previews
+again (the bot: as above, so also after a lock leaving maps and panes), and the cursor's place in the hand-back. The
+client then asks for the locked map's pixels (`map_info_request`); the bot has no maps and does not.
 
 ## Items
 

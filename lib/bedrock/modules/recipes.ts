@@ -317,6 +317,12 @@ export class RecipeBook {
     return this.multi.find(({ uuid }) => MULTI_RECIPES[uuid]?.standsFor(made, this.version))
   }
 
+  // the multi recipe crafting_data sent of the uuid, as the codec reads it
+  multiOf (uuid: string): MultiRecipe | undefined {
+    this.all()
+    return this.multi.find(multi => multi.uuid === uuid)
+  }
+
   private craftingRecipe (type: string, data: DataRecipe): CraftingRecipe | undefined {
     const outputs = listOf(data.output).map(item => readStack(item as Parameters<typeof readStack>[0])).filter(stack => stack !== undefined)
     const [result] = outputs
