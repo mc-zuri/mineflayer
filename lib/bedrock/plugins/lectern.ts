@@ -2,6 +2,7 @@ import type { Block } from 'prismarine-block'
 import prismarineItem from 'prismarine-item'
 import type { Item } from 'prismarine-item'
 import type { Tags, TagType } from 'prismarine-nbt'
+import { Vec3 } from 'vec3'
 import type { OutboxWriter } from '../core/types.ts'
 import type { Vec3f } from '../modules/auth_input.ts'
 import type { OpenScreen } from '../modules/screens.ts'
@@ -15,7 +16,7 @@ const NAMESPACE = 'minecraft:'
 /** the items a lectern takes */
 const BOOKS: readonly string[] = Object.freeze(['writable_book', 'written_book'])
 // as openBlock waits for the screen
-const PUT_TICKS = 100
+const TOLD_TICKS = 100
 
 type Compound = Record<string, undefined | Tags[TagType]>
 
@@ -40,7 +41,7 @@ function numberOf (compound: Compound, key: string): number {
   return typeof value === 'number' ? value : 0
 }
 
-/** The lectern's book screen (Java has no lectern helper): its book read from the block entity, its page turned and its close telling the page; a book put on it by a use. */
+/** The lectern's book screen (Java has no lectern helper): its book read from the block entity, its page turned and its close telling the page, its book taken by a hit; a book put on it by a use. */
 export default function lectern (bot: BedrockBotInternal): void {
   const core = bot._core
   const ItemClass = prismarineItem(bot.registry)
@@ -85,9 +86,16 @@ export default function lectern (bot: BedrockBotInternal): void {
     })
   }
 
-  // no server takes the book on drop_book (run against 1.16.201 – 1.20.61), and no recording takes it
-  async function takeBook (): Promise<void> {
-    throw new Error("takeBook is not supported on Bedrock: the servers ignore lectern_update's drop_book (up to 1.20.61, removed in 1.20.71), and the vanilla client's take is not known")
+  /**
+   * a player's take (the servers ignore lectern_update's drop_book): the screen closed, then a hit of the lectern, which
+   * drops the book beside it as an item; resolves once the server told the lectern holds no book
+   */
+  async function takeBook (screen: OpenScreen): Promise<void> {
+    await core.call(async () => { needsBook('takeBook', screen) })
+    const { window, opening: { position } } = screen
+    await bot.closeWindow(window)
+    await bot._blockUse.hit(core, new Vec3(position.x, position.y, position.z))
+    await core.waits.until(() => toldAt(position).book === null, TOLD_TICKS, `the server took no book off the lectern in ${TOLD_TICKS} ticks`)
   }
 
   /** its window before windowOpen: the block entity's book and page, as the server tells them while it is open too */
@@ -97,7 +105,7 @@ export default function lectern (bot: BedrockBotInternal): void {
     Object.defineProperties(window, { book: told('book'), page: told('page'), totalPages: told('totalPages') })
     const members: Members = {
       setPage: async page => { await setPage(screen, page) },
-      takeBook
+      takeBook: async () => { await takeBook(screen) }
     }
     Object.assign(window, members)
   }
@@ -126,7 +134,7 @@ export default function lectern (bot: BedrockBotInternal): void {
     if (held === undefined || !BOOKS.includes(held)) throw new Error(`putBookOnLectern needs a book and quill or a written book in the hand, not ${held ?? 'nothing'}`)
     if (book !== undefined) await bot.equip(book, 'hand')
     await bot.activateBlock(lectern)
-    await core.waits.until(() => toldAt(lectern.position).book !== null, PUT_TICKS, `the server put no book on the lectern in ${PUT_TICKS} ticks`)
+    await core.waits.until(() => toldAt(lectern.position).book !== null, TOLD_TICKS, `the server put no book on the lectern in ${TOLD_TICKS} ticks`)
   }
 
   bot._inventory.screens.add(LECTERN_SCREEN, { shown: extend, close })

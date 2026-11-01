@@ -13,7 +13,7 @@ import type { BedrockPlayer, BedrockVersion } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockClientboundPackets } from '../../types/protocol/bedrock-client.ts'
 import { authInput } from './auth_input.ts'
-import type { Latch, Movement, Rotation, Vec3f } from './auth_input.ts'
+import type { BlockAction, Latch, Movement, Rotation, Vec3f } from './auth_input.ts'
 import { agrees, applied, Corrections, rewindsUnder } from './corrections.ts'
 import type { Filing, MovementInput } from './corrections.ts'
 import type { Controls } from './input.ts'
@@ -121,6 +121,8 @@ export class LocalPlayer {
   private frozen = false
   /** the collisions of the last tick the player moved */
   private collided: Pick<Movement, 'horizontalCollision' | 'verticalCollision'> = { horizontalCollision: false, verticalCollision: false }
+  /** the block actions the next auth input carries */
+  private blockActions: BlockAction[] = []
 
   constructor (bot: BedrockBotInternal, controls: Controls, settings: MovementSettings) {
     this.bot = bot
@@ -216,6 +218,11 @@ export class LocalPlayer {
       this.moved = undefined
       if (previous !== undefined) core.emit(this.bot, 'move', previous)
     })
+  }
+
+  /** the next auth input carries the block action */
+  act (action: BlockAction): void {
+    this.blockActions.push(action)
   }
 
   /** a dimension change holds the player: its auth inputs report no key, and answer no teleport */
@@ -451,7 +458,8 @@ export class LocalPlayer {
     const position = teleport ?? reportedEyePosition(state)
     const delta = teleport === undefined ? state.velocity : STILL
     // a frozen player's camera is set up, as a moving one's
-    outbox.queue('player_auth_input', authInput(this.bot.version, { tick, rotation, position, delta, active: core.activation.active || frozen, movement, teleportAck: teleport !== undefined && !frozen }))
+    outbox.queue('player_auth_input', authInput(this.bot.version, { tick, rotation, position, delta, active: core.activation.active || frozen, movement, teleportAck: teleport !== undefined && !frozen, blockActions: this.blockActions }))
+    this.blockActions = []
     if (teleport !== undefined && this.atLeast('bedrock_1.21.70')) outbox.queue('client_camera_aim_assist', { preset_id: '', action: 'clear', allow_aim_assist: false })
     this.teleport = undefined
     // the keys pressed or released while frozen are reported once the player moves

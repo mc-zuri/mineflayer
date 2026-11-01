@@ -7,7 +7,7 @@ import { isBedrockVersionAtLeast, latestSupportedBedrockVersion } from '../../li
 import type { BedrockLectern, BedrockVersion } from '../../lib/types/api/index.ts'
 import { bedrockCodec } from './common/codec.ts'
 import { ServerInventory } from './common/inventory.ts'
-import { bedrockTestBot, bedrockTestVersionsFrom } from './common/server.ts'
+import { bedrockTestBot, bedrockTestVersionsFrom, inputFlags } from './common/server.ts'
 import type { FakeBedrockClient, TestBot } from './common/server.ts'
 import { ServerWorld } from './common/world.ts'
 import type { Rotation } from './common/world.ts'
@@ -184,12 +184,10 @@ describe('bedrock lectern', () => {
   })
 })
 
-// ---- pages turned: not recorded, written from the protocol's lectern_update; the book's take: not known
+// ---- pages turned: not recorded, written from the protocol's lectern_update
 
 /** a written book of three pages */
 const WRITTEN_BOOK: Compound = Object.freeze({ ...RECORDED_BOOK, Name: string('minecraft:written_book') })
-// the 1.16.201, 1.16.220, 1.18.30, 1.19.80, 1.20.10 and 1.20.61 servers ignored drop_book, sent with the screen open or not
-const TAKE_UNSUPPORTED = "takeBook is not supported on Bedrock: the servers ignore lectern_update's drop_book (up to 1.20.61, removed in 1.20.71), and the vanilla client's take is not known"
 
 interface Turn {
   name: string
@@ -210,11 +208,11 @@ async function afterFrame<Result> (driver: TestBot['driver'], call: Promise<Resu
   return await call
 }
 
-describe('bedrock lectern: pages turned (not recorded) and the book not taken', () => {
+describe('bedrock lectern: pages turned (not recorded)', () => {
   for (const turn of TURNS) {
     describe(`${turn.name} (${turn.from.slice(8)} – ${turn.to.slice(8)})`, () => {
       for (const version of bedrockTestVersionsFrom(turn.from, turn.to)) {
-        it(`bedrock ${version}: turns the page in the next frame, shown at once and told by the close, and rejects taking the book, sending nothing`, async () => {
+        it(`bedrock ${version}: turns the page in the next frame, shown at once and told by the close`, async () => {
           const { bot, server, driver, errors, tell, open, close } = await lecternBot(version)
           tell(lecternEntity(LECTERN_AT, WRITTEN_BOOK, 0, 3))
           const lectern = await open()
@@ -222,7 +220,6 @@ describe('bedrock lectern: pages turned (not recorded) and the book not taken', 
           assert.deepStrictEqual([server.sentOf('lectern_update'), lectern.page], [[], 0])
           await afterFrame(driver, turning)
           assert.deepStrictEqual([server.sentOf('lectern_update'), lectern.page], [[turn.turned], 1])
-          await assert.rejects(afterFrame(driver, lectern.takeBook()), { message: TAKE_UNSUPPORTED })
           assert.deepStrictEqual([lectern.book?.name, await close(lectern), server.sentOf('lectern_update'), errors], ['written_book', 1, [turn.turned, turn.turned], []])
           bot.end()
         })
@@ -286,13 +283,13 @@ interface PuttingBot extends TestBot {
 }
 
 /** joined looking at a lectern as the recorded client did (at y -60; 4 where the overworld starts at 0), which the server told holds no book */
-async function puttingBot (version: BedrockVersion): Promise<PuttingBot> {
+async function puttingBot (version: BedrockVersion, rotation: Rotation = CAMERA): Promise<PuttingBot> {
   const testBot = await bedrockTestBot(bedrockCodec(version), { loadInternalPlugins: false, plugins: { windows: true, lectern: true, simple_inventory: true } })
   const { bot, server } = testBot
   const y = isBedrockVersionAtLeast(version, 'bedrock_1.18.0') ? -60 : 4
   const world = new ServerWorld(server, { hashes: isBedrockVersionAtLeast(version, 'bedrock_1.20.0'), blocks: [[2, y, 0, 'lectern'], [0, y - 1, 0, 'stone']] })
   const itemStates = isBedrockVersionAtLeast(version, 'bedrock_1.21.60') ? {} : { itemstates: world.registry.writeItemStates() }
-  await world.join(testBot, { feet: { x: 0.5, y, z: 0.5 }, rotation: CAMERA, game: { runtime_entity_id: 1n, ...itemStates } })
+  await world.join(testBot, { feet: { x: 0.5, y, z: 0.5 }, rotation, game: { runtime_entity_id: 1n, ...itemStates } })
   const errors: string[] = []
   bot.on('error', error => { errors.push(error.message) })
   const at: At = { x: 2, y, z: 0 }
@@ -491,6 +488,162 @@ describe('bedrock lectern: a book put on by a use', () => {
       const putting = assert.rejects(bot.bedrock.putBookOnLectern(lectern), { message: `the server put no book on the lectern in ${PUT_TICKS} ticks` })
       await driver.ticks(PUT_TICKS + 4)
       await putting
+      bot.end()
+    })
+  })
+})
+
+// ---- the book taken by a hit: not recorded (no recording takes a lectern's book), run against the 1.16.201,
+// 1.16.210, 1.20.61, 1.20.71, 1.21.0, 1.21.50, 1.26.0, 1.26.40 and 1.26.61 servers; the hit is the interactions
+// recordings' (1.16.201.2 – 1.26.60.5): the start the vanilla client sends on pressing the attack key, then the abort
+// on releasing it
+
+interface Hit {
+  name: string
+  from: BedrockVersion
+  to: BedrockVersion
+  /** the packets of the start's tick, and of the abort's, but section requests */
+  start: readonly string[]
+  abort: readonly string[]
+  /** the block actions of the start's auth input, and of the abort's (none on 1.16.201) */
+  started: readonly string[]
+  aborted: readonly string[]
+}
+
+const HITS: readonly Hit[] = [
+  { name: 'player_action', from: 'bedrock_1.16.201', to: 'bedrock_1.16.201', start: ['animate', 'player_action', 'player_auth_input'], abort: ['player_action', 'player_auth_input'], started: [], aborted: [] },
+  { name: 'the auth input, the start cracking the block', from: 'bedrock_1.16.210', to: 'bedrock_1.20.80', start: ['animate', 'player_auth_input'], abort: ['player_auth_input'], started: ['start_break', 'crack_break'], aborted: ['abort_break'] },
+  { name: 'the auth input', from: 'bedrock_1.21.0', to: latestSupportedBedrockVersion, start: ['animate', 'player_auth_input'], abort: ['player_auth_input'], started: ['start_break'], aborted: ['abort_break'] }
+]
+
+/** the lectern's screen opened by a use, the server having told the lectern holds a written book of three pages */
+async function openedOn ({ bot, driver, server }: TestBot, lectern: Block, tell: (value: Compound) => void): Promise<BedrockLectern> {
+  tell(lecternEntity(lectern.position, WRITTEN_BOOK, 0, 3))
+  await driver.ticks(2)
+  let opened: Window | undefined
+  const opening = bot.openBlock(lectern).then(window => { opened = window })
+  await driver.ticks(4)
+  server.send('container_open', { window_id: WINDOW_ID, window_type: 'lectern', coordinates: lectern.position, runtime_entity_id: -1n })
+  await driver.runUntil(() => opened !== undefined, 10)
+  await opening
+  // the window openBlock resolves with for a lectern
+  return opened as BedrockLectern
+}
+
+/** a block action: the action's name, the block, the face */
+type Struck = [action: string, position: At | undefined, face: number | undefined]
+
+/** each tick a hit's packet went in since the `since`th packet: its packets but section requests, and its auth input's block actions */
+function hitTicks (server: FakeBedrockClient, since: number): Array<[tick: number, packets: string[], actions: Struck[]]> {
+  const ticks = [...new Set(server.batches.flat().slice(since)
+    .filter(({ name, params }) => name === 'animate' || (name === 'player_action' && 'action' in params && String(params.action).endsWith('_break')) || (name === 'player_auth_input' && 'block_action' in params))
+    .map(({ tick }) => tick ?? -1))]
+  return ticks.map(tick => [
+    tick,
+    server.inTick(tick).filter(name => name !== 'subchunk_request'),
+    (server.authInput(tick).block_action ?? []).map(({ action, position, face }): Struck => [String(action), position, face])
+  ])
+}
+
+/** the ticks from the first one's */
+function fromFirst<Rest extends unknown[]> (ticks: Array<[number, ...Rest]>): Array<[number, ...Rest]> {
+  const first = ticks[0]?.[0] ?? 0
+  return ticks.map(([tick, ...rest]) => [tick - first, ...rest])
+}
+
+describe('bedrock lectern: the book taken by a hit (not recorded)', () => {
+  for (const hit of HITS) {
+    describe(`${hit.name} (${hit.from.slice(8)} – ${hit.to.slice(8)})`, () => {
+      for (const version of bedrockTestVersionsFrom(hit.from, hit.to)) {
+        it(`bedrock ${version}: closes the screen, hits the face its pick meets with a swing, aborts in the next tick, and resolves once the server told no book`, async () => {
+          const testBot = await puttingBot(version)
+          const { bot, server, driver, errors, lectern, tell } = testBot
+          const window = await openedOn(testBot, lectern, tell)
+          const since = server.batches.flat().length
+          let taken = false
+          const taking = window.takeBook().then(() => { taken = true })
+          await driver.ticks(6)
+          const at = { x: 2, y: lectern.position.y, z: 0 }
+          const ticks = hitTicks(server, since)
+          assert.deepStrictEqual(fromFirst(ticks), [
+            [0, hit.start, hit.started.map((action): Struck => [action, at, 4])],
+            [1, hit.abort, hit.aborted.map((action): Struck => [action, at, 0])]
+          ])
+          const flagged = server.sentOf('player_auth_input').filter(input => inputFlags(input).set.includes('block_action')).map(({ tick }) => Number(tick))
+          const legacy = hit.started.length === 0
+          assert.deepStrictEqual(flagged, legacy ? [] : ticks.map(([tick]) => tick))
+          const actions = server.sentOf('player_action').filter(({ action }) => String(action).endsWith('_break')).map(({ runtime_entity_id: id, action, position, face }) => [id, action, position, face])
+          assert.deepStrictEqual(actions, legacy ? [[1, 'start_break', at, 4], [1, 'abort_break', at, 0]] : [])
+          const swing = server.sentOf('animate').at(-1)
+          assert.deepStrictEqual([swing?.action_id, swing?.runtime_entity_id, swing?.swing_source], ['swing_arm', 1n, isBedrockVersionAtLeast(version, 'bedrock_1.21.130') ? 'mine' : undefined])
+          const update = { page: 0, page_count: 3, position: at, ...isBedrockVersionAtLeast(version, 'bedrock_1.20.71') ? {} : { drop_book: false } }
+          assert.deepStrictEqual([server.sentOf('lectern_update'), bot.currentWindow, window.book?.name, taken], [[update], null, 'written_book', false])
+          tell(lecternEntity(lectern.position))
+          await driver.tick()
+          await taking
+          assert.deepStrictEqual([taken, window.book, errors], [true, null, []])
+          bot.end()
+        })
+      }
+    })
+  }
+
+  describe(`no version differs in: (on ${latestSupportedBedrockVersion})`, () => {
+    const version = latestSupportedBedrockVersion
+
+    it("looks at the top's centre first when its pick does not meet the lectern, and hits the top", async () => {
+      const { bot, server, driver, errors, internal, lectern } = await puttingBot(version, { yaw: 90, pitch: 0 })
+      await driver.ticks(2)
+      const since = server.batches.flat().length
+      const hitting = internal._blockUse.hit(internal._core, lectern.position)
+      await driver.ticks(8)
+      await hitting
+      const [start, abort] = hitTicks(server, since).map(([tick]) => server.authInput(tick))
+      const at = { x: 2, y: -60, z: 0 }
+      // from the eye at (0.5, -58.38, 0.5) to (2.5, -59, 0.5): 0.62 down, 2 east
+      assert.deepStrictEqual([start?.yaw, start?.pitch, start?.block_action, abort?.block_action, errors],
+        [-90, 17.223697662353516, [{ action: 'start_break', position: at, face: 1 }], [{ action: 'abort_break', position: at, face: 0 }], []])
+      bot.end()
+    })
+
+    it('hits once the hit before aborted, as a held key cannot be pressed again', async () => {
+      const { bot, server, driver, internal, lectern } = await puttingBot(version)
+      await driver.ticks(2)
+      const since = server.batches.flat().length
+      const hits = [internal._blockUse.hit(internal._core, lectern.position), internal._blockUse.hit(internal._core, lectern.position)]
+      await driver.ticks(8)
+      await Promise.all(hits)
+      assert.deepStrictEqual(fromFirst(hitTicks(server, since)).map(([tick, , actions]) => [tick, actions.map(([action]) => action)]),
+        [[0, ['start_break']], [1, ['abort_break']], [2, ['start_break']], [3, ['abort_break']]])
+      bot.end()
+    })
+
+    it('takes no book of a lectern told holding none, nor through a window not open, sending nothing', async () => {
+      const testBot = await puttingBot(version)
+      const { bot, server, driver, errors, lectern, tell } = testBot
+      const window = await openedOn(testBot, lectern, tell)
+      tell(lecternEntity(lectern.position))
+      await driver.tick()
+      await assert.rejects(afterFrame(driver, window.takeBook()), { message: 'takeBook: the lectern holds no book' })
+      tell(lecternEntity(lectern.position, WRITTEN_BOOK, 0, 3))
+      await driver.tick()
+      const closing = bot.closeWindow(window)
+      await driver.ticks(2)
+      await closing
+      await assert.rejects(afterFrame(driver, window.takeBook()), { message: 'takeBook needs the lectern window open' })
+      await driver.ticks(4)
+      const hitting = server.sentOf('player_auth_input').filter(input => input.block_action !== undefined)
+      assert.deepStrictEqual([hitting, server.sentOf('animate').filter(swing => swing.swing_source === 'mine'), window.book?.name, errors], [[], [], 'written_book', []])
+      bot.end()
+    })
+
+    it(`rejects when the server tells no book taken off the lectern ${PUT_TICKS} ticks after the hit`, async () => {
+      const testBot = await puttingBot(version)
+      const { bot, driver, lectern, tell } = testBot
+      const window = await openedOn(testBot, lectern, tell)
+      const taking = assert.rejects(window.takeBook(), { message: `the server took no book off the lectern in ${PUT_TICKS} ticks` })
+      await driver.ticks(PUT_TICKS + 8)
+      await taking
       bot.end()
     })
   })

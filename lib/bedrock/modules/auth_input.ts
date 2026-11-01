@@ -4,6 +4,7 @@ import type { BedrockVersion, ControlState } from '../../types/api/index.ts'
 import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
 
 export type AuthInput = BedrockServerboundPackets['player_auth_input']
+export type BlockAction = NonNullable<AuthInput['block_action']>[number]
 
 export interface Vec2f { readonly x: number, readonly z: number }
 export interface Vec3f { readonly x: number, readonly y: number, readonly z: number }
@@ -46,6 +47,8 @@ export interface AuthInputState {
   readonly movement: Movement | undefined
   /** the input answers a teleport */
   readonly teleportAck: boolean
+  /** what the player did to blocks in the tick: a hit's start or abort */
+  readonly blockActions: readonly BlockAction[]
 }
 
 type FlagGroup = readonly [since: BedrockVersion, names: readonly string[], before?: BedrockVersion]
@@ -77,7 +80,7 @@ const INPUT_FLAGS: readonly FlagGroup[] = Object.freeze([
 
 type FlagName = 'up' | 'down' | 'left' | 'right' | 'north_jump' | 'jump_down' | 'jumping' | 'want_up' | 'sprint_down' | 'sprinting' | 'sneak_down' | 'sneaking' | 'want_down' |
   'start_sprinting' | 'stop_sprinting' | 'start_sneaking' | 'stop_sneaking' | 'start_jumping' | 'horizontal_collision' | 'vertical_collision' |
-  'handled_teleport' | 'block_breaking_delay_enabled' | 'jump_released_raw' | 'jump_pressed_raw' | 'jump_current_raw' | 'sneak_released_raw' | 'sneak_pressed_raw' | 'sneak_current_raw'
+  'handled_teleport' | 'block_action' | 'block_breaking_delay_enabled' | 'jump_released_raw' | 'jump_pressed_raw' | 'jump_current_raw' | 'sneak_released_raw' | 'sneak_pressed_raw' | 'sneak_current_raw'
 
 const ZERO_VEC2 = Object.freeze({ x: 0, z: 0 })
 const ZERO_VEC3 = Object.freeze({ x: 0, y: 0, z: 0 })
@@ -88,9 +91,10 @@ function inputFlagNames (version: BedrockVersion): readonly string[] {
 }
 
 /** the flags set: a flag the version does not have is not sent */
-function flagsOf (version: BedrockVersion, { movement, teleportAck }: AuthInputState): Set<FlagName> {
+function flagsOf (version: BedrockVersion, { movement, teleportAck, blockActions }: AuthInputState): Set<FlagName> {
   const flags = new Set<FlagName>(['block_breaking_delay_enabled'])
   if (teleportAck) flags.add('handled_teleport')
+  if (blockActions.length > 0) flags.add('block_action')
   if (movement === undefined) return flags
   const { keys: { forward, back, left, right, jump, sprint, sneak }, actions } = movement
   const reported: Array<[boolean, readonly FlagName[]]> = [
@@ -146,11 +150,11 @@ function cameraOrientation ({ yaw, pitch }: Rotation): Vec3f {
 
 /**
  * player_auth_input as the vanilla client of the version writes it: by keyboard and mouse ('touch' on 1.16.201, whose
- * minecraft-data names its mouse so), on the screen, with no item action, block action or vehicle.
+ * minecraft-data names its mouse so), on the screen, with no item action or vehicle: the block actions a hit's.
  */
 export function authInput (version: BedrockVersion, state: AuthInputState): AuthInput {
   const atLeast = (since: BedrockVersion): boolean => isBedrockVersionAtLeast(version, since)
-  const { tick, rotation, position, delta, active, movement } = state
+  const { tick, rotation, position, delta, active, movement, blockActions } = state
   const packet: AuthInput = {
     pitch: rotation.pitch,
     yaw: rotation.yaw,
@@ -170,6 +174,7 @@ export function authInput (version: BedrockVersion, state: AuthInputState): Auth
     packet.camera_orientation = active ? cameraOrientation(rotation) : ZERO_VEC3
   }
   if (atLeast('bedrock_1.21.50')) packet.raw_move_vector = movement?.direction ?? ZERO_VEC2
+  if (blockActions.length > 0) packet.block_action = [...blockActions]
   if (atLeast('bedrock_1.26.40') && !atLeast('bedrock_1.26.51')) {
     // the vanilla client writes each absent field as present, then absent
     packet.transaction_presence = true

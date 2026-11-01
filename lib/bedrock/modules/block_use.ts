@@ -9,7 +9,7 @@ import { isBedrockVersionAtLeast } from '../version.ts'
 import type { BedrockVersion } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockServerboundPackets } from '../../types/protocol/bedrock-client.ts'
-import type { Rotation, Vec3f } from './auth_input.ts'
+import type { BlockAction, Rotation, Vec3f } from './auth_input.ts'
 import type { Inventory } from './inventory.ts'
 import { heldItem } from './items.ts'
 import type { Stack } from './items.ts'
@@ -46,6 +46,12 @@ export interface BlockClick {
   readonly takesHeld: boolean
   /** the eye, as the auth inputs report it */
   readonly eye: Vec3f
+}
+
+/** a hit's block action: the block's and the face's */
+export interface HitAction extends BlockAction {
+  readonly position: Vec3f
+  readonly face: number
 }
 
 /** whether a block takes an item (by name) a use holds */
@@ -91,8 +97,8 @@ export function stopItemUseOn (runtimeId: bigint, { result }: BlockClick): Bedro
   return { runtime_entity_id: runtimeId, action: 'stop_item_use_on', position: result, result_position: ORIGIN, face: 0 }
 }
 
-/** the arm swings for a use (`interact`) and for a dropped item (`dropitem`): what for, from 1.21.130 */
-export function swingArm (version: BedrockVersion, runtimeId: bigint, source: 'interact' | 'dropitem' = 'interact'): BedrockServerboundPackets['animate'] {
+/** the arm swings for a use (`interact`), a hit (`mine`) and a dropped item (`dropitem`): what for, from 1.21.130 */
+export function swingArm (version: BedrockVersion, runtimeId: bigint, source: 'interact' | 'mine' | 'dropitem' = 'interact'): BedrockServerboundPackets['animate'] {
   const packet: BedrockServerboundPackets['animate'] = { action_id: 'swing_arm', runtime_entity_id: runtimeId }
   if (atLeast(version, 'bedrock_1.21.120')) packet.data = 0
   if (atLeast(version, 'bedrock_1.21.130')) {
@@ -101,6 +107,11 @@ export function swingArm (version: BedrockVersion, runtimeId: bigint, source: 'i
   }
   if (atLeast(version, 'bedrock_1.26.60')) packet.hand = 'main_hand'
   return packet
+}
+
+/** a hit's start or abort as 1.16.201 sends it, before the auth input carried them: its runtime id a varint */
+export function breakAction (runtimeId: bigint, { action, position, face }: HitAction): BedrockServerboundPackets['player_action'] {
+  return { runtime_entity_id: Number(BigInt.asIntN(32, runtimeId)), action, position, face }
 }
 
 /** the click, as an item use transaction: from 1.26.60 naming the hotbar slot a block takes the held item from */
@@ -178,6 +189,15 @@ interface Use {
   readonly ended: DueWait
 }
 
+/** the attack key pressed on a block: its start goes in the first tick after, its abort in the next */
+interface Hit {
+  readonly runtimeId: bigint
+  readonly position: Vec3f
+  readonly face: number
+  readonly started: boolean
+  readonly ended: DueWait
+}
+
 /** the vanilla client's use key: a use ends at the first tick after its release */
 export class BlockUse {
   private readonly bot: BedrockBotInternal
@@ -186,6 +206,8 @@ export class BlockUse {
   private runtimeId: bigint | undefined
   /** the use going on, until its key's release */
   private pressed: Use | undefined
+  /** the hit going on, until its abort */
+  private hitting: Hit | undefined
   /** the blocks a use can put the held item in, by name */
   private readonly takers = new Map<string, TakesHeld>()
 
@@ -200,6 +222,7 @@ export class BlockUse {
     this.bot.openBlock = async (block, direction, cursorPos) => await this.open(core, block, { direction, cursorPos })
     core.observe(OWNER, 'start_game', packet => { this.runtimeId = packet.runtime_entity_id })
     core.system(OWNER, { name: 'use.end', place: { after: 'input.cook' }, gate: 'present', replay: false, run: ({ tick, outbox }) => { this.end(tick, outbox) } })
+    core.system(OWNER, { name: 'use.hit', place: { after: 'use.end' }, gate: 'present', replay: false, run: ({ tick, outbox }) => { this.strike(tick, outbox) } })
   }
 
   /** a block a use puts the held item in, when `takes` says so */
@@ -216,7 +239,7 @@ export class BlockUse {
   async use (core: BedrockCore, block: Block, { direction, cursorPos, heldTicks = HELD_TICKS }: UseOptions = {}): Promise<void> {
     const face = direction === undefined ? undefined : faceOf(direction)
     const picked = await this.whenFree(core, pass => {
-      const pick = this.pick(block)
+      const pick = this.pick(block.position)
       if (pick === undefined || (face !== undefined && pick.face !== face)) return undefined
       return this.click(core, pass, { block, face: pick.face, point: cursorPos ?? pick.point, heldTicks })
     })
@@ -229,9 +252,24 @@ export class BlockUse {
     await clicked.ended
   }
 
-  /** run in the first input pass with no use going on, as a held key cannot be pressed again, where `what` can be used */
+  /**
+   * the vanilla client's hit of the block at `position`, the attack key pressed and released: the face its pick meets,
+   * else the top after looking at its centre; resolves once the abort is sent
+   */
+  async hit (core: BedrockCore, position: Vec3): Promise<void> {
+    const picked = await this.whenFree(core, pass => {
+      const pick = this.pick(position)
+      return pick === undefined ? undefined : this.press(core, pass, position, pick.face)
+    })
+    if (picked !== undefined) return await picked.ended
+    await this.bot.lookAt(position.offset(0.5, 1, 0.5))
+    const pressed = await this.whenFree(core, pass => this.press(core, pass, position, UP))
+    await pressed.ended
+  }
+
+  /** run in the first input pass with no use or hit going on, as a held key cannot be pressed again, where `what` can be used */
   async whenFree<Result> (core: BedrockCore, run: (pass: UsePass) => Result, what = 'a block'): Promise<Result> {
-    return await core.call(async ctx => this.pressed === undefined ? run(this.usable(core, ctx, what)) : await this.whenFree(core, run, what))
+    return await core.call(async ctx => this.pressed === undefined && this.hitting === undefined ? run(this.usable(core, ctx, what)) : await this.whenFree(core, run, what))
   }
 
   private usable (core: BedrockCore, { tick, outbox }: FrameContext, what: string): UsePass {
@@ -242,18 +280,18 @@ export class BlockUse {
     return { tick, outbox, runtimeId }
   }
 
-  /** the first block the eye's ray meets, if it is this one: the face, and the point, from the block's corner */
-  private pick (block: Block): { face: number, point: Vec3f } | undefined {
+  /** the first block the eye's ray meets, if it is the one at `position`: the face, and the point, from the block's corner */
+  private pick (position: Vec3): { face: number, point: Vec3f } | undefined {
     const { eye, rotation } = this.player
     const from = new Vec3(eye.x, eye.y, eye.z)
     const direction = lookDirection(rotation)
     // far enough to reach any point of the block
-    const ray = new iterators.RaycastIterator(from, direction, from.distanceTo(block.position.offset(0.5, 0.5, 0.5)) + 1)
+    const ray = new iterators.RaycastIterator(from, direction, from.distanceTo(position.offset(0.5, 0.5, 0.5)) + 1)
     for (let cell: Vec3f | null = from.floored(); cell !== null; cell = ray.next()) {
       const at = new Vec3(cell.x, cell.y, cell.z)
       const met = this.bot.world.getBlock(at)
       const hit = met === null ? null : ray.intersect(met.shapes, at)
-      if (hit !== null) return at.equals(block.position) ? { face: hit.face, point: pointOn(at, hit.pos) } : undefined
+      if (hit !== null) return at.equals(position) ? { face: hit.face, point: pointOn(at, hit.pos) } : undefined
     }
     return undefined
   }
@@ -299,5 +337,37 @@ export class BlockUse {
     if (atLeast(version, 'bedrock_1.19.1')) outbox.queue('player_action', stopItemUseOn(use.runtimeId, use.click))
     this.pressed = undefined
     use.ended.due(tick)
+  }
+
+  /** the hit's abort, not a promise: a promise resolved with one waits for it */
+  private press (core: BedrockCore, { runtimeId }: UsePass, { x, y, z }: Vec3, face: number): { ended: Promise<void> } {
+    const ended = core.waits.untilDue()
+    this.hitting = { runtimeId, position: { x, y, z }, face, started: false, ended }
+    return { ended: ended.promise }
+  }
+
+  /**
+   * the hit's start with a swing, then its abort in the next tick (face 0, as recorded): in the auth input from
+   * 1.16.210, the start cracking the block up to 1.20.80; as player_action on 1.16.201
+   */
+  private strike (tick: number, outbox: OutboxWriter): void {
+    const { hitting: hit } = this
+    if (hit === undefined) return
+    const { version } = this.bot
+    const { runtimeId, position, face } = hit
+    const act = (action: HitAction): void => {
+      if (atLeast(version, 'bedrock_1.16.210')) this.player.act(action)
+      else outbox.queue('player_action', breakAction(runtimeId, action))
+    }
+    if (!hit.started) {
+      outbox.queue('animate', swingArm(version, runtimeId, 'mine'))
+      act({ action: 'start_break', position, face })
+      if (atLeast(version, 'bedrock_1.16.210') && !atLeast(version, 'bedrock_1.21.0')) act({ action: 'crack_break', position, face })
+      this.hitting = { ...hit, started: true }
+      return
+    }
+    act({ action: 'abort_break', position, face: 0 })
+    this.hitting = undefined
+    hit.ended.due(tick)
   }
 }

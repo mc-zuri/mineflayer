@@ -1056,6 +1056,16 @@ server's id for the screen (its dynamic ids 1 and 100, which the protocol names 
   none in 100 ticks. As recorded opening a crafting table on every build: the client's clicks are the bot's, byte for
   byte, when the bot looks as the client's camera did (up to 1.26.10 its auth inputs mostly report a rotation a little
   off its camera's).
+- **A hit of a block** (no API of its own: the lectern's `takeBook`, below) is the vanilla client's attack key pressed
+  with the crosshair on it and released at once, as recorded in the interactions recordings of every build (1.16.201.2 –
+  1.26.60.5). In the first tick after its input pass, before the tick's auth input: `animate swing_arm` (its source
+  `mine` from 1.21.130), then the start: `start_break` (the block, the face) in the auth input's block actions from
+  1.16.210 (its `block_action` flag set), with `crack_break` (the same) up to 1.20.80 as the client cracks the block in
+  each tick it hits it; `player_action start_break` on 1.16.201, whose auth inputs carry no block action. In the next
+  tick the abort: `abort_break` (the block, face 0, as recorded) the same way. The face is where the eye's ray first
+  meets the block, else the bot first looks at its top's centre and hits the top. The vanilla client swings 3 to 8
+  times in the start's tick; the bot once. A hit waits for a use or a hit before it to end, and a use
+  for a hit.
 - **`bot.activateEntity(entity)`** and **`bot.activateEntityAt(entity, position)`** use an entity as the vanilla client
   does when the use key is pressed with the crosshair on it: one `inventory_transaction item_use_on_entity interact`, in
   an input pass, before its auth input. It changes no slot: the entity's runtime id, the hotbar slot, the held item
@@ -1614,13 +1624,21 @@ For a lectern the server told no book of, the close sends nothing, as the vanill
   which the close then tells, until the server tells another; it resolves once sent. It rejects, sending nothing, a
   page the book has not (a book and quill's 0 pages have none), a lectern told holding no book and a window that is
   not the one open.
-- **`takeBook()`** rejects on every version, naming the member: the servers ignore `lectern_update`'s `drop_book: true`
-  (up to 1.20.61; 1.20.71 removed the field), and no recording takes a lectern's book, so the vanilla client's take is
-  not known. Run against the 1.16.201, 1.16.220, 1.18.30, 1.19.80, 1.20.10 and 1.20.61 servers, a `drop_book: true`
-  (with the page and the book's pages, or page 0 of 0; on 1.20.61 with the lectern's screen open too, alone or after a
-  page turn) took nothing: no block_entity_data, no item. A hit does: `player_action start_break` on the lectern
-  holding a book (1.16.220 – 1.20.61) drops the book beside it as an item, the lectern staying, which the bot does not
-  take for the screen's take.
+- **`takeBook()`** (Java has no lectern helper) takes the book as a player does: it closes the
+  screen (as above, telling the page), then hits the lectern (see using a block above: the start of a hit, its abort in
+  the next tick), and resolves once the server told the lectern holds no book. The server drops the book beside the
+  lectern as an item entity (the lectern staying), which a bot standing near picks up as any item; the bot does not
+  walk to it. It rejects, sending nothing, a lectern told holding no book and a window that is not the one open, and
+  rejects when the server tells the book still on 100 ticks after the hit. No recording takes a lectern's book: run
+  against the 1.16.201, 1.16.210, 1.20.61, 1.20.71, 1.21.0, 1.21.50, 1.26.0, 1.26.40 and 1.26.61 servers, the
+  vanilla client's hit of each build (player_action on 1.16.201, the auth input's block actions after) dropped the
+  book at once: block_entity_data with no book, add_item_entity of the book, `level_event block_stop_break`. The
+  servers ignore `lectern_update`'s `drop_book: true` (up to 1.20.61; 1.20.71 removed the field): run against the
+  1.16.201, 1.16.220, 1.18.30, 1.19.80, 1.20.10 and 1.20.61 servers, it took nothing, with the screen open or not. A
+  `player_action start_break` drops the book on the servers up to 1.26.0 too, the 1.26.61 server closing the
+  connection on it. The book and quill dropped is named "Book & Quill" up to 1.21.20, "Book and Quill" from 1.21.30.
+  `takeBook` is a member of the screen's window: it cannot be reached on the servers that open no lectern screen (see
+  below).
 - **`activateBlock(lectern)`** holding a book and quill or a written book puts it on a lectern the server told no book
   of, as the vanilla client's use does (see using a block above): the use names the hotbar slot emptied from 1.26.60,
   none before; the server then sends the slot emptied and block_entity_data with the book. A lectern told holding a
@@ -1636,8 +1654,8 @@ the hand told after the server's inventory_content, with the use's end on 1.26.5
 `hasBook 1`, page 0 of 0), its screen opened, the close sending `lectern_update {page 0, page_count 0, position}` 5,
 31 and 61 ms after the close step, which is the next frame; against a scripted server (containers_lectern) a lectern
 told no book of, whose close sent nothing. Not recorded, written from the protocol: page turns (whether the vanilla
-client tells each turn or only the close, and whether the server answers with block_entity_data); not known: taking
-the book (see `takeBook`). Not recorded either: a written book's pages, a lectern screen before 1.26.20, a written book put on a
+client tells each turn or only the close, and whether the server answers with block_entity_data); the book's take
+(a hit, run against the servers: see `takeBook`). Not recorded either: a written book's pages, a lectern screen before 1.26.20, a written book put on a
 lectern (taken as the book and quill), and a book put on before 1.26.20 (taken as 1.26.20's: no slot named). Run against
 the 1.19.50, 1.21.80 and 1.26.61 servers, `putBookOnLectern` puts the book on; 1.21.80's and 1.26.61's open the lectern's screen on the use; 1.19.50's opens none, sending nothing of the
 lectern, so `openBlock` rejects there as for any screen not opened, and `setPage` cannot be reached: the
