@@ -82,6 +82,9 @@ The bot connects over RakNet; NetherNet and Xbox accounts are not supported yet.
 - `bot.abilities`: as Java's (see abilities below).
 - `bot.time`: as Java's (see below).
 - `bot.world`, `bot.blockAt(point)`, `bot.waitForChunksToLoad()`: the world's blocks (see below).
+- `bot.findBlocks(options)`, `bot.findBlock(options)`, `bot.canSeeBlock(block)`, `bot.blockAtCursor(maxDistance,
+  matcher)`, `bot.blockAtEntityCursor(entity, maxDistance, matcher)`, `bot.blockInSight(maxSteps, vectorLength)`:
+  Java's world queries (see the world below).
 - `bot.entities`, `bot.nearestEntity(match)`, `bot.entityAtCursor(maxDistance)`, `bot.vehicle`: the entities the
   server shows, the one the player looks at, and the one it rides (see below).
 - `bot.scoreboards`, `bot.scoreboard`, `bot.teams`, `bot.teamMap`, `bot.tablist`: as Java's, as Bedrock has them (see
@@ -770,6 +773,40 @@ server tells of a block that moves, in the packet pass; the bot sends nothing, a
   pitch 0, its bell told as 5 on 1.16.210, 1.17.0 and 1.21.42 and as 6 on 1.26.20, 1.26.30 and 1.26.40, the sound
   and block_event as above. The release the order changed in (1.21.50 is taken, between 1.21.50 and 1.26.10 not
   seen) and the other instruments are not verified.
+
+### Queries
+
+`bot.findBlocks(options)`, `bot.findBlock(options)`, `bot.canSeeBlock(block)`, `bot.blockAtCursor(maxDistance = 256,
+matcher)`, `bot.blockAtEntityCursor(entity = bot.entity, maxDistance = 256, matcher)` and
+`bot.blockInSight(maxSteps = 256, vectorLength = 5 / 16)` are Java's, over the blocks `bot.blockAt` shows. They read
+the world as the last frame left it, and send nothing.
+
+- `findBlocks` searches Java's octahedron of sections around the point's (the feet by default), within the
+  dimension's height (`bot.game.minY` and `bot.game.height`), for the blocks `matching` takes within `maxDistance`
+  (16) of the point's block, nearest first, `count` (1) of them. It reads a section's palette (its first layer's
+  block states) first, unless `useExtraInfo` is `true`; a function as `useExtraInfo` takes the blocks matched, with
+  their block entities. As Java's, it stops once it has `count` blocks after the point's own section, or else after
+  the layer of sections it reached them in and the first section of the next: a block of the point's section comes
+  before a nearer one of the section beside it. A section of air (none in the column) is skipped, but read as air with
+  `useExtraInfo: true`, as Java's. `findBlock` is `blockAt` of the first, or `null`.
+- `blockAtCursor` is the first block whose collision shapes the look ray from the eye meets within `maxDistance`,
+  with `face` (the face it entered by) and `intersect` (the point), or the first block `matcher(block, iterator)`
+  takes, without them; `blockInSight` is `blockAtCursor(maxSteps * vectorLength)`, `undefined` for none (deprecated,
+  as Java's). `blockAtEntityCursor` casts from another entity's eye.
+- `canSeeBlock` is whether the ray from the eye towards the block's centre, as far as its corner, meets no other
+  block's shapes before it.
+
+Where they differ from Java's, and why:
+
+| | Java | Bedrock |
+| --- | --- | --- |
+| where the rays start | the top of the entity's box (1.8 over a player's feet); `canSeeBlock` the eye | the eye: `eyeHeight` (a player's 1.62001, the vanilla client's, from where `lookAt` and `entityAtCursor` look), else the top of the box (a mob's) |
+| a yaw or a pitch of 0 | `blockAtEntityCursor` is `null` (it checks the position, height, yaw and pitch as falsy) | it casts: a player looking north at the horizon has both |
+| the ray's first block | prismarine-world offsets its shapes by where the ray starts in it | its shapes where the block is |
+| the block at the cursor | the collision shapes' ray | the same, not the vanilla client's pick (outline boxes, 5.5 blocks away): the actions use theirs |
+| a section the bot does not know (its column not shown, or asked for and not answered) | air, where the column is loaded | no block: the queries skip it, and the rays pass through it |
+| `block.painting` | the painting at the block | never set: Bedrock's paintings are entities (add_painting) |
+| the second layer (the water of a waterlogged block) | | not searched, as `blockAt` shows the first only |
 
 ## Entities
 

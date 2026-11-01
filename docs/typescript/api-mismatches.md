@@ -118,6 +118,8 @@ types the thing itself; each is a candidate for a fix upstream.
 | prismarine-chunk | `StorageType` is an ambient `const enum` | there is no value to name, and type stripping inlines none | the Bedrock world module passes `Runtime`'s number, 2 |
 | minecraft-data | `supportFeature(name)` takes the names of Java's `features.json` (`SupportsFeature`), for either edition | a Bedrock registry's answers Bedrock's `features.json` (`blockHashes`, `itemRegistryPacket`), and `false` for a Java-only name | the Bedrock bot types `bot.supportFeature` as Java's |
 | prismarine-world | `WorldSync.getBlock(pos)` returns a `Block` | `null` where no column is loaded | the Bedrock bot's `blockAt` checks the column first |
+| prismarine-world | `WorldSync.raycast` gives a `RaycastResult` (`x`, `y`, `z`, `face`, `intersect`), and its matcher takes the block only | it gives the block (with `face` and `intersect` when no matcher took it), and its matcher takes the block and the ray's `RaycastIterator` | the Bedrock world module's `raycast` is typed so (`RaycastHit`, `RaycastMatcher`) |
+| prismarine-world | `OctahedronIterator`'s `apothem` (the layer of sections it is at) is private | Java's `findBlocks` reads it | the Bedrock `findBlocks` works a section's layer out itself |
 
 ## Resolved
 

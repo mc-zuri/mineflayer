@@ -8,7 +8,7 @@ import type { Recipe } from 'prismarine-recipe'
 import type { Block } from 'prismarine-block'
 import type { Entity } from 'prismarine-entity'
 import type { ChatMessage } from 'prismarine-chat'
-import type { world } from 'prismarine-world'
+import type { iterators, world } from 'prismarine-world'
 import type { Registry } from 'prismarine-registry'
 import type { IndexedData, SupportsFeature } from 'minecraft-data'
 import type { NBT, Tags, TagType } from 'prismarine-nbt'
@@ -99,6 +99,9 @@ export interface BedrockPluginOptions {
 }
 
 export type BedrockPlugin = (bot: BedrockBot, options: BedrockBotOptions) => void
+
+/** whether a ray stops at the block it passes through (prismarine-world's iterator, at that block) */
+export type RaycastMatcher = (block: Block, iterator: iterators.RaycastIterator) => boolean
 
 export type BedrockBotEvents = Pick<BotEvents, 'error' | 'inject_allowed' | 'login' | 'game' | 'spawn' | 'respawn' | 'death' | 'health' | 'breath' | 'experience' | 'spawnReset' | 'rain' | 'weatherUpdate' | 'abilities' | 'time' | 'kicked' | 'end' | 'physicsTick' | 'physicTick' | 'move' | 'forcedMove' | 'chunkColumnLoad' | 'blockUpdate'
   | 'scoreboardCreated' | 'scoreboardDeleted' | 'scoreboardTitleChanged' | 'scoreUpdated' | 'scoreRemoved' | 'scoreboardPosition'
@@ -235,6 +238,18 @@ export interface BedrockBot extends TypedEmitter<BedrockBotEvents> {
   world: world.WorldSync
   /** null where the bot has no column, or the section was asked for and is not answered yet */
   blockAt: (point: Vec3) => Block | null
+  /** Java's: the blocks matching within maxDistance (16) of point (the feet), nearest first, count (1) of them, in the sections blockAt shows */
+  findBlocks: (options: FindBlockOptions) => Vec3[]
+  /** Java's: blockAt of findBlocks' first, else null */
+  findBlock: (options: FindBlockOptions) => Block | null
+  /** Java's: whether the ray from the eye towards the block's centre meets no other block's shapes before it */
+  canSeeBlock: (block: Block) => boolean
+  /** Java's: the first block the eye's look ray meets the shapes of within maxDistance (256), with its face and intersect, or the first the matcher takes */
+  blockAtCursor: (maxDistance?: number, matcher?: RaycastMatcher | null) => Block | null
+  /** blockAtCursor from the entity's eye (a player's), else the top of its box, as Java's */
+  blockAtEntityCursor: (entity?: Entity, maxDistance?: number, matcher?: RaycastMatcher | null) => Block | null
+  /** @deprecated Java's: blockAtCursor(maxSteps (256) × vectorLength (5 / 16)), undefined for none */
+  blockInSight: (maxSteps?: number, vectorLength?: number) => Block | undefined
   /** resolves once the columns around the player's are loaded; rejects after 200 ticks */
   waitForChunksToLoad: () => Promise<void>
   /** the objectives the server displayed, by name: Bedrock announces an objective only when it displays it */

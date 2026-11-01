@@ -17,6 +17,7 @@ import abilities from './plugins/abilities.ts'
 import beacon from './plugins/beacon.ts'
 import anvil from './plugins/anvil.ts'
 import book from './plugins/book.ts'
+import blocks from './plugins/blocks.ts'
 import bossBar from './plugins/boss_bar.ts'
 import brewingStand from './plugins/brewing_stand.ts'
 import breath from './plugins/breath.ts'
@@ -108,7 +109,8 @@ const plugins: Readonly<Record<string, BedrockInternalPlugin>> = Object.freeze({
   book,
   block_actions: blockActions,
   place,
-  sign
+  sign,
+  blocks
 })
 
 /** how a bot reaches its server and who steps its frames: bedrock-protocol and the wall clock, or a test's fakes */

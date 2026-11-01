@@ -5,13 +5,13 @@ import nbt from 'prismarine-nbt'
 import type { NBT } from 'prismarine-nbt'
 import type { World } from 'prismarine-physics/lib/bedrock/index.ts'
 import type { RegistryBedrock } from 'prismarine-registry'
-import prismarineWorld from 'prismarine-world'
+import prismarineWorld, { iterators } from 'prismarine-world'
 import type { world } from 'prismarine-world'
 import { Vec3 } from 'vec3'
 import type { BedrockCore } from '../core/core.ts'
 import type { OutboxWriter } from '../core/types.ts'
 import { isBedrockVersionAtLeast } from '../version.ts'
-import type { BedrockVersion } from '../../types/api/index.ts'
+import type { BedrockVersion, RaycastMatcher } from '../../types/api/index.ts'
 import type { BedrockBotInternal } from '../../types/bedrock-internal.ts'
 import type { BedrockClientboundPackets } from '../../types/protocol/bedrock-client.ts'
 
@@ -117,6 +117,9 @@ function readBlockEntities (payload: Buffer, offset: number): NBT[] {
   }
   return tags
 }
+
+/** a block a ray met: the face it entered by, and where it met the block's shapes */
+export type RaycastHit = Block & { face: number, intersect: Vec3 }
 
 /** the column (or section) holding a block coordinate */
 export function chunkCoordinate (coordinate: number): number {
@@ -225,6 +228,36 @@ export class NetworkWorld {
       }
     }
     return missing
+  }
+
+  /** the block states of a section's first layer, where blockAt shows it; none for a section the column has not (air) */
+  sectionStates (chunkX: number, sectionY: number, chunkZ: number): readonly number[] | undefined {
+    const column = this.shown.get(keyOf(chunkX, chunkZ))
+    if (column === undefined || !this.knows(column, sectionY)) return undefined
+    return column.chunk.getSectionAtIndex(sectionY)?.getPalette(0).map(entry => entry.stateId) ?? []
+  }
+
+  /**
+   * prismarine-world's raycast over the blocks blockAt shows (a section the bot does not know has none): the first
+   * block whose shapes the ray meets, with the face and the point, or without a face the first `matcher` takes
+   */
+  raycast (from: Vec3, direction: Vec3, range: number): RaycastHit | null
+  raycast (from: Vec3, direction: Vec3, range: number, matcher: RaycastMatcher | null): Block | null
+  raycast (from: Vec3, direction: Vec3, range: number, matcher: RaycastMatcher | null = null): Block | null {
+    const ray = new iterators.RaycastIterator(from, direction, range)
+    // the first cell's shapes where its block is: prismarine-world offsets them by where the ray starts in it
+    for (let cell: { x: number, y: number, z: number } | null = from.floored(); cell !== null; cell = ray.next()) {
+      const position = new Vec3(cell.x, cell.y, cell.z)
+      const block = this.bot.blockAt(position)
+      if (block === null) continue
+      if (matcher !== null) {
+        if (matcher(block, ray)) return block
+        continue
+      }
+      const hit = ray.intersect(block.shapes, position)
+      if (hit !== null) return Object.assign(block, { face: hit.face, intersect: hit.pos })
+    }
+    return null
   }
 
   /** a section of a whole column, an answered one, or one above or below those asked for (air) */
