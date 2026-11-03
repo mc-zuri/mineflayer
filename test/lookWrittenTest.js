@@ -53,6 +53,59 @@ describe('a look written to bot.entity.yaw and pitch (Entity.getYRot as the play
     })
   }
 
+  it('a look written in radians between the tick\'s move and its packet is sent on from the degrees sent before, not wrapped (Grim AimModulo360: -336.15 to -3.9, mineflayer-survival e2e-m4)', async () => {
+    const t = await fakeServerBot('1.21.11', { spawn, blocks: floor })
+    try {
+      for (let i = 0; i < 20 && !t.bot.entity.onGround; i++) t.ticks(1)
+      t.bot.entity.yawDegrees = new JavaFloat(-336.15)
+      t.bot.entity.pitchDegrees = new JavaFloat(0)
+      t.bot.entity.yaw = conv.fromNotchianYaw(t.bot.entity.yawDegrees)
+      t.bot.entity.pitch = 0
+      t.ticks(2)
+      await settle()
+      t.written.length = 0
+      // 10 degrees on, written as radians alone after the move (a listener of the tick's physics)
+      t.bot.once('entityPhysicsTick', () => { t.bot.entity.yaw = conv.fromNotchianYaw(-326.15) })
+      t.ticks(1)
+      t.ticks(1)
+      await settle()
+      const yaws = t.written.filter(p => /^(position_look|look)$/.test(p.name)).map(p => p.data.yaw)
+      // (the look the tick ends with is the one held: no turn sent, none wrapped either)
+      for (const yaw of yaws) assert.ok(Math.abs(yaw - -336.15) <= 10.01, `sent ${yaw} (${yaws.join(' ')})`)
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('the move goes by the degrees sent: held degrees a whole turn off the ones sent before are moved by it before the move (Mth.sin\'s index a step apart, Grim\'s offset 1.25e-5, mineflayer-survival e2e-m9)', async () => {
+    const t = await fakeServerBot('1.21.11', { spawn, blocks: floor })
+    try {
+      for (let i = 0; i < 20 && !t.bot.entity.onGround; i++) t.ticks(1)
+      t.bot.entity.yawDegrees = new JavaFloat(-87.15)
+      t.bot.entity.pitchDegrees = new JavaFloat(0)
+      t.bot.entity.yaw = conv.fromNotchianYaw(t.bot.entity.yawDegrees)
+      t.bot.entity.pitch = 0
+      t.ticks(2)
+      await settle()
+      t.written.length = 0
+      // the same look a turn on, held in the degrees and their radians both
+      t.bot.entity.yawDegrees = new JavaFloat(272.85)
+      t.bot.entity.yaw = conv.fromNotchianYaw(t.bot.entity.yawDegrees)
+      let moved
+      t.bot.once('physicsTick', () => { moved = Number(t.bot.entity.yawDegrees) })
+      t.bot.setControlState('forward', true)
+      t.ticks(1)
+      t.bot.setControlState('forward', false)
+      await settle()
+      const sent = t.written.filter(p => /^(position_look|look)$/.test(p.name)).map(p => p.data.yaw)
+      // (no turn: the move went by the degrees sent before, -87.15, and no look goes, the rotation unchanged)
+      assert.strictEqual(moved, Math.fround(-87.15))
+      assert.deepStrictEqual(sent, [])
+    } finally {
+      await t.close()
+    }
+  })
+
   it('a look held in the degrees and their radians both is left as it is', async () => {
     const t = await fakeServerBot('1.21.11', { spawn, blocks: floor })
     try {

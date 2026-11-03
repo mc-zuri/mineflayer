@@ -466,6 +466,47 @@ describe('use outcome (InteractionResult as the client predicts it)', () => {
       assert.strictEqual(use.useItem(), 'pass')
     })
 
+    it('bucketChange: the world change the client makes of a bucket use itself (BucketItem.use runs on the client too): a source scooped to air, a source poured before the face, none in the nether or on a fail', () => {
+      const bot = fakeBot('1.21.11', { pitch: 40 })
+      rayTrace(bot)
+      const use = createUsePrediction(bot)
+      const water = bot.registry.blocksByName.water
+      const lava = bot.registry.blocksByName.lava
+      // poured on the stone the ray meets: a water source in the cell over it
+      bot.hold('water_bucket')
+      const pour = use.bucketChange(bot.heldItem)
+      assert.ok(pour)
+      assert.strictEqual(pour.stateId, water.defaultState)
+      assert.strictEqual(bot.blockAt(pour.position).name, 'air')
+      // a layer of snow there: the ray stops on its outline (two sixteenths high, no collision), the water over it
+      const Block = require('prismarine-block')(bot.registry)
+      bot.world.setBlockStateId(pour.position, Block.fromProperties('snow', { layers: 1 }).stateId)
+      const overSnow = use.bucketChange(bot.heldItem)
+      assert.ok(overSnow)
+      assert.strictEqual(overSnow.position.toString(), pour.position.offset(0, 1, 0).toString())
+      bot.world.setBlockStateId(pour.position, bot.registry.blocksByName.air.defaultState)
+      // a lava bucket the same, with lava
+      bot.hold('lava_bucket')
+      assert.strictEqual(use.bucketChange(bot.heldItem).stateId, lava.defaultState)
+      // a use that is not a bucket's (a wind charge, a snowball) changes no block
+      for (const name of ['wind_charge', 'snowball']) {
+        bot.hold(name)
+        assert.strictEqual(use.bucketChange(bot.heldItem), null, name)
+      }
+      // in the nether the water goes up in steam (emptyContents: ultraWarm): no change
+      bot.game.dimension = 'the_nether'
+      bot.hold('water_bucket')
+      assert.strictEqual(use.bucketChange(bot.heldItem), null)
+      bot.game.dimension = 'overworld'
+      // a source scooped: air where it was; an empty bucket on stone: no change
+      bot.hold('bucket')
+      assert.strictEqual(use.bucketChange(bot.heldItem), null)
+      bot.world.setBlockStateId(pour.position, water.defaultState)
+      const scoop = use.bucketChange(bot.heldItem)
+      assert.ok(scoop)
+      assert.deepStrictEqual([scoop.position.toString(), scoop.stateId], [pour.position.toString(), bot.registry.blocksByName.air.defaultState])
+    })
+
     it('a drink is a Success on 1.15 (it swings), a CONSUME from 1.16 (DrinkHelper.startDrinking)', () => {
       for (const [version, result] of [['1.15.2', 'success'], ['1.16.5', 'consume'], ['1.20.4', 'consume']]) {
         const bot = fakeBot(version)
@@ -1051,6 +1092,27 @@ for (const version of ['1.8.8', '1.12.2', '1.15.2', '1.20.4', '26.1', '26.3']) {
       bot.entity.isInvulnerable = true
       bot.activateItem()
       assert.strictEqual(bot.usingHeldItem, registry.version['>=']('1.15'))
+    })
+
+    it('an off hand\'s shield stays up when the main hand changes; a main hand\'s use ends (LivingEntity.updatingUsingItem: the hand in use compared)', async () => {
+      if (!registry.itemsByName.shield || !registry.version['>=']('1.9')) return
+      const Item = require('prismarine-item')(registry)
+      hold('stone', 4)
+      bot.inventory.updateSlot(45, new Item(registry.itemsByName.shield.id, 1))
+      bot.activateItem(true)
+      assert.strictEqual(bot.usingHeldItem, true)
+      // another item in the main hand: the shield is still up (the server's was: Grim's NoSlow, mineflayer-survival e2e-m4)
+      bot.inventory.updateSlot(bot.QUICK_BAR_START + bot.quickBarSlot, new Item(registry.itemsByName.dirt.id, 4))
+      assert.strictEqual(bot.heldItem?.name, 'dirt')
+      assert.strictEqual(bot.usingHeldItem, true)
+      bot.deactivateItem()
+      // a main hand's use (a bow drawn) ends with its item changed
+      hold('bow', 1)
+      bot.inventory.updateSlot(bot.QUICK_BAR_START + 1, new Item(registry.itemsByName.arrow.id, 8))
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, true)
+      bot.inventory.updateSlot(bot.QUICK_BAR_START + bot.quickBarSlot, new Item(registry.itemsByName.dirt.id, 4))
+      assert.strictEqual(bot.usingHeldItem, false)
     })
 
     it('an item on cooldown is not used: no release follows', async () => {

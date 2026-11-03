@@ -86,6 +86,196 @@ describe('actionsInTick (Minecraft.handleKeybinds: the actions at the start of a
     }
   })
 
+  it('a dig whose START is held counts its progress from the START sent, its STOP after it (Grim FastBreak: a START and its STOP flushed in one tick behind a menu\'s clicks, e2e-m2 t186096)', async () => {
+    const t = await standing('1.21.11')
+    try {
+      // the ticks (their tick_end) the server had between a dig's START and its STOP, as it got them
+      const digTicks = () => {
+        const got = t.written.filter(p => p.name === 'tick_end' || p.name === 'block_dig')
+        const start = got.findIndex(p => p.name === 'block_dig' && p.data.status === 0)
+        const stop = got.findIndex(p => p.name === 'block_dig' && p.data.status === 2)
+        assert.ok(start >= 0 && stop > start, got.map(p => p.name === 'block_dig' ? p.data.status : p.name).join(' '))
+        return got.slice(start, stop).filter(p => p.name === 'tick_end').length
+      }
+      // a dig with nothing before it
+      const first = t.bot.dig(t.bot.blockAt(new Vec3(2, 65, 0)), 'ignore', 'auto', 1)
+      while (t.bot.blockAt(new Vec3(2, 65, 0)).type !== 0) t.ticks(1)
+      await first
+      await settle()
+      const alone = digTicks()
+      t.ticks(10)
+      await settle()
+      t.written.length = 0
+      // the next START held 10 ticks before it goes (as the held packets ahead of it, a menu's clicks, kept it)
+      const write = t.bot._client.write
+      let heldStart = null
+      t.bot._client.write = (name, params) => {
+        if (name === 'block_dig' && params.status === 0 && heldStart === null) {
+          heldStart = { params, release: 10 }
+          return
+        }
+        return write(name, params)
+      }
+      t.bot.prependListener('physicsTickBegin', () => {
+        if (heldStart && heldStart.release-- === 0) write('block_dig', heldStart.params)
+      })
+      const second = t.bot.dig(t.bot.blockAt(new Vec3(2, 65, 1)), 'ignore', 'auto', 1)
+      for (let i = 0; i < 200 && t.bot.blockAt(new Vec3(2, 65, 1)).type !== 0; i++) t.ticks(1)
+      await second
+      await settle()
+      assert.strictEqual(digTicks(), alone)
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('a block broken turns to air as its STOP goes, not in the tick before it (MultiPlayerGameMode.startPrediction: the Grim mirror\'s air for farmland a tick before the STOP, e2e-m10 t215528)', async () => {
+    const t = await standing('1.21.11')
+    try {
+      let tick = 0
+      let stopTick = null
+      let airTick = null
+      const at = new Vec3(2, 65, 0)
+      // (the tick the STOP is put on the wire, under the held packets' write)
+      const serializer = t.bot._client.serializer
+      const serialize = serializer.write.bind(serializer)
+      serializer.write = (packet, ...rest) => {
+        if (packet.name === 'block_dig' && packet.params.status === 2 && stopTick === null) stopTick = tick
+        return serialize(packet, ...rest)
+      }
+      // the STOP held a tick (as a turn or the packets held ahead of it hold it): it goes, and its onSent with it, at the
+      // next tick's start
+      const write = t.bot._client.write
+      let heldStop = null
+      t.bot._client.write = (name, params) => {
+        if (name === 'block_dig' && params.status === 2 && heldStop === null) {
+          heldStop = params
+          return
+        }
+        return write(name, params)
+      }
+      t.bot.prependListener('physicsTickBegin', () => {
+        if (heldStop && !heldStop.sent) {
+          heldStop.sent = true
+          write('block_dig', heldStop)
+        }
+      })
+      t.bot.on('physicsTick', () => {
+        if (airTick === null && t.bot.blockAt(at).type === 0) airTick = tick
+        tick++
+      })
+      const dig = t.bot.dig(t.bot.blockAt(at), 'ignore', 'auto', 1)
+      for (let i = 0; i < 200 && airTick === null; i++) t.ticks(1)
+      t.ticks(2)
+      await dig
+      assert.ok(stopTick !== null && airTick !== null, `stop ${stopTick}, air ${airTick}`)
+      assert.strictEqual(airTick, stopTick)
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('a block placed goes into the world as its use goes, the tick after one asked for between ticks (Grim Simulation: the bot moved against a block the server had not had yet, e2e-m2 t257449)', async () => {
+    const t = await standing('1.21.11')
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      t.bot.inventory.updateSlot(t.bot.QUICK_BAR_START + t.bot.quickBarSlot, new Item(t.registry.itemsByName.dirt.id, 4))
+      t.bot.lookAt = async () => {}
+      const cell = new Vec3(2, 66, 0)
+      // asked for between ticks: held for the next tick's start, the world without it till then
+      const result = await t.bot.activateBlock(t.bot.blockAt(new Vec3(2, 65, 0)), new Vec3(0, 1, 0), new Vec3(0.5, 1, 0.5))
+      assert.strictEqual(result, 'success')
+      assert.strictEqual(t.bot.blockAt(cell).name, 'air')
+      assert.strictEqual(t.bot.inventory.slots[t.bot.QUICK_BAR_START + t.bot.quickBarSlot].count, 4)
+      t.ticks(1)
+      await settle()
+      assert.ok(t.written.some(p => p.name === 'block_place'), t.written.map(p => p.name).join(' '))
+      assert.strictEqual(t.bot.blockAt(cell).name, 'dirt')
+      assert.strictEqual(t.bot.inventory.slots[t.bot.QUICK_BAR_START + t.bot.quickBarSlot].count, 3)
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('bot._genericPlace (bot.placeBlock, the pathfinder\'s places) puts the block into the world and takes it from the stack as the use goes, not before (vanilla BlockItem.place on the client)', async () => {
+    const t = await standing('1.21.11')
+    try {
+      const Item = require('prismarine-item')(t.registry)
+      const hand = t.bot.QUICK_BAR_START + t.bot.quickBarSlot
+      t.bot.inventory.updateSlot(hand, new Item(t.registry.itemsByName.cobblestone.id, 4))
+      const cell = new Vec3(2, 66, 1)
+      await t.bot._genericPlace(t.bot.blockAt(new Vec3(2, 65, 1)), new Vec3(0, 1, 0), { forceLook: 'ignore', swingArm: 'right' })
+      // asked for between ticks: held for the next tick's start
+      assert.strictEqual(t.bot.blockAt(cell).name, 'air')
+      assert.strictEqual(t.bot.inventory.slots[hand].count, 4)
+      t.ticks(1)
+      await settle()
+      assert.ok(t.written.some(p => p.name === 'block_place'), t.written.map(p => p.name).join(' '))
+      assert.strictEqual(t.bot.blockAt(cell).name, 'cobblestone')
+      assert.strictEqual(t.bot.inventory.slots[hand].count, 3)
+      // into the cell the bot stands in: not placed on the client (BlockItem.canPlace: isUnobstructed), the stack kept
+      await t.bot._genericPlace(t.bot.blockAt(new Vec3(0, 64, 0)), new Vec3(0, 1, 0), { forceLook: 'ignore', swingArm: 'right' })
+      t.ticks(1)
+      await settle()
+      assert.strictEqual(t.bot.blockAt(new Vec3(0, 65, 0)).name, 'air')
+      assert.strictEqual(t.bot.inventory.slots[hand].count, 3)
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('an attack asked for with a look the server hasn\'t had goes at the next tick\'s start, before the movement that sends its look (Minecraft.handleKeybinds: Grim\'s Reach measures from the position before it)', async () => {
+    const t = await standing('1.21.11')
+    try {
+      const conv = require('../lib/conversions')
+      t.ticks(1)
+      await settle()
+      t.written.length = 0
+      // turned 40 degrees and the attack asked for between ticks
+      const yaw = conv.fromNotchianYaw(Number(t.bot.entity.yawDegrees) + 40)
+      await t.bot.look(yaw, 0, true)
+      t.bot._client.write('use_entity', { target: 99, mouse: 1, sneaking: false })
+      t.ticks(1)
+      await settle()
+      const order = t.written.map(p => p.name).filter(n => n === 'use_entity' || MOVES.test(n))
+      assert.deepStrictEqual(order.slice(0, 2), ['use_entity', 'look'], order.join(' '))
+      const look = t.written.find(p => MOVES.test(p.name)).data
+      assert.ok(Math.abs(look.yaw - Number(t.bot.entity.yawDegrees)) < 1e-3, `yaw sent ${look.yaw}`)
+    } finally {
+      await t.close()
+    }
+  })
+
+  it('two actions asked for with two looks go a tick apart, each tick\'s movement with its action\'s look (Grim BadPacketsJ: a use\'s rotation not the look of the movement after it, e2e-m6 t214396)', async () => {
+    const t = await standing('1.21.11')
+    try {
+      const conv = require('../lib/conversions')
+      t.ticks(1)
+      await settle()
+      t.written.length = 0
+      const base = Number(t.bot.entity.yawDegrees)
+      await t.bot.look(conv.fromNotchianYaw(base + 20), 0, true)
+      t.bot._client.write('use_item', { hand: 1, sequence: 1, rotation: { x: Number(t.bot.entity.yawDegrees), y: Number(t.bot.entity.pitchDegrees) } })
+      await t.bot.look(conv.fromNotchianYaw(base + 40), 0, true)
+      t.bot._client.write('use_entity', { target: 99, mouse: 1, sneaking: false })
+      t.ticks(4)
+      await settle()
+      const all = t.written.filter(p => p.name === 'use_item' || p.name === 'use_entity' || p.name === 'tick_end' || MOVES.test(p.name))
+      const use = all.findIndex(p => p.name === 'use_item')
+      const attack = all.findIndex(p => p.name === 'use_entity')
+      const useTickEnd = all.findIndex((p, k) => k > use && p.name === 'tick_end')
+      assert.ok(use >= 0 && useTickEnd > use && attack > useTickEnd, all.map(p => p.name).join(' '))
+      // the look in force at the use's tick (the last movement sent before its tick ends) is the use's
+      const lookAtUse = all.slice(0, useTickEnd).filter(p => MOVES.test(p.name) && p.data.yaw !== undefined).pop()
+      assert.ok(lookAtUse && Math.abs(lookAtUse.data.yaw - all[use].data.rotation.x) < 1e-3, `look at the use's tick ${lookAtUse?.data.yaw}, the use's ${all[use].data.rotation.x}`)
+      // and the attack's tick sends the attack's
+      const afterAttack = all.slice(attack).find(p => MOVES.test(p.name))
+      assert.ok(afterAttack && Math.abs(afterAttack.data.yaw - (base + 40)) < 0.2, `look after the attack ${afterAttack?.data.yaw}`)
+    } finally {
+      await t.close()
+    }
+  })
+
   it('off by default: an action goes when it is asked for', async () => {
     const t = await standing('1.21.11', false)
     try {
